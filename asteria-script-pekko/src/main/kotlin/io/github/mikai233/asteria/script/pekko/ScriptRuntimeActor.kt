@@ -20,6 +20,11 @@ import org.apache.pekko.actor.AbstractActor
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.Props
 import org.apache.pekko.cluster.Cluster
+import org.apache.pekko.cluster.pubsub.DistributedPubSub
+import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator
+import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.Publish
+import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.Subscribe
+import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.SubscribeAck
 
 class ScriptRuntimeActor(
     private val runtime: NodeRuntime,
@@ -27,6 +32,14 @@ class ScriptRuntimeActor(
     private val logger = actorLogger()
     private val job: Job = SupervisorJob()
     private val scope = CoroutineScope(context.dispatcher.asCoroutineDispatcher() + job)
+    private lateinit var mediator: ActorRef
+
+    override fun preStart() {
+        super.preStart()
+        mediator = DistributedPubSub.get(context.system).mediator()
+        mediator.tell(Subscribe(AllNodesTopic, self), self)
+        runtime.roles.forEach { mediator.tell(Subscribe(roleTopic(it.value), self), self) }
+    }
 
     override fun postStop() {
         job.cancel()
@@ -35,19 +48,25 @@ class ScriptRuntimeActor(
 
     override fun createReceive(): Receive {
         return receiveBuilder()
-            .match(ExecuteNodeScript::class.java) { handleCommand(it.command) }
+            .match(ExecuteNodeScript::class.java) { handleDistributedNodeCommand(it) }
             .match(ScriptExecutionCommand::class.java) { handleCommand(it) }
+            .match(SubscribeAck::class.java) {}
             .build()
     }
 
     private fun handleCommand(command: ScriptExecutionCommand) {
         val replyTo = sender
         when (val target = command.target) {
-            ScriptTarget.AllNodes -> executeOnThisNode(command, replyTo = replyTo)
+            ScriptTarget.AllNodes -> {
+                executeOnThisNode(command, replyTo = replyTo)
+                publishNodeCommand(AllNodesTopic, command, replyTo)
+            }
+
             is ScriptTarget.Role -> {
                 if (target.role in runtime.roles) {
                     executeOnThisNode(command, replyTo = replyTo)
                 }
+                publishNodeCommand(roleTopic(target.role.value), command, replyTo)
             }
 
             is ScriptTarget.Node -> {
@@ -70,6 +89,37 @@ class ScriptRuntimeActor(
                     .tell(actorCommand(command, target), replyTo)
             }
         }
+    }
+
+    private fun handleDistributedNodeCommand(message: ExecuteNodeScript) {
+        if (message.originNodeAddress == selfAddress()) {
+            return
+        }
+        val command = message.command
+        val replyTo = sender
+        when (val target = command.target) {
+            ScriptTarget.AllNodes -> executeOnThisNode(command, replyTo = replyTo)
+            is ScriptTarget.Role -> {
+                if (target.role in runtime.roles) {
+                    executeOnThisNode(command, replyTo = replyTo)
+                }
+            }
+
+            is ScriptTarget.Node -> {
+                if (target.address == selfAddress()) {
+                    executeOnThisNode(command, replyTo = replyTo)
+                }
+            }
+
+            is ScriptTarget.ActorPath,
+            is ScriptTarget.Entity,
+            is ScriptTarget.Singleton,
+            -> handleCommand(command)
+        }
+    }
+
+    private fun publishNodeCommand(topic: String, command: ScriptExecutionCommand, replyTo: ActorRef) {
+        mediator.tell(Publish(topic, ExecuteNodeScript(command, originNodeAddress = selfAddress())), replyTo)
     }
 
     private fun executeOnThisNode(command: ScriptExecutionCommand, replyTo: ActorRef) {
@@ -119,6 +169,11 @@ class ScriptRuntimeActor(
 
     companion object {
         const val Name = "asteriaScriptRuntime"
+        const val AllNodesTopic = "asteria.script.nodes.all"
+
+        fun roleTopic(role: String): String {
+            return "asteria.script.nodes.role.$role"
+        }
 
         fun props(runtime: NodeRuntime): Props {
             return Props.create(ScriptRuntimeActor::class.java) { ScriptRuntimeActor(runtime) }

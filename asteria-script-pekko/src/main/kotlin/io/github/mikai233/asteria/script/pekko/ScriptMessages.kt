@@ -20,4 +20,5 @@ data class ExecuteEntityActorScript(
 
 data class ExecuteNodeScript(
     val command: ScriptExecutionCommand,
+    val originNodeAddress: String? = null,
 )

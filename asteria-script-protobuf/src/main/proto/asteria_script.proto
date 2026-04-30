@@ -55,6 +55,24 @@ message ExecuteScriptCommand {
   ScriptArtifact artifact = 3;
 }
 
+message ExecuteNodeScript {
+  ExecuteScriptCommand command = 1;
+  optional string origin_node_address = 2;
+}
+
+message ExecuteActorScript {
+  string execution_id = 1;
+  ScriptArtifact artifact = 2;
+  optional ScriptTarget target = 3;
+}
+
+message ExecuteEntityActorScript {
+  string id = 1;
+  string execution_id = 2;
+  ScriptArtifact artifact = 3;
+  optional ScriptTarget target = 4;
+}
+
 message ScriptExecutionResult {
   string execution_id = 1;
   bool success = 2;
