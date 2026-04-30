@@ -22,7 +22,7 @@ fun ActorSystem.startAsteriaSharding(
     handoffMessage: Any = requireNotNull(spec.handoffMessage) {
         "handoffMessage for entity ${spec.kind} is required"
     },
-    extractor: ShardRegion.MessageExtractor = ShardMessageExtractor(spec.shardCount),
+    extractor: ShardRegion.MessageExtractor = PekkoShardExtractors.shardMessageByEntityIdHash(spec.shardCount),
     strategy: ShardCoordinator.ShardAllocationStrategy =
         ShardCoordinator.LeastShardAllocationStrategy(1, 10),
 ): ActorRef {
