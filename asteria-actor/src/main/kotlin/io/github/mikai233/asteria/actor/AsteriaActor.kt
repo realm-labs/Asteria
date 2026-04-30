@@ -4,7 +4,6 @@ import io.github.mikai233.asteria.core.NodeRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeout
 import org.apache.pekko.actor.AbstractActorWithStash
 import org.apache.pekko.actor.ActorRef
@@ -19,7 +18,7 @@ abstract class AsteriaActor<N : NodeRuntime>(
     val runtime: N,
 ) : AbstractActorWithStash() {
     val logger = actorLogger()
-    val coroutineScope: TrackingCoroutineScope = self.safeActorCoroutineScope()
+    val coroutineScope: ActorCoroutineScope = self.actorCoroutineScope()
 
     private lateinit var timersActor: ActorRef
 
@@ -35,7 +34,7 @@ abstract class AsteriaActor<N : NodeRuntime>(
 
     override fun aroundReceive(receive: PartialFunction<Any, BoxedUnit>?, msg: Any?) {
         when (msg) {
-            is ActorCoroutineRunnable -> runCatching { msg.run() }
+            is ActorCoroutineTask -> runCatching { msg.run() }
                 .onFailure { logger.error(it, "{} failed to run actor coroutine", self) }
 
             is NamedActorTask -> runCatching { msg.block() }
@@ -74,7 +73,7 @@ abstract class AsteriaActor<N : NodeRuntime>(
         start: CoroutineStart = CoroutineStart.DEFAULT,
         timeout: Duration? = 3.seconds,
         block: suspend CoroutineScope.() -> Unit,
-    ) = coroutineScope.trackedLaunch(context, start) {
+    ) = coroutineScope.launchTracked(context, start) {
         if (timeout == null) {
             block()
         } else {
@@ -87,7 +86,7 @@ abstract class AsteriaActor<N : NodeRuntime>(
         start: CoroutineStart = CoroutineStart.DEFAULT,
         block: suspend CoroutineScope.() -> T,
     ): Deferred<T> {
-        return coroutineScope.async(context, start, block)
+        return coroutineScope.asyncTracked(context, start, block)
     }
 }
 
