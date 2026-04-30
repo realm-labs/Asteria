@@ -14,6 +14,7 @@
             <option value="$PROJECT_DIR$/asteria-core" />
             <option value="$PROJECT_DIR$/asteria-gateway-netty" />
             <option value="$PROJECT_DIR$/asteria-message" />
+            <option value="$PROJECT_DIR$/asteria-observability-core" />
             <option value="$PROJECT_DIR$/asteria-persistence" />
             <option value="$PROJECT_DIR$/asteria-protocol-protobuf" />
             <option value="$PROJECT_DIR$/asteria-rpc" />

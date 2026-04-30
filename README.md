@@ -10,6 +10,7 @@ application-level choices instead of framework requirements.
 - `asteria-core`: application lifecycle, module system, role keys, entity specs, singleton specs, service registry.
 - `asteria-actor`: Pekko actor base utilities, actor coroutine dispatcher, timer helpers.
 - `asteria-message`: message contracts, handler dispatch, route registry, handler context.
+- `asteria-observability-core`: optional tracing, metrics, trace context, no-op defaults, and module registration.
 - `asteria-rpc`: RPC target and route registry contracts.
 - `asteria-rpc-protobuf`: protobuf RPC route registry runtime contracts for generated routes.
 - `asteria-rpc-protobuf-generator`: descriptor-set based generator for protobuf RPC route registries.
@@ -72,6 +73,15 @@ message LoginReq {
 
 The protobuf route generator reads a descriptor set with `asteria.rpc.rpc_route` options and emits a
 `GeneratedProtobufRpcRoutes` implementation plus the `ServiceLoader` metadata used by `RpcModule.autoDiscover()`.
+
+Observability is optional and defaults to no-op tracing and metrics:
+
+```kotlin
+install(ObservabilityModule {
+    tracer = OpenTelemetryAsteriaTracer(...)
+    metrics = OpenTelemetryAsteriaMetrics(...)
+})
+```
 
 Script execution is an opt-in extension:
 

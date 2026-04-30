@@ -7,6 +7,7 @@ include(
     "asteria-core",
     "asteria-actor",
     "asteria-message",
+    "asteria-observability-core",
     "asteria-rpc",
     "asteria-rpc-protobuf",
     "asteria-rpc-protobuf-generator",

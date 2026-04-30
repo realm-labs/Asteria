@@ -2,6 +2,7 @@ dependencies {
     api(project(":asteria-core"))
     api(project(":asteria-actor"))
     api(project(":asteria-message"))
+    api(project(":asteria-observability-core"))
     api(project(":asteria-rpc"))
     api(project(":asteria-rpc-protobuf"))
     api(project(":asteria-script-core"))
