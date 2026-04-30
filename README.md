@@ -31,12 +31,14 @@ val app = localGameApplication {
         role("player")
         shardCount = 128
         handoffMessage = PlayerHandoff
+        actor { runtime, _ -> PlayerActor.props(runtime) }
     }
 
     entity<Long>("match") {
         role("match")
         shardCount = 64
         handoffMessage = MatchHandoff
+        actor { runtime, _ -> MatchActor.props(runtime) }
     }
 
     routes {

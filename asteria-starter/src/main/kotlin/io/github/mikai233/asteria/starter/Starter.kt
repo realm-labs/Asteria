@@ -1,5 +1,6 @@
 package io.github.mikai233.asteria.starter
 
+import io.github.mikai233.asteria.cluster.pekko.PekkoRuntimeModule
 import io.github.mikai233.asteria.core.AsteriaApplication
 import io.github.mikai233.asteria.core.AsteriaApplicationBuilder
 import io.github.mikai233.asteria.core.AsteriaModule
@@ -7,10 +8,6 @@ import io.github.mikai233.asteria.core.ModuleContext
 import io.github.mikai233.asteria.core.gameApplication
 import io.github.mikai233.asteria.message.RouteRegistry
 import io.github.mikai233.asteria.message.RouteRegistryBuilder
-
-object LocalRuntimeModule : AsteriaModule {
-    override val name: String = "local-runtime"
-}
 
 class RouteModule(
     private val registry: RouteRegistry,
@@ -28,7 +25,7 @@ fun AsteriaApplicationBuilder.routes(configure: RouteRegistryBuilder.() -> Unit)
 
 fun localGameApplication(configure: AsteriaApplicationBuilder.() -> Unit): AsteriaApplication {
     return gameApplication {
-        install(LocalRuntimeModule)
+        install(PekkoRuntimeModule.local())
         configure()
     }
 }
