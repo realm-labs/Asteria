@@ -17,6 +17,7 @@
             <option value="$PROJECT_DIR$/asteria-protocol-protobuf" />
             <option value="$PROJECT_DIR$/asteria-rpc" />
             <option value="$PROJECT_DIR$/asteria-rpc-protobuf" />
+            <option value="$PROJECT_DIR$/asteria-rpc-protobuf-generator" />
             <option value="$PROJECT_DIR$/asteria-starter" />
           </set>
         </option>

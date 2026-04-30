@@ -12,6 +12,7 @@ application-level choices instead of framework requirements.
 - `asteria-message`: message contracts, handler dispatch, route registry, handler context.
 - `asteria-rpc`: RPC target and route registry contracts.
 - `asteria-rpc-protobuf`: protobuf RPC route registry runtime contracts for generated routes.
+- `asteria-rpc-protobuf-generator`: descriptor-set based generator for protobuf RPC route registries.
 - `asteria-cluster-pekko`: Pekko Cluster Sharding and Singleton adapters.
 - `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
@@ -49,6 +50,24 @@ app.launch()
 
 RPC routes are intended to be generated from protobuf route metadata and loaded through `RpcModule.autoDiscover()`.
 The runtime consumes `RpcRouteRegistry`; game projects should not have to register every message in application DSL.
+
+```protobuf
+import "asteria_rpc_options.proto";
+
+message LoginReq {
+  option (asteria.rpc.rpc_route) = {
+    entity: {
+      kind: "player"
+      id_field: "player_id"
+    }
+  };
+
+  int64 player_id = 1;
+}
+```
+
+The protobuf route generator reads a descriptor set with `asteria.rpc.rpc_route` options and emits a
+`GeneratedProtobufRpcRoutes` implementation plus the `ServiceLoader` metadata used by `RpcModule.autoDiscover()`.
 
 The first migration target is to make the existing `akka-game-server` a game project built on these modules, not the
 source of framework-level concepts.

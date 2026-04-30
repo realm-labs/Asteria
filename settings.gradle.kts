@@ -9,6 +9,7 @@ include(
     "asteria-message",
     "asteria-rpc",
     "asteria-rpc-protobuf",
+    "asteria-rpc-protobuf-generator",
     "asteria-cluster-pekko",
     "asteria-protocol-protobuf",
     "asteria-gateway-netty",

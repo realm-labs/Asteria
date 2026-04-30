@@ -3,6 +3,7 @@ coroutines = "1.10.2"
 netty = "4.2.12.Final"
 pekko = "1.2.1"
 protobuf = "4.34.1"
+kotlinpoet = "2.3.0"
 typesafe-config = "1.4.4"
 
 [libraries]
@@ -14,4 +15,8 @@ pekko-actor = { module = "org.apache.pekko:pekko-actor_2.13", version.ref = "pek
 pekko-cluster-sharding = { module = "org.apache.pekko:pekko-cluster-sharding_2.13", version.ref = "pekko" }
 pekko-cluster-tools = { module = "org.apache.pekko:pekko-cluster-tools_2.13", version.ref = "pekko" }
 protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf" }
+kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
 typesafe-config = { module = "com.typesafe:config", version.ref = "typesafe-config" }
+
+[plugins]
+protobuf = { id = "com.google.protobuf", version = "0.9.6" }
