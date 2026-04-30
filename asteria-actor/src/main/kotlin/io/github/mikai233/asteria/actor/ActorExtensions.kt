@@ -22,3 +22,12 @@ suspend fun ActorRef.askAny(
 ): Any {
     return Patterns.ask(this, message, timeout.toJavaDuration()).await()
 }
+
+suspend inline fun <M : Any, reified R : Any> ActorRef.ask(
+    message: M,
+    timeout: Duration = 3.seconds,
+): R {
+    val response = askAny(message, timeout)
+    return response as? R
+        ?: error("expected actor response ${R::class.qualifiedName}, got ${response::class.qualifiedName}")
+}
