@@ -1,0 +1,15 @@
+[versions]
+coroutines = "1.10.2"
+netty = "4.2.12.Final"
+pekko = "1.2.1"
+protobuf = "4.34.1"
+
+[libraries]
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-jdk8 = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-jdk8", version.ref = "coroutines" }
+netty-all = { module = "io.netty:netty-all", version.ref = "netty" }
+pekko-actor = { module = "org.apache.pekko:pekko-actor_2.13", version.ref = "pekko" }
+pekko-cluster-sharding = { module = "org.apache.pekko:pekko-cluster-sharding_2.13", version.ref = "pekko" }
+pekko-cluster-tools = { module = "org.apache.pekko:pekko-cluster-tools_2.13", version.ref = "pekko" }
+protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf" }

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GradleSettings">
+    <option name="linkedExternalProjectsSettings">
+      <GradleProjectSettings>
+        <option name="externalProjectPath" value="$PROJECT_DIR$" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/asteria-actor" />
+            <option value="$PROJECT_DIR$/asteria-cluster-pekko" />
+            <option value="$PROJECT_DIR$/asteria-config" />
+            <option value="$PROJECT_DIR$/asteria-core" />
+            <option value="$PROJECT_DIR$/asteria-gateway-netty" />
+            <option value="$PROJECT_DIR$/asteria-message" />
+            <option value="$PROJECT_DIR$/asteria-persistence" />
+            <option value="$PROJECT_DIR$/asteria-protocol-protobuf" />
+            <option value="$PROJECT_DIR$/asteria-starter" />
+          </set>
+        </option>
+        <option name="myGradleHome" value="" />
+      </GradleProjectSettings>
+    </option>
+  </component>
+</project>
