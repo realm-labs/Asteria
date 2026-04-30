@@ -97,6 +97,7 @@ allowlists, operator permissions, or external approvals.
 val scripts = app.services.get<ScriptRuntime>()
 scripts.dispatch(command)
 val result = scripts.execute(command)
+val batch = scripts.executeAll(command)
 ```
 
 The first migration target is to make the existing `akka-game-server` a game project built on these modules, not the

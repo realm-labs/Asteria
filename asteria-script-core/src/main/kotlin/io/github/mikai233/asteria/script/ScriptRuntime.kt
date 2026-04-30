@@ -9,5 +9,10 @@ interface ScriptRuntime {
         timeout: Duration = 3.seconds,
     ): ScriptExecutionResult
 
+    suspend fun executeAll(
+        command: ScriptExecutionCommand,
+        timeout: Duration = 3.seconds,
+    ): ScriptExecutionBatchResult
+
     fun dispatch(command: ScriptExecutionCommand)
 }

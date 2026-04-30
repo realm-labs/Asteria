@@ -15,7 +15,9 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNotNull
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class ScriptModuleTest {
@@ -48,6 +50,39 @@ class ScriptModuleTest {
             val result = scriptRuntime.execute(command, 3.seconds)
             assertEquals(ScriptExecutionResult(command.executionId, success = true, target = "echo"), result)
             assertEquals(listOf("started:test-script", "completed:test-script:true"), auditSink.events)
+        } finally {
+            app.stop()
+        }
+    }
+
+    @Test
+    fun nodeScriptCanCollectBatchResults() = runBlocking {
+        val app = gameApplication {
+            name = "asteria-script-batch-test-${System.nanoTime()}"
+            role("script-test")
+            install(PekkoRuntimeModule.local())
+            install(
+                ScriptModule {
+                    allowNodeScripts = true
+                    engine(EchoScriptEngine)
+                },
+            )
+        }
+
+        try {
+            app.launch()
+            val scriptRuntime = app.services.find<ScriptRuntime>()
+            assertNotNull(scriptRuntime)
+
+            val command = ScriptExecutionCommand(
+                executionId = "test-script",
+                target = ScriptTarget.AllNodes,
+                artifact = ScriptArtifact("echo", EchoScriptEngine.name, ByteArray(0)),
+            )
+            val batch = scriptRuntime.executeAll(command, 200.milliseconds)
+            assertEquals(command.executionId, batch.executionId)
+            assertTrue(batch.success)
+            assertEquals(listOf(ScriptExecutionResult(command.executionId, success = true, target = "echo")), batch.results)
         } finally {
             app.stop()
         }

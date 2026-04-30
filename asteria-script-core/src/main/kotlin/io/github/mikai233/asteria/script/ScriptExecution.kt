@@ -18,3 +18,10 @@ data class ScriptExecutionResult(
     val nodeAddress: String? = null,
     val actorPath: String? = null,
 )
+
+data class ScriptExecutionBatchResult(
+    val executionId: String,
+    val results: List<ScriptExecutionResult>,
+) {
+    val success: Boolean get() = results.isNotEmpty() && results.all { it.success }
+}

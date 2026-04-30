@@ -45,7 +45,7 @@ class ScriptModule private constructor(
     override suspend fun start(context: ModuleContext) {
         val system = context.services.get<ActorSystem>()
         val actor = system.actorOf(ScriptRuntimeActor.props(context.application), ScriptRuntimeActor.Name)
-        val runtime = PekkoScriptRuntime(actor)
+        val runtime = PekkoScriptRuntime(actor, system)
         context.services.register(PekkoScriptRuntime::class, runtime)
         context.services.register(ScriptRuntime::class, runtime)
     }
