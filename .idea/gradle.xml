@@ -20,6 +20,7 @@
             <option value="$PROJECT_DIR$/asteria-rpc-protobuf" />
             <option value="$PROJECT_DIR$/asteria-rpc-protobuf-generator" />
             <option value="$PROJECT_DIR$/asteria-script-core" />
+            <option value="$PROJECT_DIR$/asteria-script-job" />
             <option value="$PROJECT_DIR$/asteria-script-engine-groovy" />
             <option value="$PROJECT_DIR$/asteria-script-engine-jar" />
             <option value="$PROJECT_DIR$/asteria-script-pekko" />

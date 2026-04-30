@@ -14,6 +14,7 @@ application-level choices instead of framework requirements.
 - `asteria-rpc-protobuf`: protobuf RPC route registry runtime contracts for generated routes.
 - `asteria-rpc-protobuf-generator`: descriptor-set based generator for protobuf RPC route registries.
 - `asteria-script-core`: optional script execution contracts, targets, contexts, engines, and results.
+- `asteria-script-job`: optional async script job orchestration and result storage contracts for GM workflows.
 - `asteria-script-protobuf`: protobuf wire contracts and converters for script commands and results.
 - `asteria-script-pekko`: optional Pekko integration for node, role, actor path, entity, and singleton script targets.
 - `asteria-cluster-pekko`: Pekko Cluster Sharding and Singleton adapters.
@@ -115,6 +116,17 @@ val command = ScriptExecutionCommand(
     ),
 )
 val result = scripts.execute(command)
+```
+
+GM-style async script jobs can be installed as a separate layer:
+
+```kotlin
+install(ScriptJobModule {
+    store(DatabaseScriptJobStore())
+})
+
+val jobs = app.services.get<ScriptJobService>()
+jobs.submit(command)
 ```
 
 The first migration target is to make the existing `akka-game-server` a game project built on these modules, not the

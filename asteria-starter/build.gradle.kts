@@ -5,6 +5,7 @@ dependencies {
     api(project(":asteria-rpc"))
     api(project(":asteria-rpc-protobuf"))
     api(project(":asteria-script-core"))
+    api(project(":asteria-script-job"))
     api(project(":asteria-script-protobuf"))
     api(project(":asteria-script-pekko"))
     api(project(":asteria-script-engine-jar"))

@@ -11,6 +11,7 @@ include(
     "asteria-rpc-protobuf",
     "asteria-rpc-protobuf-generator",
     "asteria-script-core",
+    "asteria-script-job",
     "asteria-script-protobuf",
     "asteria-script-pekko",
     "asteria-script-engine-jar",
