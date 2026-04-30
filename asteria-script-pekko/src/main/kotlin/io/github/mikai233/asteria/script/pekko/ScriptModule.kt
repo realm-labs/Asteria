@@ -12,6 +12,7 @@ import io.github.mikai233.asteria.script.ScriptEngineRegistry
 import io.github.mikai233.asteria.script.ScriptExecutor
 import io.github.mikai233.asteria.script.ScriptPolicy
 import io.github.mikai233.asteria.script.ScriptRunner
+import io.github.mikai233.asteria.script.ScriptRuntime
 import org.apache.pekko.actor.ActorSystem
 
 class ScriptModule private constructor(
@@ -44,7 +45,9 @@ class ScriptModule private constructor(
     override suspend fun start(context: ModuleContext) {
         val system = context.services.get<ActorSystem>()
         val actor = system.actorOf(ScriptRuntimeActor.props(context.application), ScriptRuntimeActor.Name)
-        context.services.register(PekkoScriptRuntime::class, PekkoScriptRuntime(actor))
+        val runtime = PekkoScriptRuntime(actor)
+        context.services.register(PekkoScriptRuntime::class, runtime)
+        context.services.register(ScriptRuntime::class, runtime)
     }
 
     companion object {

@@ -93,5 +93,11 @@ class PlayerActor(runtime: NodeRuntime) : ScriptableAsteriaActor<NodeRuntime>(ru
 Projects can replace the default script policy when script execution needs stricter controls such as checksum
 allowlists, operator permissions, or external approvals.
 
+```kotlin
+val scripts = app.services.get<ScriptRuntime>()
+scripts.dispatch(command)
+val result = scripts.execute(command)
+```
+
 The first migration target is to make the existing `akka-game-server` a game project built on these modules, not the
 source of framework-level concepts.

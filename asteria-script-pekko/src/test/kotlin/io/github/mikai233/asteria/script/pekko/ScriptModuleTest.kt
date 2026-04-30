@@ -9,17 +9,14 @@ import io.github.mikai233.asteria.script.ScriptEngine
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionRequest
 import io.github.mikai233.asteria.script.ScriptExecutionResult
+import io.github.mikai233.asteria.script.ScriptRuntime
 import io.github.mikai233.asteria.script.ScriptTarget
-import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
-import org.apache.pekko.actor.ActorRef
-import org.apache.pekko.pattern.Patterns
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.toJavaDuration
 
 class ScriptModuleTest {
     @Test
@@ -40,7 +37,7 @@ class ScriptModuleTest {
 
         try {
             app.launch()
-            val scriptRuntime = app.services.find<PekkoScriptRuntime>()
+            val scriptRuntime = app.services.find<ScriptRuntime>()
             assertNotNull(scriptRuntime)
 
             val command = ScriptExecutionCommand(
@@ -48,7 +45,7 @@ class ScriptModuleTest {
                 target = ScriptTarget.AllNodes,
                 artifact = ScriptArtifact("echo", EchoScriptEngine.name, ByteArray(0)),
             )
-            val result = Patterns.ask(scriptRuntime.actor, command, 3.seconds.toJavaDuration()).await()
+            val result = scriptRuntime.execute(command, 3.seconds)
             assertEquals(ScriptExecutionResult(command.executionId, success = true, target = "echo"), result)
             assertEquals(listOf("started:test-script", "completed:test-script:true"), auditSink.events)
         } finally {
@@ -73,7 +70,7 @@ class ScriptModuleTest {
 
         try {
             app.launch()
-            val scriptRuntime = app.services.find<PekkoScriptRuntime>()
+            val scriptRuntime = app.services.find<ScriptRuntime>()
             assertNotNull(scriptRuntime)
 
             val command = ScriptExecutionCommand(
@@ -81,7 +78,7 @@ class ScriptModuleTest {
                 target = ScriptTarget.AllNodes,
                 artifact = ScriptArtifact("echo", EchoScriptEngine.name, ByteArray(0)),
             )
-            val result = Patterns.ask(scriptRuntime.actor, command, 3.seconds.toJavaDuration()).await() as ScriptExecutionResult
+            val result = scriptRuntime.execute(command, 3.seconds)
             assertEquals(command.executionId, result.executionId)
             assertFalse(result.success)
             assertEquals("node scripts are disabled", result.error)
