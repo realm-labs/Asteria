@@ -81,7 +81,16 @@ class ScriptRuntimeActor(
 
             is ScriptTarget.Entity -> {
                 runtime.services.get<EntityShardRegistry>()[target.kind]
-                    .tell(ExecuteEntityActorScript(target.id, command.executionId, command.artifact, target), replyTo)
+                    .tell(
+                        ExecuteEntityActorScript(
+                            id = target.id,
+                            executionId = command.executionId,
+                            artifact = command.artifact,
+                            target = target,
+                            metadata = command.metadata,
+                        ),
+                        replyTo,
+                    )
             }
 
             is ScriptTarget.Singleton -> {
@@ -130,6 +139,7 @@ class ScriptRuntimeActor(
                 target = command.target,
                 artifact = command.artifact,
                 scope = ScriptExecutionScope.Node,
+                metadata = command.metadata,
                 nodeAddress = selfAddress(),
             )
             val result = runner.execute(
@@ -146,7 +156,7 @@ class ScriptRuntimeActor(
     }
 
     private fun actorCommand(command: ScriptExecutionCommand, target: ScriptTarget): ExecuteActorScript {
-        return ExecuteActorScript(command.executionId, command.artifact, target)
+        return ExecuteActorScript(command.executionId, command.artifact, target, command.metadata)
     }
 
     private fun success(command: ScriptExecutionCommand, target: String?): ScriptExecutionResult {

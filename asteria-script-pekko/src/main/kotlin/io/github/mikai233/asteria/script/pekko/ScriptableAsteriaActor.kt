@@ -31,6 +31,7 @@ abstract class ScriptableAsteriaActor<N : NodeRuntime>(
                 target = command.target ?: ScriptTarget.ActorPath(self.path().toString()),
                 artifact = command.artifact,
                 scope = ScriptExecutionScope.Actor,
+                metadata = command.metadata,
                 actorPath = self.path().toString(),
             )
             val result = runner.execute(
@@ -47,7 +48,7 @@ abstract class ScriptableAsteriaActor<N : NodeRuntime>(
     }
 
     private fun ExecuteEntityActorScript.toActorScript(): ExecuteActorScript {
-        return ExecuteActorScript(executionId, artifact, target)
+        return ExecuteActorScript(executionId, artifact, target, metadata)
     }
 
     private fun success(command: ExecuteActorScript): ScriptExecutionResult {

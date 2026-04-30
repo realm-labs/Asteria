@@ -4,9 +4,24 @@ data class ScriptExecutionCommand(
     val executionId: String,
     val target: ScriptTarget,
     val artifact: ScriptArtifact,
+    val metadata: ScriptExecutionMetadata = ScriptExecutionMetadata(),
 ) {
     init {
         require(executionId.isNotBlank()) { "script execution id must not be blank" }
+    }
+}
+
+data class ScriptExecutionMetadata(
+    val requester: String? = null,
+    val reason: String? = null,
+    val attributes: Map<String, String> = emptyMap(),
+) {
+    init {
+        requester?.let { require(it.isNotBlank()) { "script requester must not be blank" } }
+        reason?.let { require(it.isNotBlank()) { "script execution reason must not be blank" } }
+        attributes.forEach { (key, _) ->
+            require(key.isNotBlank()) { "script execution metadata attribute key must not be blank" }
+        }
     }
 }
 

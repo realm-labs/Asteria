@@ -5,6 +5,7 @@ import io.github.mikai233.asteria.core.EntityKind
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.SingletonName
 import io.github.mikai233.asteria.script.ScriptExecutionCommand as ModelScriptExecutionCommand
+import io.github.mikai233.asteria.script.ScriptExecutionMetadata as ModelScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult as ModelScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptTarget as ModelScriptTarget
 import io.github.mikai233.asteria.script.ScriptArtifact as ModelScriptArtifact
@@ -56,11 +57,28 @@ fun ScriptTarget.toModel(): ModelScriptTarget {
     }
 }
 
+fun ModelScriptExecutionMetadata.toProto(): ScriptExecutionMetadata {
+    val builder = ScriptExecutionMetadata.newBuilder()
+    requester?.let { builder.requester = it }
+    reason?.let { builder.reason = it }
+    builder.putAllAttributes(attributes)
+    return builder.build()
+}
+
+fun ScriptExecutionMetadata.toModel(): ModelScriptExecutionMetadata {
+    return ModelScriptExecutionMetadata(
+        requester = if (hasRequester()) requester else null,
+        reason = if (hasReason()) reason else null,
+        attributes = attributesMap,
+    )
+}
+
 fun ModelScriptExecutionCommand.toProto(): ExecuteScriptCommand {
     return ExecuteScriptCommand.newBuilder()
         .setExecutionId(executionId)
         .setTarget(target.toProto())
         .setArtifact(artifact.toProto())
+        .setMetadata(metadata.toProto())
         .build()
 }
 
@@ -71,6 +89,7 @@ fun ExecuteScriptCommand.toModel(): ModelScriptExecutionCommand {
         executionId = executionId,
         target = target.toModel(),
         artifact = artifact.toModel(),
+        metadata = if (hasMetadata()) metadata.toModel() else ModelScriptExecutionMetadata(),
     )
 }
 

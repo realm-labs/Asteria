@@ -53,6 +53,13 @@ message ExecuteScriptCommand {
   string execution_id = 1;
   ScriptTarget target = 2;
   ScriptArtifact artifact = 3;
+  ScriptExecutionMetadata metadata = 4;
+}
+
+message ScriptExecutionMetadata {
+  optional string requester = 1;
+  optional string reason = 2;
+  map<string, string> attributes = 3;
 }
 
 message ExecuteNodeScript {
@@ -64,6 +71,7 @@ message ExecuteActorScript {
   string execution_id = 1;
   ScriptArtifact artifact = 2;
   optional ScriptTarget target = 3;
+  ScriptExecutionMetadata metadata = 4;
 }
 
 message ExecuteEntityActorScript {
@@ -71,6 +79,7 @@ message ExecuteEntityActorScript {
   string execution_id = 2;
   ScriptArtifact artifact = 3;
   optional ScriptTarget target = 4;
+  ScriptExecutionMetadata metadata = 5;
 }
 
 message ScriptExecutionResult {

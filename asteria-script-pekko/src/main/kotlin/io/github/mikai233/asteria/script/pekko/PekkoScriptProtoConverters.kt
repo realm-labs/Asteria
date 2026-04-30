@@ -25,6 +25,7 @@ fun ExecuteActorScript.toProto(): ProtoExecuteActorScript {
     val builder = ProtoExecuteActorScript.newBuilder()
         .setExecutionId(executionId)
         .setArtifact(artifact.toProto())
+        .setMetadata(metadata.toProto())
     target?.let { builder.target = it.toProto() }
     return builder.build()
 }
@@ -35,6 +36,7 @@ fun ProtoExecuteActorScript.toModel(): ExecuteActorScript {
         executionId = executionId,
         artifact = artifact.toModel(),
         target = if (hasTarget()) target.toModel() else null,
+        metadata = if (hasMetadata()) metadata.toModel() else io.github.mikai233.asteria.script.ScriptExecutionMetadata(),
     )
 }
 
@@ -43,6 +45,7 @@ fun ExecuteEntityActorScript.toProto(): ProtoExecuteEntityActorScript {
         .setId(id)
         .setExecutionId(executionId)
         .setArtifact(artifact.toProto())
+        .setMetadata(metadata.toProto())
     target?.let { builder.target = it.toProto() }
     return builder.build()
 }
@@ -54,5 +57,6 @@ fun ProtoExecuteEntityActorScript.toModel(): ExecuteEntityActorScript {
         executionId = executionId,
         artifact = artifact.toModel(),
         target = if (hasTarget()) target.toModel() else null,
+        metadata = if (hasMetadata()) metadata.toModel() else io.github.mikai233.asteria.script.ScriptExecutionMetadata(),
     )
 }

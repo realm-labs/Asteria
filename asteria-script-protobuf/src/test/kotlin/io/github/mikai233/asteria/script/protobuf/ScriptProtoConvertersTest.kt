@@ -3,6 +3,7 @@ package io.github.mikai233.asteria.script.protobuf
 import io.github.mikai233.asteria.core.EntityKind
 import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
+import io.github.mikai233.asteria.script.ScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptTarget
 import kotlin.test.Test
@@ -22,6 +23,11 @@ class ScriptProtoConvertersTest {
                 extra = byteArrayOf(4, 5),
                 checksum = "sha256:test",
             ),
+            metadata = ScriptExecutionMetadata(
+                requester = "ops:mikai",
+                reason = "fix stuck state",
+                attributes = mapOf("ticket" to "INC-10001"),
+            ),
         )
 
         val decoded = command.toProto().toModel()
@@ -33,6 +39,7 @@ class ScriptProtoConvertersTest {
         assertContentEquals(command.artifact.body, decoded.artifact.body)
         assertContentEquals(command.artifact.extra, decoded.artifact.extra)
         assertEquals(command.artifact.checksum, decoded.artifact.checksum)
+        assertEquals(command.metadata, decoded.metadata)
     }
 
     @Test

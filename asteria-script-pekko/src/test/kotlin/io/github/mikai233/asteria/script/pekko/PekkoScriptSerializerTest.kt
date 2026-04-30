@@ -3,6 +3,7 @@ package io.github.mikai233.asteria.script.pekko
 import io.github.mikai233.asteria.core.EntityKind
 import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
+import io.github.mikai233.asteria.script.ScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptTarget
 import kotlinx.coroutines.future.await
@@ -26,6 +27,7 @@ class PekkoScriptSerializerTest {
                 executionId = "script-1",
                 target = ScriptTarget.Entity(EntityKind("player"), "10001"),
                 artifact = artifact(),
+                metadata = metadata(),
             )
             val result = ScriptExecutionResult(
                 executionId = "script-1",
@@ -34,8 +36,8 @@ class PekkoScriptSerializerTest {
                 error = "denied",
             )
             val nodeCommand = ExecuteNodeScript(command, originNodeAddress = "pekko://game@127.0.0.1:25520")
-            val actorCommand = ExecuteActorScript("script-2", artifact(), ScriptTarget.ActorPath("/user/player"))
-            val entityCommand = ExecuteEntityActorScript("10001", "script-3", artifact(), command.target)
+            val actorCommand = ExecuteActorScript("script-2", artifact(), ScriptTarget.ActorPath("/user/player"), metadata())
+            val entityCommand = ExecuteEntityActorScript("10001", "script-3", artifact(), command.target, metadata())
 
             assertRoundTrip(serializer, command)
             assertRoundTrip(serializer, result)
@@ -74,6 +76,14 @@ class PekkoScriptSerializerTest {
             body = byteArrayOf(1, 2, 3),
             extra = byteArrayOf(4, 5),
             checksum = "sha256:test",
+        )
+    }
+
+    private fun metadata(): ScriptExecutionMetadata {
+        return ScriptExecutionMetadata(
+            requester = "ops:mikai",
+            reason = "fix state",
+            attributes = mapOf("ticket" to "INC-10001"),
         )
     }
 }

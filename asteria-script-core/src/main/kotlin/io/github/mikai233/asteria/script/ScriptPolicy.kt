@@ -10,6 +10,7 @@ data class ScriptExecutionRequest(
     val target: ScriptTarget,
     val artifact: ScriptArtifact,
     val scope: ScriptExecutionScope,
+    val metadata: ScriptExecutionMetadata = ScriptExecutionMetadata(),
     val nodeAddress: String? = null,
     val actorPath: String? = null,
 ) {

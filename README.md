@@ -95,9 +95,17 @@ allowlists, operator permissions, or external approvals.
 
 ```kotlin
 val scripts = app.services.get<ScriptRuntime>()
-scripts.dispatch(command)
+val command = ScriptExecutionCommand(
+    executionId = "fix-player-10001",
+    target = ScriptTarget.Entity(EntityKind("player"), "10001"),
+    artifact = artifact,
+    metadata = ScriptExecutionMetadata(
+        requester = "ops:mikai",
+        reason = "fix stuck player state",
+        attributes = mapOf("ticket" to "INC-10001"),
+    ),
+)
 val result = scripts.execute(command)
-val batch = scripts.executeAll(command)
 ```
 
 The first migration target is to make the existing `akka-game-server` a game project built on these modules, not the
