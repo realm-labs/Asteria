@@ -13,6 +13,9 @@ application-level choices instead of framework requirements.
 - `asteria-rpc`: RPC target and route registry contracts.
 - `asteria-rpc-protobuf`: protobuf RPC route registry runtime contracts for generated routes.
 - `asteria-rpc-protobuf-generator`: descriptor-set based generator for protobuf RPC route registries.
+- `asteria-script-core`: optional script execution contracts, targets, contexts, engines, and results.
+- `asteria-script-protobuf`: protobuf wire contracts and converters for script commands and results.
+- `asteria-script-pekko`: optional Pekko integration for node, role, actor path, entity, and singleton script targets.
 - `asteria-cluster-pekko`: Pekko Cluster Sharding and Singleton adapters.
 - `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
@@ -68,6 +71,27 @@ message LoginReq {
 
 The protobuf route generator reads a descriptor set with `asteria.rpc.rpc_route` options and emits a
 `GeneratedProtobufRpcRoutes` implementation plus the `ServiceLoader` metadata used by `RpcModule.autoDiscover()`.
+
+Script execution is an opt-in extension:
+
+```kotlin
+install(ScriptModule {
+    allowNodeScripts = true
+    allowActorScripts = true
+    maxArtifactBytes = 1024 * 1024
+    engine(JarScriptEngine())
+    auditSink(GameScriptAuditSink())
+})
+```
+
+Actors must explicitly opt in to actor-level scripts:
+
+```kotlin
+class PlayerActor(runtime: NodeRuntime) : ScriptableAsteriaActor<NodeRuntime>(runtime)
+```
+
+Projects can replace the default script policy when script execution needs stricter controls such as checksum
+allowlists, operator permissions, or external approvals.
 
 The first migration target is to make the existing `akka-game-server` a game project built on these modules, not the
 source of framework-level concepts.

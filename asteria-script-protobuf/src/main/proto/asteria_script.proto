@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package asteria.script;
+
+option java_multiple_files = true;
+option java_package = "io.github.mikai233.asteria.script.protobuf";
+option java_outer_classname = "AsteriaScriptProto";
+
+message ScriptArtifact {
+  string name = 1;
+  string engine = 2;
+  bytes body = 3;
+  optional bytes extra = 4;
+  optional string checksum = 5;
+}
+
+message ScriptTarget {
+  oneof target {
+    AllNodesTarget all_nodes = 1;
+    RoleTarget role = 2;
+    NodeTarget node = 3;
+    ActorPathTarget actor_path = 4;
+    EntityTarget entity = 5;
+    SingletonTarget singleton = 6;
+  }
+}
+
+message AllNodesTarget {
+}
+
+message RoleTarget {
+  string role = 1;
+}
+
+message NodeTarget {
+  string address = 1;
+}
+
+message ActorPathTarget {
+  string path = 1;
+}
+
+message EntityTarget {
+  string kind = 1;
+  string id = 2;
+}
+
+message SingletonTarget {
+  string name = 1;
+}
+
+message ExecuteScriptCommand {
+  string execution_id = 1;
+  ScriptTarget target = 2;
+  ScriptArtifact artifact = 3;
+}
+
+message ScriptExecutionResult {
+  string execution_id = 1;
+  bool success = 2;
+  optional string target = 3;
+  optional string error = 4;
+  optional string node_address = 5;
+  optional string actor_path = 6;
+}
