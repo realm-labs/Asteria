@@ -89,6 +89,51 @@ class ScriptModuleTest {
     }
 
     @Test
+    fun completedNodeScriptIsReplayedByExecutionIdAndTarget() = runBlocking {
+        val auditSink = RecordingScriptAuditSink()
+        val engine = CountingScriptEngine()
+        val app = gameApplication {
+            name = "asteria-script-idempotent-test-${System.nanoTime()}"
+            role("script-test")
+            install(PekkoRuntimeModule.local())
+            install(
+                ScriptModule {
+                    allowNodeScripts = true
+                    engine(engine)
+                    auditSink(auditSink)
+                },
+            )
+        }
+
+        try {
+            app.launch()
+            val scriptRuntime = app.services.find<ScriptRuntime>()
+            assertNotNull(scriptRuntime)
+
+            val command = ScriptExecutionCommand(
+                executionId = "idempotent-script",
+                target = ScriptTarget.AllNodes,
+                artifact = ScriptArtifact("counting", engine.name, ByteArray(0)),
+            )
+            val first = scriptRuntime.execute(command, 3.seconds)
+            val second = scriptRuntime.execute(command, 3.seconds)
+
+            assertEquals(first, second)
+            assertEquals(1, engine.executions)
+            assertEquals(
+                listOf(
+                    "started:idempotent-script",
+                    "completed:idempotent-script:true",
+                    "replayed:idempotent-script:true",
+                ),
+                auditSink.events,
+            )
+        } finally {
+            app.stop()
+        }
+    }
+
+    @Test
     fun nodeScriptIsRejectedWhenNodeScriptsAreDisabled() = runBlocking {
         val auditSink = RecordingScriptAuditSink()
         val app = gameApplication {
@@ -134,6 +179,19 @@ private object EchoScriptEngine : ScriptEngine {
     }
 }
 
+private class CountingScriptEngine : ScriptEngine {
+    override val name: String = "counting"
+    var executions: Int = 0
+        private set
+
+    override fun compile(artifact: ScriptArtifact): CompiledScript {
+        return CompiledScript {
+            executions += 1
+            ScriptExecutionResult("idempotent-script", success = true, target = name)
+        }
+    }
+}
+
 private class RecordingScriptAuditSink : ScriptAuditSink {
     val events: MutableList<String> = mutableListOf()
 
@@ -143,6 +201,10 @@ private class RecordingScriptAuditSink : ScriptAuditSink {
 
     override suspend fun completed(request: ScriptExecutionRequest, result: ScriptExecutionResult) {
         events.add("completed:${request.executionId}:${result.success}")
+    }
+
+    override suspend fun replayed(request: ScriptExecutionRequest, result: ScriptExecutionResult) {
+        events.add("replayed:${request.executionId}:${result.success}")
     }
 
     override suspend fun rejected(request: ScriptExecutionRequest, reason: String) {

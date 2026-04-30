@@ -92,6 +92,15 @@ class PlayerActor(runtime: NodeRuntime) : ScriptableAsteriaActor<NodeRuntime>(ru
 
 Projects can replace the default script policy when script execution needs stricter controls such as checksum
 allowlists, operator permissions, or external approvals.
+Script execution is idempotent by `executionId`, execution scope, and concrete target. The default module uses an
+in-memory execution store; production projects can replace it with a durable store:
+
+```kotlin
+install(ScriptModule {
+    engine(JarScriptEngine())
+    executionStore(RedisScriptExecutionStore())
+})
+```
 
 ```kotlin
 val scripts = app.services.get<ScriptRuntime>()

@@ -37,6 +37,12 @@ interface ScriptAuditSink {
     suspend fun started(request: ScriptExecutionRequest) {
     }
 
+    suspend fun alreadyRunning(request: ScriptExecutionRequest) {
+    }
+
+    suspend fun replayed(request: ScriptExecutionRequest, result: ScriptExecutionResult) {
+    }
+
     suspend fun completed(request: ScriptExecutionRequest, result: ScriptExecutionResult) {
     }
 
@@ -55,6 +61,14 @@ class CompositeScriptAuditSink(
 
     override suspend fun completed(request: ScriptExecutionRequest, result: ScriptExecutionResult) {
         sinks.forEach { it.completed(request, result) }
+    }
+
+    override suspend fun alreadyRunning(request: ScriptExecutionRequest) {
+        sinks.forEach { it.alreadyRunning(request) }
+    }
+
+    override suspend fun replayed(request: ScriptExecutionRequest, result: ScriptExecutionResult) {
+        sinks.forEach { it.replayed(request, result) }
     }
 
     override suspend fun rejected(request: ScriptExecutionRequest, reason: String) {
@@ -94,6 +108,7 @@ class ScriptRunner(
     private val executor: ScriptExecutor,
     private val policy: ScriptPolicy,
     private val auditSink: ScriptAuditSink = NoopScriptAuditSink,
+    private val executionStore: ScriptExecutionStore = InMemoryScriptExecutionStore(),
 ) {
     suspend fun execute(
         request: ScriptExecutionRequest,
@@ -124,12 +139,43 @@ class ScriptRunner(
         defaultResult: () -> ScriptExecutionResult,
         failureResult: (Throwable) -> ScriptExecutionResult,
     ): ScriptExecutionResult {
+        val key = request.executionKey()
+        when (val decision = executionStore.tryStart(key)) {
+            ScriptExecutionDecision.Started -> Unit
+            ScriptExecutionDecision.AlreadyRunning -> {
+                auditSink.alreadyRunning(request)
+                return ScriptExecutionResult(
+                    executionId = request.executionId,
+                    success = false,
+                    target = targetName(request),
+                    error = "script execution is already running",
+                    nodeAddress = request.nodeAddress,
+                    actorPath = request.actorPath,
+                )
+            }
+
+            is ScriptExecutionDecision.AlreadyCompleted -> {
+                auditSink.replayed(request, decision.result)
+                return decision.result
+            }
+        }
         auditSink.started(request)
         val result = runCatching {
             executor.execute(context) ?: defaultResult()
         }.getOrElse(failureResult)
+        executionStore.complete(key, result)
         auditSink.completed(request, result)
         return result
+    }
+
+    private fun ScriptExecutionRequest.executionKey(): ScriptExecutionKey {
+        return ScriptExecutionKey(
+            executionId = executionId,
+            scope = scope,
+            target = targetName(this) ?: scope.name,
+            nodeAddress = nodeAddress,
+            actorPath = actorPath,
+        )
     }
 
     private fun targetName(request: ScriptExecutionRequest): String? {

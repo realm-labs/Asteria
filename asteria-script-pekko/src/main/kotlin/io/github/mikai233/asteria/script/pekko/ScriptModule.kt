@@ -5,11 +5,13 @@ import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
 import io.github.mikai233.asteria.script.CompositeScriptAuditSink
 import io.github.mikai233.asteria.script.DefaultScriptPolicy
+import io.github.mikai233.asteria.script.InMemoryScriptExecutionStore
 import io.github.mikai233.asteria.script.NoopScriptAuditSink
 import io.github.mikai233.asteria.script.ScriptAuditSink
 import io.github.mikai233.asteria.script.ScriptEngine
 import io.github.mikai233.asteria.script.ScriptEngineRegistry
 import io.github.mikai233.asteria.script.ScriptExecutor
+import io.github.mikai233.asteria.script.ScriptExecutionStore
 import io.github.mikai233.asteria.script.ScriptPolicy
 import io.github.mikai233.asteria.script.ScriptRunner
 import io.github.mikai233.asteria.script.ScriptRuntime
@@ -34,11 +36,13 @@ class ScriptModule private constructor(
             else -> CompositeScriptAuditSink(options.auditSinks)
         }
         val executor = ScriptExecutor(registry)
+        val executionStore = options.executionStore ?: InMemoryScriptExecutionStore()
         context.services.register(ScriptEngineRegistry::class, registry)
         context.services.register(ScriptExecutor::class, executor)
         context.services.register(ScriptPolicy::class, policy)
         context.services.register(ScriptAuditSink::class, auditSink)
-        context.services.register(ScriptRunner::class, ScriptRunner(executor, policy, auditSink))
+        context.services.register(ScriptExecutionStore::class, executionStore)
+        context.services.register(ScriptRunner::class, ScriptRunner(executor, policy, auditSink, executionStore))
         context.services.register(ScriptModuleOptions::class, options)
     }
 
@@ -63,6 +67,7 @@ data class ScriptModuleOptions(
     val allowActorScripts: Boolean,
     val maxArtifactBytes: Int,
     val policy: ScriptPolicy?,
+    val executionStore: ScriptExecutionStore?,
     val auditSinks: List<ScriptAuditSink>,
 )
 
@@ -74,6 +79,7 @@ class ScriptModuleBuilder {
     var allowActorScripts: Boolean = false
     var maxArtifactBytes: Int = 1024 * 1024
     private var policy: ScriptPolicy? = null
+    private var executionStore: ScriptExecutionStore? = null
 
     fun engine(engine: ScriptEngine) {
         engines.add(engine)
@@ -81,6 +87,10 @@ class ScriptModuleBuilder {
 
     fun policy(policy: ScriptPolicy) {
         this.policy = policy
+    }
+
+    fun executionStore(executionStore: ScriptExecutionStore) {
+        this.executionStore = executionStore
     }
 
     fun auditSink(auditSink: ScriptAuditSink) {
@@ -94,6 +104,7 @@ class ScriptModuleBuilder {
             allowActorScripts = allowActorScripts,
             maxArtifactBytes = maxArtifactBytes,
             policy = policy,
+            executionStore = executionStore,
             auditSinks = auditSinks.toList(),
         )
     }
