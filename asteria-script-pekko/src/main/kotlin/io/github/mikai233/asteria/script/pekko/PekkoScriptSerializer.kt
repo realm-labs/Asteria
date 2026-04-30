@@ -15,15 +15,15 @@ import io.github.mikai233.asteria.script.protobuf.ScriptExecutionResult as Proto
 class PekkoScriptSerializer(
     @Suppress("unused") private val system: ExtendedActorSystem,
 ) : SerializerWithStringManifest() {
-    override fun identifier(): Int = Identifier
+    override fun identifier(): Int = IDENTIFIER
 
     override fun manifest(o: Any): String {
         return when (o) {
-            is ScriptExecutionCommand -> ScriptExecutionCommandManifest
-            is ScriptExecutionResult -> ScriptExecutionResultManifest
-            is ExecuteNodeScript -> ExecuteNodeScriptManifest
-            is ExecuteActorScript -> ExecuteActorScriptManifest
-            is ExecuteEntityActorScript -> ExecuteEntityActorScriptManifest
+            is ScriptExecutionCommand -> SCRIPT_EXECUTION_COMMAND_MANIFEST
+            is ScriptExecutionResult -> SCRIPT_EXECUTION_RESULT_MANIFEST
+            is ExecuteNodeScript -> EXECUTE_NODE_SCRIPT_MANIFEST
+            is ExecuteActorScript -> EXECUTE_ACTOR_SCRIPT_MANIFEST
+            is ExecuteEntityActorScript -> EXECUTE_ENTITY_ACTOR_SCRIPT_MANIFEST
             else -> error("unsupported script message ${o::class.qualifiedName}")
         }
     }
@@ -41,21 +41,21 @@ class PekkoScriptSerializer(
 
     override fun fromBinary(bytes: ByteArray, manifest: String): Any {
         return when (manifest) {
-            ScriptExecutionCommandManifest -> ProtoExecuteScriptCommand.parseFrom(bytes).toModel()
-            ScriptExecutionResultManifest -> ProtoScriptExecutionResult.parseFrom(bytes).toModel()
-            ExecuteNodeScriptManifest -> ProtoExecuteNodeScript.parseFrom(bytes).toModel()
-            ExecuteActorScriptManifest -> ProtoExecuteActorScript.parseFrom(bytes).toModel()
-            ExecuteEntityActorScriptManifest -> ProtoExecuteEntityActorScript.parseFrom(bytes).toModel()
+            SCRIPT_EXECUTION_COMMAND_MANIFEST -> ProtoExecuteScriptCommand.parseFrom(bytes).toModel()
+            SCRIPT_EXECUTION_RESULT_MANIFEST -> ProtoScriptExecutionResult.parseFrom(bytes).toModel()
+            EXECUTE_NODE_SCRIPT_MANIFEST -> ProtoExecuteNodeScript.parseFrom(bytes).toModel()
+            EXECUTE_ACTOR_SCRIPT_MANIFEST -> ProtoExecuteActorScript.parseFrom(bytes).toModel()
+            EXECUTE_ENTITY_ACTOR_SCRIPT_MANIFEST -> ProtoExecuteEntityActorScript.parseFrom(bytes).toModel()
             else -> error("unsupported script message manifest $manifest")
         }
     }
 
     companion object {
-        const val Identifier: Int = 233_120_001
-        const val ScriptExecutionCommandManifest: String = "script-execution-command"
-        const val ScriptExecutionResultManifest: String = "script-execution-result"
-        const val ExecuteNodeScriptManifest: String = "execute-node-script"
-        const val ExecuteActorScriptManifest: String = "execute-actor-script"
-        const val ExecuteEntityActorScriptManifest: String = "execute-entity-actor-script"
+        const val IDENTIFIER: Int = 233_120_001
+        const val SCRIPT_EXECUTION_COMMAND_MANIFEST: String = "script-execution-command"
+        const val SCRIPT_EXECUTION_RESULT_MANIFEST: String = "script-execution-result"
+        const val EXECUTE_NODE_SCRIPT_MANIFEST: String = "execute-node-script"
+        const val EXECUTE_ACTOR_SCRIPT_MANIFEST: String = "execute-actor-script"
+        const val EXECUTE_ENTITY_ACTOR_SCRIPT_MANIFEST: String = "execute-entity-actor-script"
     }
 }

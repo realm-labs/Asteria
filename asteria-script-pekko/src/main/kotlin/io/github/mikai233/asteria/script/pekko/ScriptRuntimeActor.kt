@@ -37,7 +37,7 @@ class ScriptRuntimeActor(
     override fun preStart() {
         super.preStart()
         mediator = DistributedPubSub.get(context.system).mediator()
-        mediator.tell(Subscribe(AllNodesTopic, self), self)
+        mediator.tell(Subscribe(ALL_NODES_TOPIC, self), self)
         runtime.roles.forEach { mediator.tell(Subscribe(roleTopic(it.value), self), self) }
     }
 
@@ -59,7 +59,7 @@ class ScriptRuntimeActor(
         when (val target = command.target) {
             ScriptTarget.AllNodes -> {
                 executeOnThisNode(command, replyTo = replyTo)
-                publishNodeCommand(AllNodesTopic, command, replyTo)
+                publishNodeCommand(ALL_NODES_TOPIC, command, replyTo)
             }
 
             is ScriptTarget.Role -> {
@@ -178,8 +178,8 @@ class ScriptRuntimeActor(
     }
 
     companion object {
-        const val Name = "asteriaScriptRuntime"
-        const val AllNodesTopic = "asteria.script.nodes.all"
+        const val NAME = "asteriaScriptRuntime"
+        const val ALL_NODES_TOPIC = "asteria.script.nodes.all"
 
         fun roleTopic(role: String): String {
             return "asteria.script.nodes.role.$role"
