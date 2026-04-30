@@ -7,6 +7,8 @@ include(
     "asteria-core",
     "asteria-actor",
     "asteria-message",
+    "asteria-rpc",
+    "asteria-rpc-protobuf",
     "asteria-cluster-pekko",
     "asteria-protocol-protobuf",
     "asteria-gateway-netty",

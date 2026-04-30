@@ -10,6 +10,8 @@ application-level choices instead of framework requirements.
 - `asteria-core`: application lifecycle, module system, role keys, entity specs, singleton specs, service registry.
 - `asteria-actor`: Pekko actor base utilities, actor coroutine dispatcher, timer helpers.
 - `asteria-message`: message contracts, handler dispatch, route registry, handler context.
+- `asteria-rpc`: RPC target and route registry contracts.
+- `asteria-rpc-protobuf`: protobuf RPC route registry runtime contracts for generated routes.
 - `asteria-cluster-pekko`: Pekko Cluster Sharding and Singleton adapters.
 - `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
@@ -40,15 +42,13 @@ val app = localGameApplication {
         handoffMessage = MatchHandoff
         actor { runtime, _ -> MatchActor.props(runtime) }
     }
-
-    routes {
-        route<LoginReq>(RouteTarget.Entity(EntityKind("player"))) { it.playerId }
-        route<JoinMatchReq>(RouteTarget.Entity(EntityKind("match"))) { it.matchId }
-    }
 }
 
 app.launch()
 ```
+
+RPC routes are intended to be generated from protobuf route metadata and loaded through `RpcModule.autoDiscover()`.
+The runtime consumes `RpcRouteRegistry`; game projects should not have to register every message in application DSL.
 
 The first migration target is to make the existing `akka-game-server` a game project built on these modules, not the
 source of framework-level concepts.

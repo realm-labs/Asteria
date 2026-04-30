@@ -4,6 +4,7 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
+import io.github.mikai233.asteria.rpc.RpcRouteRegistry
 import kotlinx.coroutines.future.await
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.cluster.Cluster
@@ -37,6 +38,7 @@ class PekkoRuntimeModule private constructor(
         val system = context.services.get<ActorSystem>()
         startEntities(context, system)
         startSingletons(context, system)
+        startRpcRouter(context, system)
     }
 
     override suspend fun stop(context: ModuleContext) {
@@ -68,6 +70,17 @@ class PekkoRuntimeModule private constructor(
             val ref = system.startAsteriaSingleton(spec, propsFactory(context.application, spec))
             registry.register(spec.name, ref)
         }
+    }
+
+    private fun startRpcRouter(context: ModuleContext, system: ActorSystem) {
+        val routeRegistry = context.services.find<RpcRouteRegistry>() ?: return
+        val router = PekkoRpcRouter(
+            system = system,
+            routeRegistry = routeRegistry,
+            entityShards = context.services.get(),
+            singletons = context.services.get(),
+        )
+        context.services.register(PekkoRpcRouter::class, router)
     }
 
     companion object {

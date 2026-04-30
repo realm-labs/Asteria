@@ -8,6 +8,7 @@ import io.github.mikai233.asteria.core.ModuleContext
 import io.github.mikai233.asteria.core.gameApplication
 import io.github.mikai233.asteria.message.RouteRegistry
 import io.github.mikai233.asteria.message.RouteRegistryBuilder
+import io.github.mikai233.asteria.rpc.RpcModule
 
 class RouteModule(
     private val registry: RouteRegistry,
@@ -26,6 +27,7 @@ fun AsteriaApplicationBuilder.routes(configure: RouteRegistryBuilder.() -> Unit)
 fun localGameApplication(configure: AsteriaApplicationBuilder.() -> Unit): AsteriaApplication {
     return gameApplication {
         install(PekkoRuntimeModule.local())
+        install(RpcModule.autoDiscover())
         configure()
     }
 }
