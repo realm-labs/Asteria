@@ -195,18 +195,26 @@ class ScriptJobService(
                     }
                 }
                 val status = result.itemStatus()
-                repository.markItemFinished(
+                val finished = repository.markItemFinished(
                     jobId = jobId,
                     itemId = itemId,
                     attempt = attempt,
+                    leaseOwner = workerId,
                     status = status,
                     results = result.results,
                     error = result.results.firstOrNull { !it.success }?.error,
                 )
-                metrics.counter(
-                    "asteria.script.job.item.finished.total",
-                    command.metricTags() + MetricTags.of("status" to status.name),
-                ).increment()
+                if (finished) {
+                    metrics.counter(
+                        "asteria.script.job.item.finished.total",
+                        command.metricTags() + MetricTags.of("status" to status.name),
+                    ).increment()
+                } else {
+                    metrics.counter(
+                        "asteria.script.job.item.stale_finish.total",
+                        command.metricTags(),
+                    ).increment()
+                }
             } finally {
                 heartbeat.cancel()
             }
@@ -289,6 +297,7 @@ class ScriptJobService(
                 "script.jobId" to job.id.value,
                 "script.itemId" to id.value,
                 "script.attempt" to attempt.toString(),
+                "script.workerId" to workerId,
                 "script.sourceExecutionId" to job.command.executionId,
             ),
         )

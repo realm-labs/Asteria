@@ -7,6 +7,7 @@ import io.github.mikai233.asteria.observability.Metrics
 import io.github.mikai233.asteria.observability.NoopMetrics
 import io.github.mikai233.asteria.observability.NoopTracer
 import io.github.mikai233.asteria.observability.Tracer
+import io.github.mikai233.asteria.script.ScriptCancellationProvider
 import io.github.mikai233.asteria.script.ScriptRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +26,7 @@ class ScriptJobModule private constructor(
     override suspend fun install(context: ModuleContext) {
         val repository = options.repository ?: InMemoryScriptJobRepository()
         context.services.register(ScriptJobRepository::class, repository)
+        context.services.register(ScriptCancellationProvider::class, ScriptJobCancellationProvider(repository))
         context.services.register(ScriptJobModuleOptions::class, options)
     }
 

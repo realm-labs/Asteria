@@ -7,6 +7,7 @@ import com.mongodb.client.model.Filters.or
 import com.mongodb.client.model.IndexOptions
 import com.mongodb.client.model.Indexes
 import com.mongodb.client.model.Sorts
+import com.mongodb.client.model.Filters.size
 import com.mongodb.client.model.Filters.`in` as inFilter
 import com.mongodb.client.model.Updates.combine
 import com.mongodb.client.model.Updates.set
@@ -165,17 +166,22 @@ class MongoScriptJobRepository(
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
         attempt: Int,
+        leaseOwner: String,
         status: ScriptJobItemStatus,
         results: List<ScriptExecutionResult>,
         error: String?,
-    ) {
+    ): Boolean {
         require(status == ScriptJobItemStatus.Completed || status == ScriptJobItemStatus.Failed) {
             "script job item finish status must be terminal"
         }
+        require(leaseOwner.isNotBlank()) { "script job item lease owner must not be blank" }
         val item = requireNotNull(findItem(jobId, itemId)) { "script job item $itemId not found" }
-        require(item.attempts.isNotEmpty()) { "script job item $itemId has no running attempt" }
-        require(item.attempts.last().attempt == attempt) {
-            "script job item $itemId latest attempt is ${item.attempts.last().attempt}, got $attempt"
+        if (
+            item.status != ScriptJobItemStatus.Running ||
+            item.leaseOwner != leaseOwner ||
+            item.attempts.lastOrNull()?.attempt != attempt
+        ) {
+            return false
         }
         val now = System.currentTimeMillis()
         val finalStatus = item.finalStatus(status)
@@ -193,8 +199,15 @@ class MongoScriptJobRepository(
             leaseUntilMillis = null,
             updatedAtMillis = now,
         )
-        replaceItem(updated)
+        val result = items.replaceOne(
+            runningAttemptFilter(jobId, itemId, attempt, leaseOwner, item.attempts.size),
+            updated.toDocument(),
+        )
+        if (result.modifiedCount != 1L) {
+            return false
+        }
         refreshJob(jobId, now)
+        return true
     }
 
     override suspend fun renewRunningItemLease(
@@ -208,14 +221,16 @@ class MongoScriptJobRepository(
         require(leaseOwner.isNotBlank()) { "script job item lease owner must not be blank" }
         val now = System.currentTimeMillis()
         require(leaseUntilMillis > now) { "script job item lease must be in the future" }
+        val item = findItem(jobId, itemId) ?: return false
+        if (
+            item.status != ScriptJobItemStatus.Running ||
+            item.leaseOwner != leaseOwner ||
+            item.attempts.lastOrNull()?.attempt != attempt
+        ) {
+            return false
+        }
         val result = items.updateOne(
-            and(
-                eq("jobId", jobId.value),
-                eq("itemId", itemId.value),
-                eq("status", ScriptJobItemStatus.Running.name),
-                eq("leaseOwner", leaseOwner),
-                eq("attempts.attempt", attempt),
-            ),
+            runningAttemptFilter(jobId, itemId, attempt, leaseOwner, item.attempts.size),
             combine(
                 set("leaseUntilMillis", leaseUntilMillis),
                 set("updatedAtMillis", now),
@@ -420,6 +435,23 @@ class MongoScriptJobRepository(
         )
         return result.modifiedCount == 1L
     }
+}
+
+private fun runningAttemptFilter(
+    jobId: ScriptJobId,
+    itemId: ScriptJobItemId,
+    attempt: Int,
+    leaseOwner: String,
+    attemptCount: Int,
+): Bson {
+    return and(
+        eq("jobId", jobId.value),
+        eq("itemId", itemId.value),
+        eq("status", ScriptJobItemStatus.Running.name),
+        eq("leaseOwner", leaseOwner),
+        size("attempts", attemptCount),
+        eq("attempts.${attemptCount - 1}.attempt", attempt),
+    )
 }
 
 private fun ScriptJobQuery.toFilter(): Bson {

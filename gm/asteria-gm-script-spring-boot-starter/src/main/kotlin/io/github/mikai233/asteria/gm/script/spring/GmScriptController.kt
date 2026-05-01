@@ -6,6 +6,7 @@ import io.github.mikai233.asteria.gm.script.GmScriptTargetValidationRequest
 import io.github.mikai233.asteria.gm.script.GmScriptTargetValidationResult
 import io.github.mikai233.asteria.gm.script.GmScriptTargetValidator
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
+import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.job.ScriptJobCancellation
 import io.github.mikai233.asteria.script.job.ScriptJob
 import io.github.mikai233.asteria.script.job.ScriptJobId
@@ -59,13 +60,7 @@ class GmScriptController(
             ),
         ) { operation ->
             val command = request.toCommand(operation.principal.id)
-            when (val validation = validator.validate(GmScriptTargetValidationRequest(command, operation.principal.id))) {
-                GmScriptTargetValidationResult.Allowed -> Unit
-                is GmScriptTargetValidationResult.Rejected -> throw ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    validation.reasons.joinToString("; "),
-                )
-            }
+            validateTarget(command, operation.principal.id)
             scripts.submit(
                 command = command,
                 timeout = request.timeoutMillis.milliseconds,
@@ -231,11 +226,27 @@ class GmScriptController(
                 "jobId" to jobId,
                 "itemId" to itemId,
             ),
-        ) {
+        ) { operation ->
+            val id = ScriptJobId(jobId)
+            val item = scripts.findItem(id, ScriptJobItemId(itemId))
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "script job item $itemId not found")
+            val job = scripts.find(id)
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "script job $jobId not found")
+            validateTarget(job.command.copy(target = item.target), operation.principal.id)
             scripts.retryItem(
-                jobId = ScriptJobId(jobId),
+                jobId = id,
                 itemId = ScriptJobItemId(itemId),
                 timeout = retryRequest.timeoutMillis.milliseconds,
+            )
+        }
+    }
+
+    private suspend fun validateTarget(command: ScriptExecutionCommand, operatorId: String) {
+        when (val validation = validator.validate(GmScriptTargetValidationRequest(command, operatorId))) {
+            GmScriptTargetValidationResult.Allowed -> Unit
+            is GmScriptTargetValidationResult.Rejected -> throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                validation.reasons.joinToString("; "),
             )
         }
     }

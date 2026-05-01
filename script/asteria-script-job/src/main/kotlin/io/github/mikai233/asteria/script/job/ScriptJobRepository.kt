@@ -42,10 +42,11 @@ interface ScriptJobRepository {
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
         attempt: Int,
+        leaseOwner: String,
         status: ScriptJobItemStatus,
         results: List<ScriptExecutionResult>,
         error: String? = null,
-    )
+    ): Boolean
 
     suspend fun renewRunningItemLease(
         jobId: ScriptJobId,
@@ -176,18 +177,23 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
         attempt: Int,
+        leaseOwner: String,
         status: ScriptJobItemStatus,
         results: List<ScriptExecutionResult>,
         error: String?,
-    ) {
+    ): Boolean {
         require(status == ScriptJobItemStatus.Completed || status == ScriptJobItemStatus.Failed) {
             "script job item finish status must be terminal"
         }
-        update(jobId) { stored, now ->
+        require(leaseOwner.isNotBlank()) { "script job item lease owner must not be blank" }
+        return update(jobId) { stored, now ->
             val item = stored.item(itemId)
-            require(item.attempts.isNotEmpty()) { "script job item $itemId has no running attempt" }
-            require(item.attempts.last().attempt == attempt) {
-                "script job item $itemId latest attempt is ${item.attempts.last().attempt}, got $attempt"
+            if (
+                item.status != ScriptJobItemStatus.Running ||
+                item.leaseOwner != leaseOwner ||
+                item.attempts.lastOrNull()?.attempt != attempt
+            ) {
+                return@update false
             }
             val finalStatus = item.finalStatus(status)
             val updatedAttempt = item.attempts.last().copy(
@@ -205,6 +211,7 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
                 updatedAtMillis = now,
             )
             stored.refresh(now)
+            true
         }
     }
 
@@ -362,11 +369,11 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
         }
     }
 
-    private suspend fun update(
+    private suspend fun <T> update(
         id: ScriptJobId,
-        block: (StoredScriptJob, Long) -> Unit,
-    ) {
-        mutex.withLock {
+        block: (StoredScriptJob, Long) -> T,
+    ): T {
+        return mutex.withLock {
             val stored = requireNotNull(jobs[id]) { "script job $id not found" }
             block(stored, System.currentTimeMillis())
         }

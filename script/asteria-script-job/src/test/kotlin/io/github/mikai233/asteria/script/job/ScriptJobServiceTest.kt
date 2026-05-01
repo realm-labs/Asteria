@@ -4,7 +4,9 @@ import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptExecutionBatchResult
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionMetadata
+import io.github.mikai233.asteria.script.ScriptExecutionRequest
 import io.github.mikai233.asteria.script.ScriptExecutionResult
+import io.github.mikai233.asteria.script.ScriptExecutionScope
 import io.github.mikai233.asteria.script.ScriptRuntime
 import io.github.mikai233.asteria.script.ScriptTarget
 import kotlinx.coroutines.CoroutineScope
@@ -303,6 +305,7 @@ class ScriptJobServiceTest {
             jobId = jobId,
             itemId = itemId,
             attempt = 1,
+            leaseOwner = "worker-1",
             status = ScriptJobItemStatus.Completed,
             results = listOf(ScriptExecutionResult("job-1.1.1", success = true)),
         )
@@ -314,6 +317,79 @@ class ScriptJobServiceTest {
         assertEquals(ScriptJobItemStatus.Cancelled, item.status)
         assertEquals(ScriptJobItemStatus.Cancelled, item.attempts.single().status)
         assertEquals(ScriptJobStatus.Cancelled, job.status)
+    }
+
+    @Test
+    fun staleWorkerCannotFinishItemAfterLeaseExpired() = runBlocking {
+        val repository = InMemoryScriptJobRepository()
+        val jobId = ScriptJobId("job-1")
+        val itemId = ScriptJobItemId("1")
+        repository.create(
+            ScriptJob(jobId, command("job-1", listOf("node-1"))),
+            listOf(ScriptJobItem(itemId, jobId, ScriptTarget.Node(listOf("node-1")))),
+        )
+        val now = System.currentTimeMillis()
+        repository.markItemRunning(
+            jobId = jobId,
+            itemId = itemId,
+            attempt = 1,
+            command = command("job-1.1.1", listOf("node-1")),
+            leaseOwner = "worker-1",
+            leaseUntilMillis = now + 1_000,
+        )
+        repository.expireLeasedRunningItems(jobId, nowMillis = now + 1_001)
+
+        val finished = repository.markItemFinished(
+            jobId = jobId,
+            itemId = itemId,
+            attempt = 1,
+            leaseOwner = "worker-1",
+            status = ScriptJobItemStatus.Completed,
+            results = listOf(ScriptExecutionResult("job-1.1.1", success = true)),
+        )
+        val item = assertNotNull(repository.findItem(jobId, itemId))
+
+        assertEquals(false, finished)
+        assertEquals(ScriptJobItemStatus.Failed, item.status)
+    }
+
+    @Test
+    fun cancellationTokenObservesCancelRequest() = runBlocking {
+        val repository = InMemoryScriptJobRepository()
+        val jobId = ScriptJobId("job-1")
+        val itemId = ScriptJobItemId("1")
+        repository.create(
+            ScriptJob(jobId, command("job-1", listOf("node-1"))),
+            listOf(ScriptJobItem(itemId, jobId, ScriptTarget.Node(listOf("node-1")))),
+        )
+        repository.markItemRunning(
+            jobId = jobId,
+            itemId = itemId,
+            attempt = 1,
+            command = command("job-1.1.1", listOf("node-1")),
+            leaseOwner = "worker-1",
+            leaseUntilMillis = System.currentTimeMillis() + 1_000,
+        )
+        val token = ScriptJobCancellationProvider(repository).token(
+            ScriptExecutionRequest(
+                executionId = "job-1.1.1",
+                target = ScriptTarget.Node(listOf("node-1")),
+                artifact = ScriptArtifact("job-test", "fake", ByteArray(0)),
+                scope = ScriptExecutionScope.Node,
+                metadata = ScriptExecutionMetadata(
+                    attributes = mapOf(
+                        "script.jobId" to jobId.value,
+                        "script.itemId" to itemId.value,
+                        "script.attempt" to "1",
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(false, token.isCancellationRequested())
+        repository.cancelItem(jobId, itemId, ScriptJobCancellation(requestedBy = "gm-1"))
+
+        assertTrue(token.isCancellationRequested())
     }
 
     private suspend fun awaitJob(
