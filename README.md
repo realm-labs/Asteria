@@ -24,6 +24,8 @@ application-level choices instead of framework requirements.
 - `asteria-persistence`: entity, mem data, data scope, data manager, persistence provider contracts.
 - `asteria-config`: config table snapshot, reload, validation, and module contracts.
 - `asteria-config-luban`: optional Luban Java JSON and binary config loaders with module integration.
+- `asteria-config-center`: config center store, watch, typed repository, codec, and in-memory implementation contracts.
+- `asteria-cluster-config`: runtime node config, cluster topology, and config-center backed topology provider.
 - `asteria-starter`: starter DSL helpers for local projects.
 
 ## Minimal Shape
@@ -140,6 +142,23 @@ val item = tables.tbItem.get(1001)
 
 Luban loaders preload matching data files with bounded concurrency before constructing `cfg.Tables`; the generated
 `Tables` object still controls table construction order and cross-table initialization.
+
+Server runtime configuration is separated from the concrete config center. A `ConfigStore` owns byte-level get, children,
+watch, put, and delete operations; `RuntimeConfigRepository` adds typed decoding through a pluggable `ConfigCodec`.
+
+```kotlin
+install(ConfigCenterModule {
+    store(ZookeeperConfigStore(...))
+    codec(JacksonConfigCodec())
+})
+
+install(ClusterConfigModule {
+    layout = ClusterConfigLayout.default("demo-game")
+})
+```
+
+Pekko, gateway, database, and GM modules should consume typed services such as `ClusterTopologyProvider` instead of
+depending on Zookeeper, Nacos, Etcd, or any other config center directly.
 
 Script execution is an opt-in extension:
 

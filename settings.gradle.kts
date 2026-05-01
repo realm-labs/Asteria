@@ -24,5 +24,7 @@ include(
     "asteria-persistence",
     "asteria-config",
     "asteria-config-luban",
+    "asteria-config-center",
+    "asteria-cluster-config",
     "asteria-starter",
 )
