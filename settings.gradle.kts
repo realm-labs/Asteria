@@ -8,6 +8,7 @@ include(
     "asteria-actor",
     "asteria-message",
     "asteria-observability-core",
+    "asteria-observability-opentelemetry",
     "asteria-rpc",
     "asteria-rpc-protobuf",
     "asteria-rpc-protobuf-generator",

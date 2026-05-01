@@ -77,9 +77,15 @@ The protobuf route generator reads a descriptor set with `asteria.rpc.rpc_route`
 Observability is optional and defaults to no-op tracing and metrics:
 
 ```kotlin
+val openTelemetry: OpenTelemetry = OpenTelemetrySdk.builder()
+    .setTracerProvider(tracerProvider)
+    .setMeterProvider(meterProvider)
+    .build()
+
 install(ObservabilityModule {
-    tracer = OpenTelemetryAsteriaTracer(...)
-    metrics = OpenTelemetryAsteriaMetrics(...)
+    val observability = openTelemetry.asAsteriaObservability("game-server")
+    tracer = observability.tracer
+    metrics = observability.metrics
 })
 ```
 
