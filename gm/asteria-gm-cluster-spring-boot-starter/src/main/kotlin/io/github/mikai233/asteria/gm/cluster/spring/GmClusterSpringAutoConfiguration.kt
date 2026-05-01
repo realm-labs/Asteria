@@ -1,10 +1,13 @@
 package io.github.mikai233.asteria.gm.cluster.spring
 
 import io.github.mikai233.asteria.cluster.config.ClusterTopologyProvider
+import io.github.mikai233.asteria.gm.cluster.GmClusterControlService
+import io.github.mikai233.asteria.gm.cluster.GmClusterRawStatusService
 import io.github.mikai233.asteria.gm.cluster.GmClusterStatusService
 import io.github.mikai233.asteria.gm.cluster.TopologyGmClusterStatusService
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import io.github.mikai233.asteria.gm.spring.GmSpringAutoConfiguration
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -35,7 +38,14 @@ class GmClusterSpringAutoConfiguration {
     fun gmClusterController(
         statusService: GmClusterStatusService,
         endpointSupport: GmEndpointSupport,
+        rawStatusService: ObjectProvider<GmClusterRawStatusService>,
+        controlService: ObjectProvider<GmClusterControlService>,
     ): GmClusterController {
-        return GmClusterController(statusService, endpointSupport)
+        return GmClusterController(
+            statusService = statusService,
+            endpoints = endpointSupport,
+            rawStatusService = rawStatusService.ifAvailable,
+            controlService = controlService.ifAvailable,
+        )
     }
 }

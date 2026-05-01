@@ -39,6 +39,8 @@
             <option value="$PROJECT_DIR$/foundation/asteria-message" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-pekko" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-pekko-management" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-pekko-management-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-config" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-config-spring-boot-starter" />

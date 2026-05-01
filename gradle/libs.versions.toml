@@ -36,6 +36,7 @@ pekko-discovery = { module = "org.apache.pekko:pekko-discovery_2.13", version.re
 pekko-discovery-kubernetes-api = { module = "org.apache.pekko:pekko-discovery-kubernetes-api_2.13", version.ref = "pekko-management" }
 pekko-management = { module = "org.apache.pekko:pekko-management_2.13", version.ref = "pekko-management" }
 pekko-management-cluster-bootstrap = { module = "org.apache.pekko:pekko-management-cluster-bootstrap_2.13", version.ref = "pekko-management" }
+pekko-management-cluster-http = { module = "org.apache.pekko:pekko-management-cluster-http_2.13", version.ref = "pekko-management" }
 protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf" }
 kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
 groovy = { module = "org.apache.groovy:groovy", version.ref = "groovy" }

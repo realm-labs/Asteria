@@ -8,4 +8,5 @@ dependencies {
     implementation(libs.pekko.discovery)
     implementation(libs.pekko.management)
     implementation(libs.pekko.management.cluster.bootstrap)
+    implementation(libs.pekko.management.cluster.http)
 }
