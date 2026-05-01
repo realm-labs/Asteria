@@ -14,6 +14,7 @@ typesafe-config = "1.4.7"
 opentelemetry = "1.61.0"
 spring-boot = "4.0.6"
 spring-framework = "7.0.7"
+jakarta-servlet = "6.1.0"
 
 [libraries]
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
@@ -45,6 +46,7 @@ opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk", version.ref
 opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing", version.ref = "opentelemetry" }
 spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure", version.ref = "spring-boot" }
 spring-web = { module = "org.springframework:spring-web", version.ref = "spring-framework" }
+jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakarta-servlet" }
 
 [plugins]
 protobuf = { id = "com.google.protobuf", version = "0.10.0" }

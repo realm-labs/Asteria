@@ -32,6 +32,7 @@ GM modules:
 - `gm/asteria-gm-spring-boot-starter`: Spring Boot starter that exposes installed GM features to HTTP clients.
 - `gm/asteria-gm-script`: script execution GM feature metadata and script job operation contracts.
 - `gm/asteria-gm-cluster`: runtime-neutral cluster status and actor query contracts for GM tools.
+- `gm/asteria-gm-cluster-spring-boot-starter`: optional Spring Boot HTTP API for cluster GM tools.
 - `gm/asteria-gm-cluster-pekko`: Pekko-backed cluster status adapter for GM tools.
 
 Config modules:

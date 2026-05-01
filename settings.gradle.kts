@@ -33,6 +33,7 @@ include(
     "asteria-gm-spring-boot-starter",
     "asteria-gm-script",
     "asteria-gm-cluster",
+    "asteria-gm-cluster-spring-boot-starter",
     "asteria-gm-cluster-pekko",
     "asteria-protocol-protobuf",
     "asteria-gateway-netty",
@@ -73,6 +74,7 @@ mapOf(
     "asteria-gm-spring-boot-starter" to "gm/asteria-gm-spring-boot-starter",
     "asteria-gm-script" to "gm/asteria-gm-script",
     "asteria-gm-cluster" to "gm/asteria-gm-cluster",
+    "asteria-gm-cluster-spring-boot-starter" to "gm/asteria-gm-cluster-spring-boot-starter",
     "asteria-gm-cluster-pekko" to "gm/asteria-gm-cluster-pekko",
 ).forEach { (name, path) ->
     project(":$name").projectDir = file(path)

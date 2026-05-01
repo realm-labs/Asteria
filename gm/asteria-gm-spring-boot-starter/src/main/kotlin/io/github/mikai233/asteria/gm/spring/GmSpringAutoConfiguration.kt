@@ -37,6 +37,28 @@ class GmSpringAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    fun gmPrincipalResolver(): GmPrincipalResolver {
+        return NoopGmPrincipalResolver
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    fun gmEndpointSupport(
+        principalResolver: GmPrincipalResolver,
+        policyEvaluator: GmPolicyEvaluator,
+        auditSink: GmAuditSink,
+    ): GmEndpointSupport {
+        return GmEndpointSupport(principalResolver, policyEvaluator, auditSink)
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    fun gmWebExceptionHandler(): GmWebExceptionHandler {
+        return GmWebExceptionHandler()
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     fun gmFeatureController(registry: GmFeatureRegistry): GmFeatureController {
         return GmFeatureController(registry)
     }
