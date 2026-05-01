@@ -15,7 +15,7 @@ class ScriptProtoConvertersTest {
     fun commandRoundTripsThroughProto() {
         val command = ScriptExecutionCommand(
             executionId = "script-1",
-            target = ScriptTarget.Entity(EntityKind("player"), "10001"),
+            target = ScriptTarget.Entity(EntityKind("player"), listOf("10001")),
             artifact = ScriptArtifact(
                 name = "fix-player-state",
                 engine = "jar",
@@ -54,5 +54,12 @@ class ScriptProtoConvertersTest {
         )
 
         assertEquals(result, result.toProto().toModel())
+    }
+
+    @Test
+    fun multiEntityTargetRoundTripsThroughProto() {
+        val target = ScriptTarget.Entity(EntityKind("player"), listOf("10001", "10002"))
+
+        assertEquals(target, target.toProto().toModel())
     }
 }

@@ -9,24 +9,27 @@ sealed interface ScriptTarget {
 
     data class Role(val role: RoleKey) : ScriptTarget
 
-    data class Node(val address: String) : ScriptTarget {
+    data class Node(val addresses: List<String>) : ScriptTarget {
         init {
-            require(address.isNotBlank()) { "node address must not be blank" }
+            require(addresses.isNotEmpty()) { "node addresses must not be empty" }
+            require(addresses.all { it.isNotBlank() }) { "node addresses must not contain blank values" }
         }
     }
 
-    data class ActorPath(val path: String) : ScriptTarget {
+    data class ActorPath(val paths: List<String>) : ScriptTarget {
         init {
-            require(path.isNotBlank()) { "actor path must not be blank" }
+            require(paths.isNotEmpty()) { "actor paths must not be empty" }
+            require(paths.all { it.isNotBlank() }) { "actor paths must not contain blank values" }
         }
     }
 
     data class Entity(
         val kind: EntityKind,
-        val id: String,
+        val ids: List<String>,
     ) : ScriptTarget {
         init {
-            require(id.isNotBlank()) { "entity id must not be blank" }
+            require(ids.isNotEmpty()) { "entity ids must not be empty" }
+            require(ids.all { it.isNotBlank() }) { "entity ids must not contain blank values" }
         }
     }
 

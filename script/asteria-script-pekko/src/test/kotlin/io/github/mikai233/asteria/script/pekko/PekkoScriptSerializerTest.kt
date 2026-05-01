@@ -25,7 +25,7 @@ class PekkoScriptSerializerTest {
         try {
             val command = ScriptExecutionCommand(
                 executionId = "script-1",
-                target = ScriptTarget.Entity(EntityKind("player"), "10001"),
+                target = ScriptTarget.Entity(EntityKind("player"), listOf("10001")),
                 artifact = artifact(),
                 metadata = metadata(),
             )
@@ -36,10 +36,12 @@ class PekkoScriptSerializerTest {
                 error = "denied",
             )
             val nodeCommand = ExecuteNodeScript(command, originNodeAddress = "pekko://game@127.0.0.1:25520")
-            val actorCommand = ExecuteActorScript("script-2", artifact(), ScriptTarget.ActorPath("/user/player"), metadata())
+            val actorCommand = ExecuteActorScript("script-2", artifact(), ScriptTarget.ActorPath(listOf("/user/player")), metadata())
             val entityCommand = ExecuteEntityActorScript("10001", "script-3", artifact(), command.target, metadata())
+            val multiEntityCommand = command.copy(target = ScriptTarget.Entity(EntityKind("player"), listOf("10001", "10002")))
 
             assertRoundTrip(serializer, command)
+            assertRoundTrip(serializer, multiEntityCommand)
             assertRoundTrip(serializer, result)
             assertRoundTrip(serializer, nodeCommand)
             assertRoundTrip(serializer, actorCommand)

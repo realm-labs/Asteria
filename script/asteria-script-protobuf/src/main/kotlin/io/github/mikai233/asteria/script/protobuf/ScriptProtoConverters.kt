@@ -34,9 +34,9 @@ fun ModelScriptTarget.toProto(): ScriptTarget {
     val builder = ScriptTarget.newBuilder()
     when (this) {
         ModelScriptTarget.AllNodes -> builder.setAllNodes(AllNodesTarget.getDefaultInstance())
-        is ModelScriptTarget.ActorPath -> builder.setActorPath(ActorPathTarget.newBuilder().setPath(path))
-        is ModelScriptTarget.Entity -> builder.setEntity(EntityTarget.newBuilder().setKind(kind.value).setId(id))
-        is ModelScriptTarget.Node -> builder.setNode(NodeTarget.newBuilder().setAddress(address))
+        is ModelScriptTarget.ActorPath -> builder.setActorPath(ActorPathTarget.newBuilder().addAllPaths(paths))
+        is ModelScriptTarget.Entity -> builder.setEntity(EntityTarget.newBuilder().setKind(kind.value).addAllIds(ids))
+        is ModelScriptTarget.Node -> builder.setNode(NodeTarget.newBuilder().addAllAddresses(addresses))
         is ModelScriptTarget.Role -> builder.setRole(RoleTarget.newBuilder().setRole(role.value))
         is ModelScriptTarget.Singleton -> builder.setSingleton(SingletonTarget.newBuilder().setName(name.value))
     }
@@ -46,9 +46,9 @@ fun ModelScriptTarget.toProto(): ScriptTarget {
 fun ScriptTarget.toModel(): ModelScriptTarget {
     return when (targetCase) {
         ScriptTarget.TargetCase.ALL_NODES -> ModelScriptTarget.AllNodes
-        ScriptTarget.TargetCase.ACTOR_PATH -> ModelScriptTarget.ActorPath(actorPath.path)
-        ScriptTarget.TargetCase.ENTITY -> ModelScriptTarget.Entity(EntityKind(entity.kind), entity.id)
-        ScriptTarget.TargetCase.NODE -> ModelScriptTarget.Node(node.address)
+        ScriptTarget.TargetCase.ACTOR_PATH -> ModelScriptTarget.ActorPath(actorPath.pathsList)
+        ScriptTarget.TargetCase.ENTITY -> ModelScriptTarget.Entity(EntityKind(entity.kind), entity.idsList)
+        ScriptTarget.TargetCase.NODE -> ModelScriptTarget.Node(node.addressesList)
         ScriptTarget.TargetCase.ROLE -> ModelScriptTarget.Role(RoleKey(role.role))
         ScriptTarget.TargetCase.SINGLETON -> ModelScriptTarget.Singleton(SingletonName(singleton.name))
         ScriptTarget.TargetCase.TARGET_NOT_SET,

@@ -28,7 +28,7 @@ abstract class ScriptableAsteriaActor<N : NodeRuntime>(
         launch {
             val request = ScriptExecutionRequest(
                 executionId = command.executionId,
-                target = command.target ?: ScriptTarget.ActorPath(self.path().toString()),
+                target = command.target ?: ScriptTarget.ActorPath(listOf(self.path().toString())),
                 artifact = command.artifact,
                 scope = ScriptExecutionScope.Actor,
                 metadata = command.metadata,
@@ -73,9 +73,9 @@ abstract class ScriptableAsteriaActor<N : NodeRuntime>(
     private fun ScriptTarget.displayName(): String {
         return when (this) {
             ScriptTarget.AllNodes -> "all-nodes"
-            is ScriptTarget.ActorPath -> path
-            is ScriptTarget.Entity -> id
-            is ScriptTarget.Node -> address
+            is ScriptTarget.ActorPath -> paths.joinToString(",")
+            is ScriptTarget.Entity -> ids.joinToString(",")
+            is ScriptTarget.Node -> addresses.joinToString(",")
             is ScriptTarget.Role -> role.value
             is ScriptTarget.Singleton -> name.value
         }

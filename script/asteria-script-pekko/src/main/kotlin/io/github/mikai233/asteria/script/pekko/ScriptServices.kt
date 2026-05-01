@@ -9,6 +9,7 @@ import io.github.mikai233.asteria.script.ScriptExecutionBatchResult
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptRuntime
+import io.github.mikai233.asteria.script.ScriptTarget
 import kotlinx.coroutines.future.await
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSystem
@@ -21,6 +22,7 @@ class PekkoScriptRuntime(
     private val metrics: Metrics,
 ) : ScriptRuntime {
     override suspend fun execute(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionResult {
+        require(command.target.resultCountHint() == 1) { "multi-target script execution requires executeAll" }
         return tracer.span("script.execute", command.traceAttributes()) {
             metrics.counter("asteria.script.execution.total", command.metricTags()).increment()
             metrics.timer("asteria.script.execution.duration", command.metricTags()).record {
@@ -66,5 +68,16 @@ class PekkoScriptRuntime(
             "target" to target.javaClass.simpleName,
             "engine" to artifact.engine,
         )
+    }
+}
+
+private fun ScriptTarget.resultCountHint(): Int {
+    return when (this) {
+        ScriptTarget.AllNodes -> 1
+        is ScriptTarget.ActorPath -> paths.size
+        is ScriptTarget.Entity -> ids.size
+        is ScriptTarget.Node -> addresses.size
+        is ScriptTarget.Role -> 1
+        is ScriptTarget.Singleton -> 1
     }
 }

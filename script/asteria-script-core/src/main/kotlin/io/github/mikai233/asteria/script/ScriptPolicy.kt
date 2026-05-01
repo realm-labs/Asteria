@@ -181,9 +181,9 @@ class ScriptRunner(
     private fun targetName(request: ScriptExecutionRequest): String? {
         return when (val target = request.target) {
             ScriptTarget.AllNodes -> "all-nodes"
-            is ScriptTarget.ActorPath -> target.path
-            is ScriptTarget.Entity -> target.id
-            is ScriptTarget.Node -> target.address
+            is ScriptTarget.ActorPath -> target.paths.joinToString(",")
+            is ScriptTarget.Entity -> target.ids.joinToString(",")
+            is ScriptTarget.Node -> target.addresses.joinToString(",")
             is ScriptTarget.Role -> target.role.value
             is ScriptTarget.Singleton -> target.name.value
         }

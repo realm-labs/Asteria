@@ -33,16 +33,16 @@ message RoleTarget {
 }
 
 message NodeTarget {
-  string address = 1;
+  repeated string addresses = 1;
 }
 
 message ActorPathTarget {
-  string path = 1;
+  repeated string paths = 1;
 }
 
 message EntityTarget {
   string kind = 1;
-  string id = 2;
+  repeated string ids = 2;
 }
 
 message SingletonTarget {

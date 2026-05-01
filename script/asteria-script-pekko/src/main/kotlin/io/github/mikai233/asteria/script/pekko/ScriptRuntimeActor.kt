@@ -70,27 +70,34 @@ class ScriptRuntimeActor(
             }
 
             is ScriptTarget.Node -> {
-                if (target.address == selfAddress()) {
-                    executeOnThisNode(command, replyTo = replyTo)
+                val address = selfAddress()
+                if (address in target.addresses) {
+                    executeOnThisNode(command.copy(target = ScriptTarget.Node(listOf(address))), replyTo = replyTo)
                 }
             }
 
             is ScriptTarget.ActorPath -> {
-                context.actorSelection(target.path).tell(actorCommand(command, target), replyTo)
+                target.paths.forEach { path ->
+                    val singleTarget = ScriptTarget.ActorPath(listOf(path))
+                    context.actorSelection(path).tell(actorCommand(command.copy(target = singleTarget), singleTarget), replyTo)
+                }
             }
 
             is ScriptTarget.Entity -> {
-                runtime.services.get<EntityShardRegistry>()[target.kind]
-                    .tell(
+                val shard = runtime.services.get<EntityShardRegistry>()[target.kind]
+                target.ids.forEach { id ->
+                    val singleTarget = ScriptTarget.Entity(target.kind, listOf(id))
+                    shard.tell(
                         ExecuteEntityActorScript(
-                            id = target.id,
+                            id = id,
                             executionId = command.executionId,
                             artifact = command.artifact,
-                            target = target,
+                            target = singleTarget,
                             metadata = command.metadata,
                         ),
                         replyTo,
                     )
+                }
             }
 
             is ScriptTarget.Singleton -> {
@@ -115,8 +122,9 @@ class ScriptRuntimeActor(
             }
 
             is ScriptTarget.Node -> {
-                if (target.address == selfAddress()) {
-                    executeOnThisNode(command, replyTo = replyTo)
+                val address = selfAddress()
+                if (address in target.addresses) {
+                    executeOnThisNode(command.copy(target = ScriptTarget.Node(listOf(address))), replyTo = replyTo)
                 }
             }
 
