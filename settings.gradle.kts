@@ -29,6 +29,11 @@ include(
     "asteria-cluster-pekko",
     "asteria-cluster-pekko-management",
     "asteria-cluster-pekko-kubernetes",
+    "asteria-gm-core",
+    "asteria-gm-spring-boot-starter",
+    "asteria-gm-script",
+    "asteria-gm-cluster",
+    "asteria-gm-cluster-pekko",
     "asteria-protocol-protobuf",
     "asteria-gateway-netty",
     "asteria-persistence",
@@ -64,6 +69,11 @@ mapOf(
     "asteria-config-center-etcd" to "config/asteria-config-center-etcd",
     "asteria-config-center-nacos" to "config/asteria-config-center-nacos",
     "asteria-cluster-config" to "config/asteria-cluster-config",
+    "asteria-gm-core" to "gm/asteria-gm-core",
+    "asteria-gm-spring-boot-starter" to "gm/asteria-gm-spring-boot-starter",
+    "asteria-gm-script" to "gm/asteria-gm-script",
+    "asteria-gm-cluster" to "gm/asteria-gm-cluster",
+    "asteria-gm-cluster-pekko" to "gm/asteria-gm-cluster-pekko",
 ).forEach { (name, path) ->
     project(":$name").projectDir = file(path)
 }

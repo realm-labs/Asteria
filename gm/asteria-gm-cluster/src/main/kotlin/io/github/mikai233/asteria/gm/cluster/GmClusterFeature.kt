@@ -1,0 +1,67 @@
+package io.github.mikai233.asteria.gm.cluster
+
+import io.github.mikai233.asteria.gm.core.GmFeature
+import io.github.mikai233.asteria.gm.core.GmFeatureDescriptor
+import io.github.mikai233.asteria.gm.core.GmFeatureId
+import io.github.mikai233.asteria.gm.core.GmMenuItem
+import io.github.mikai233.asteria.gm.core.GmPermission
+import io.github.mikai233.asteria.gm.core.GmPermissionKey
+import io.github.mikai233.asteria.gm.core.GmRoute
+
+/**
+ * Permission keys contributed by the cluster GM feature.
+ */
+object GmClusterPermissions {
+    val Read: GmPermissionKey = GmPermissionKey("gm.cluster.read")
+    val QueryActor: GmPermissionKey = GmPermissionKey("gm.cluster.actor.query")
+}
+
+/**
+ * Built-in GM feature for cluster status and actor inspection.
+ *
+ * This module only defines runtime-neutral contracts. Concrete adapters, such as Pekko, provide the actual
+ * implementations of status collection and actor queries.
+ */
+class GmClusterFeature : GmFeature {
+    override val descriptor: GmFeatureDescriptor = GmFeatureDescriptor(
+        id = GmFeatureId("cluster"),
+        name = "Cluster",
+        description = "Cluster status, topology, and actor inspection.",
+        permissions = listOf(
+            GmPermission(
+                key = GmClusterPermissions.Read,
+                name = "Read cluster status",
+                description = "Allows reading cluster topology and runtime member status.",
+            ),
+            GmPermission(
+                key = GmClusterPermissions.QueryActor,
+                name = "Query actors",
+                description = "Allows sending diagnostic queries to runtime actors.",
+                highRisk = true,
+            ),
+        ),
+        menus = listOf(
+            GmMenuItem(
+                id = "cluster",
+                title = "Cluster",
+                route = "/cluster",
+                permission = GmClusterPermissions.Read,
+                order = 200,
+            ),
+        ),
+        routes = listOf(
+            GmRoute(
+                id = "cluster.overview",
+                path = "/cluster",
+                component = "asteria/cluster/ClusterOverview",
+                permission = GmClusterPermissions.Read,
+            ),
+            GmRoute(
+                id = "cluster.actor-query",
+                path = "/cluster/actor-query",
+                component = "asteria/cluster/ActorQuery",
+                permission = GmClusterPermissions.QueryActor,
+            ),
+        ),
+    )
+}
