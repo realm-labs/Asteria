@@ -40,6 +40,8 @@
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-pekko" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-spring-boot-starter" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-config" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-config-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-core" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-script" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-script-spring-boot-starter" />
