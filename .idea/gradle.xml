@@ -58,6 +58,7 @@
             <option value="$PROJECT_DIR$/script/asteria-script-job-spring-boot-starter" />
             <option value="$PROJECT_DIR$/script/asteria-script-pekko" />
             <option value="$PROJECT_DIR$/script/asteria-script-protobuf" />
+            <option value="$PROJECT_DIR$/utils/asteria-game-utils" />
           </set>
         </option>
         <option name="myGradleHome" value="" />

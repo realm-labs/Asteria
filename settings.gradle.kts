@@ -42,6 +42,7 @@ include(
     "asteria-protocol-protobuf",
     "asteria-gateway-netty",
     "asteria-persistence",
+    "asteria-game-utils",
     "asteria-config",
     "asteria-config-luban",
     "asteria-config-center",
@@ -84,6 +85,7 @@ mapOf(
     "asteria-gm-cluster" to "gm/asteria-gm-cluster",
     "asteria-gm-cluster-spring-boot-starter" to "gm/asteria-gm-cluster-spring-boot-starter",
     "asteria-gm-cluster-pekko" to "gm/asteria-gm-cluster-pekko",
+    "asteria-game-utils" to "utils/asteria-game-utils",
 ).forEach { (name, path) ->
     project(":$name").projectDir = file(path)
 }
