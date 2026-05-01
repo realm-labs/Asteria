@@ -6,13 +6,14 @@ import io.github.mikai233.asteria.config.requireComponent
 import io.github.mikai233.asteria.core.gameApplication
 import java.io.IOException
 import java.nio.file.Files
+import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
-class LubanJsonConfigLoaderTest {
+class LubanConfigLoaderTest {
     @Test
     fun `loads generated tables with json loader proxy`() = runBlocking {
         val dataDir = Files.createTempDirectory("asteria-luban-json")
@@ -77,6 +78,47 @@ class LubanJsonConfigLoaderTest {
         app.stop()
     }
 
+    @Test
+    fun `loads generated binary tables with bytebuf loader proxy`() = runBlocking {
+        val dataDir = Files.createTempDirectory("asteria-luban-bin")
+        dataDir.resolve("item_tbitem.bytes").writeBytes("1:Sword\n2:Potion".toByteArray())
+
+        val snapshot = LubanBinaryConfigLoader(
+            tablesType = FakeBinaryTables::class,
+            dataDir = dataDir,
+        ).load()
+
+        val tables = snapshot.requireComponent<FakeBinaryTables>()
+        val items = snapshot.requireComponent<FakeBinaryTbItem>()
+        assertEquals("Sword", tables.getTbItem().get(1).name)
+        assertEquals("Potion", items.get(2).name)
+    }
+
+    @Test
+    fun `module can load binary config`() = runBlocking {
+        val dataDir = Files.createTempDirectory("asteria-luban-bin")
+        dataDir.resolve("item_tbitem.bytes").writeBytes("1:Sword".toByteArray())
+
+        val app = gameApplication {
+            install(
+                LubanConfigModule {
+                    binary()
+                    tables<FakeBinaryTables>()
+                    dataDir(dataDir)
+                },
+            )
+        }
+
+        app.launch()
+
+        val items = app.services.get<ConfigService>()
+            .current()
+            .requireComponent<FakeBinaryTbItem>()
+        assertEquals("Sword", items.get(1).name)
+
+        app.stop()
+    }
+
     class FakeTables(loader: IJsonLoader) {
         private val tbItem = FakeTbItem(loader.load("item_tbitem"))
 
@@ -106,4 +148,38 @@ class LubanJsonConfigLoaderTest {
         val id: Int,
         val name: String,
     )
+
+    class FakeBinaryTables(loader: IByteBufLoader) {
+        private val tbItem = FakeBinaryTbItem(loader.load("item_tbitem"))
+
+        fun getTbItem(): FakeBinaryTbItem = tbItem
+
+        fun interface IByteBufLoader {
+            @Throws(IOException::class)
+            fun load(file: String): FakeByteBuf
+        }
+    }
+
+    class FakeByteBuf(
+        val bytes: ByteArray,
+    )
+
+    class FakeBinaryTbItem(byteBuf: FakeByteBuf) {
+        private val rows: Map<Int, Item> = byteBuf.bytes
+            .decodeToString()
+            .lineSequence()
+            .filter { it.isNotBlank() }
+            .associate { line ->
+                val parts = line.split(":", limit = 2)
+                val item = Item(
+                    id = parts[0].toInt(),
+                    name = parts[1],
+                )
+                item.id to item
+            }
+
+        fun get(id: Int): Item {
+            return rows.getValue(id)
+        }
+    }
 }

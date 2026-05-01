@@ -23,7 +23,7 @@ application-level choices instead of framework requirements.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
 - `asteria-persistence`: entity, mem data, data scope, data manager, persistence provider contracts.
 - `asteria-config`: config table snapshot, reload, validation, and module contracts.
-- `asteria-config-luban`: optional Jackson-based Luban Java JSON config loader and module integration.
+- `asteria-config-luban`: optional Luban Java JSON and binary config loaders with module integration.
 - `asteria-starter`: starter DSL helpers for local projects.
 
 ## Minimal Shape
@@ -115,12 +115,20 @@ val item = configs.current()
     .require(1001)
 ```
 
-Luban projects can install the optional Jackson JSON loader and keep using generated `cfg.Tables` APIs:
+Luban projects can install the optional Jackson JSON loader, or switch to the binary loader for production data, and keep
+using generated `cfg.Tables` APIs:
 
 ```kotlin
 install(LubanConfigModule {
+    json()
     tables<cfg.Tables>()
     dataDir(Path.of("generated/json"))
+})
+
+install(LubanConfigModule {
+    binary()
+    tables<cfg.Tables>()
+    dataDir(Path.of("generated/bytes"))
 })
 
 val tables = app.services.get<ConfigService>()
