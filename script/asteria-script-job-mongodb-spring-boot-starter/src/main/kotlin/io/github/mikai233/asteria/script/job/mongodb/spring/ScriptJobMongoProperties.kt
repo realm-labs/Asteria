@@ -28,6 +28,11 @@ class ScriptJobMongoProperties {
     var itemsCollectionName: String = "script_job_items"
 
     /**
+     * Collection storing distributed script execution permit slots.
+     */
+    var permitsCollectionName: String = "script_job_permits"
+
+    /**
      * Whether the starter should create expected indexes during application startup.
      */
     var ensureIndexes: Boolean = false

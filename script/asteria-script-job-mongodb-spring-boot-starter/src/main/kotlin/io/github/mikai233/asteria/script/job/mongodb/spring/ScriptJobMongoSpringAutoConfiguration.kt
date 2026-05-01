@@ -2,7 +2,9 @@ package io.github.mikai233.asteria.script.job.mongodb.spring
 
 import com.mongodb.kotlin.client.coroutine.MongoClient
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
+import io.github.mikai233.asteria.script.job.ScriptJobPermitRepository
 import io.github.mikai233.asteria.script.job.ScriptJobRepository
+import io.github.mikai233.asteria.script.job.mongodb.MongoScriptJobPermitRepository
 import io.github.mikai233.asteria.script.job.mongodb.MongoScriptJobRepository
 import kotlinx.coroutines.runBlocking
 import org.springframework.beans.factory.SmartInitializingSingleton
@@ -63,6 +65,18 @@ class ScriptJobMongoSpringAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(value = [ScriptJobPermitRepository::class], search = SearchStrategy.CURRENT)
+    fun mongoScriptJobPermitRepository(
+        @Qualifier("asteriaScriptJobMongoDatabase") database: MongoDatabase,
+        properties: ScriptJobMongoProperties,
+    ): MongoScriptJobPermitRepository {
+        return MongoScriptJobPermitRepository(
+            database = database,
+            collectionName = properties.permitsCollectionName,
+        )
+    }
+
+    @Bean
     @ConditionalOnBean(MongoScriptJobRepository::class)
     @ConditionalOnProperty(
         prefix = "asteria.script.job.mongodb",
@@ -70,6 +84,21 @@ class ScriptJobMongoSpringAutoConfiguration {
         havingValue = "true",
     )
     fun mongoScriptJobIndexInitializer(repository: MongoScriptJobRepository): SmartInitializingSingleton {
+        return SmartInitializingSingleton {
+            runBlocking {
+                repository.ensureIndexes()
+            }
+        }
+    }
+
+    @Bean
+    @ConditionalOnBean(MongoScriptJobPermitRepository::class)
+    @ConditionalOnProperty(
+        prefix = "asteria.script.job.mongodb",
+        name = ["ensure-indexes"],
+        havingValue = "true",
+    )
+    fun mongoScriptJobPermitIndexInitializer(repository: MongoScriptJobPermitRepository): SmartInitializingSingleton {
         return SmartInitializingSingleton {
             runBlocking {
                 repository.ensureIndexes()

@@ -146,6 +146,12 @@ class MongoScriptJobRepository(
         }
         val now = System.currentTimeMillis()
         require(leaseUntilMillis > now) { "script job item lease must be in the future" }
+        item.leaseOwner?.let {
+            require(it == leaseOwner) { "script job item $itemId is leased by another worker" }
+        }
+        item.leaseUntilMillis?.let {
+            require(it > now) { "script job item $itemId lease already expired" }
+        }
         val updated = item.copy(
             status = ScriptJobItemStatus.Running,
             attempts = item.attempts + ScriptJobItemAttempt(
@@ -158,7 +164,18 @@ class MongoScriptJobRepository(
             leaseUntilMillis = leaseUntilMillis,
             updatedAtMillis = now,
         )
-        replaceItem(updated)
+        val result = items.replaceOne(
+            and(
+                eq("jobId", jobId.value),
+                eq("itemId", itemId.value),
+                eq("status", item.status.name),
+                eq("leaseOwner", item.leaseOwner),
+                eq("leaseUntilMillis", item.leaseUntilMillis),
+                size("attempts", item.attempts.size),
+            ),
+            updated.toDocument(),
+        )
+        check(result.modifiedCount == 1L) { "script job item $itemId start was changed concurrently" }
         refreshJob(jobId, now)
     }
 
@@ -377,13 +394,6 @@ class MongoScriptJobRepository(
             refreshJob(id, System.currentTimeMillis())
         }
         return findItem(id, itemId)
-    }
-
-    private suspend fun replaceItem(item: ScriptJobItem) {
-        items.replaceOne(
-            and(eq("jobId", item.jobId.value), eq("itemId", item.id.value)),
-            item.toDocument(),
-        )
     }
 
     private suspend fun refreshJob(jobId: ScriptJobId, now: Long) {

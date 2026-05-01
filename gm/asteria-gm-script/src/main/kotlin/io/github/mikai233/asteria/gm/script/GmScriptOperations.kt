@@ -38,6 +38,7 @@ interface GmScriptOperations {
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
         timeout: Duration = 3.seconds,
+        requestedBy: String? = null,
     ): ScriptJobItem
 
     suspend fun cancelJob(
@@ -82,8 +83,9 @@ class ScriptJobGmScriptOperations(
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
         timeout: Duration,
+        requestedBy: String?,
     ): ScriptJobItem {
-        return jobs.retryItem(jobId, itemId, timeout)
+        return jobs.retryItem(jobId, itemId, timeout, requestedBy)
     }
 
     override suspend fun cancelJob(jobId: ScriptJobId, cancellation: ScriptJobCancellation): ScriptJob? {

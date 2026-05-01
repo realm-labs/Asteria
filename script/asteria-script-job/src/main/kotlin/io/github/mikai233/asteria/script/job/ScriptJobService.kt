@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.time.Duration
@@ -31,6 +32,8 @@ class ScriptJobService(
     private val claimBatchSize: Int = 64,
     private val leaseDuration: Duration = 30.seconds,
     private val leaseRenewalInterval: Duration = 10.seconds,
+    private val executionLimiter: ScriptJobExecutionLimiter = SemaphoreScriptJobExecutionLimiter(),
+    private val auditSink: ScriptJobAuditSink = NoopScriptJobAuditSink,
 ) {
     init {
         require(workerId.isNotBlank()) { "script job worker id must not be blank" }
@@ -49,6 +52,14 @@ class ScriptJobService(
             val job = ScriptJob(id, command)
             val items = command.expandItems(id)
             repository.create(job, items)
+            audit(
+                ScriptJobAuditEvent(
+                    type = ScriptJobAuditEventType.JobSubmitted,
+                    jobId = id,
+                    operatorId = command.metadata.requester,
+                    attributes = command.auditAttributes() + mapOf("itemCount" to items.size.toString()),
+                ),
+            )
             scope.launch {
                 runClaimedItems(job.id, timeout)
             }
@@ -60,6 +71,7 @@ class ScriptJobService(
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
         timeout: Duration = 3.seconds,
+        requestedBy: String? = null,
     ): ScriptJobItem {
         val job = requireNotNull(repository.find(jobId)) { "script job $jobId not found" }
         val item = requireNotNull(repository.findItem(jobId, itemId)) { "script job item $itemId not found" }
@@ -76,8 +88,21 @@ class ScriptJobService(
                 leaseOwner = workerId,
                 leaseUntilMillis = leaseUntilMillis(timeout),
             )
+            audit(
+                ScriptJobAuditEvent(
+                    type = ScriptJobAuditEventType.ItemRetryRequested,
+                    jobId = job.id,
+                    itemId = item.id,
+                    attempt = attempt,
+                    workerId = workerId,
+                    status = ScriptJobItemStatus.Running,
+                    operatorId = requestedBy,
+                    attributes = command.auditAttributes(),
+                ),
+            )
+            auditItemStarted(job.id, item.id, attempt, command)
             scope.launch {
-                runItem(job.id, item.id, attempt, command, timeout)
+                limitAndRunItem(job.id, item.id, attempt, command, timeout)
             }
             requireNotNull(repository.findItem(job.id, item.id))
         }
@@ -103,7 +128,21 @@ class ScriptJobService(
         id: ScriptJobId,
         cancellation: ScriptJobCancellation = ScriptJobCancellation(),
     ): ScriptJob? {
-        return repository.cancelJob(id, cancellation)
+        val job = repository.cancelJob(id, cancellation)
+        if (job != null) {
+            audit(
+                ScriptJobAuditEvent(
+                    type = ScriptJobAuditEventType.JobCancelled,
+                    jobId = id,
+                    operatorId = cancellation.requestedBy,
+                    attributes = job.command.auditAttributes() + mapOf(
+                        "reason" to (cancellation.reason ?: "none"),
+                        "cancelledItems" to job.cancelledItems.toString(),
+                    ),
+                ),
+            )
+        }
+        return job
     }
 
     suspend fun cancelItem(
@@ -111,7 +150,20 @@ class ScriptJobService(
         itemId: ScriptJobItemId,
         cancellation: ScriptJobCancellation = ScriptJobCancellation(),
     ): ScriptJobItem? {
-        return repository.cancelItem(id, itemId, cancellation)
+        val item = repository.cancelItem(id, itemId, cancellation)
+        if (item != null) {
+            audit(
+                ScriptJobAuditEvent(
+                    type = ScriptJobAuditEventType.ItemCancelRequested,
+                    jobId = id,
+                    itemId = itemId,
+                    status = item.status,
+                    operatorId = cancellation.requestedBy,
+                    attributes = mapOf("reason" to (cancellation.reason ?: "none")),
+                ),
+            )
+        }
+        return item
     }
 
     suspend fun resumeIncompleteJobs(
@@ -121,6 +173,13 @@ class ScriptJobService(
         require(limit > 0) { "script job resume limit must be positive" }
         val jobs = repository.listRecoverableJobs(limit)
         jobs.forEach { job ->
+            audit(
+                ScriptJobAuditEvent(
+                    type = ScriptJobAuditEventType.JobResumed,
+                    jobId = job.id,
+                    attributes = job.command.auditAttributes(),
+                ),
+            )
             scope.launch {
                 resumeJob(job.id, timeout)
             }
@@ -128,8 +187,42 @@ class ScriptJobService(
         return jobs
     }
 
+    fun startRecoveryLoop(
+        timeout: Duration = 3.seconds,
+        limit: Int = 100,
+        interval: Duration = 30.seconds,
+    ): Job {
+        require(limit > 0) { "script job recovery limit must be positive" }
+        require(interval > Duration.ZERO) { "script job recovery interval must be positive" }
+        return scope.launch {
+            while (isActive) {
+                delay(interval)
+                runCatching {
+                    val resumed = resumeIncompleteJobs(timeout, limit)
+                    metrics.counter("asteria.script.job.recovery.scan.total").increment()
+                    if (resumed.isNotEmpty()) {
+                        metrics.counter("asteria.script.job.recovery.resumed.total").increment(resumed.size.toLong())
+                    }
+                }.onFailure {
+                    metrics.counter("asteria.script.job.recovery.scan.failed.total").increment()
+                }
+            }
+        }
+    }
+
     private suspend fun resumeJob(jobId: ScriptJobId, timeout: Duration) {
-        repository.expireLeasedRunningItems(jobId)
+        repository.expireLeasedRunningItems(jobId).forEach { item ->
+            audit(
+                ScriptJobAuditEvent(
+                    type = ScriptJobAuditEventType.ItemExpired,
+                    jobId = jobId,
+                    itemId = item.id,
+                    attempt = item.attempts.lastOrNull()?.attempt,
+                    status = item.status,
+                    attributes = item.attempts.lastOrNull()?.command?.auditAttributes().orEmpty(),
+                ),
+            )
+        }
         runClaimedItems(jobId, timeout)
     }
 
@@ -145,20 +238,77 @@ class ScriptJobService(
             if (claimed.isEmpty()) {
                 return
             }
-            claimed.forEach { item ->
-                val current = repository.findItem(jobId, item.id) ?: item
-                val attempt = current.attempts.size + 1
-                val command = current.command(job, attempt)
-                repository.markItemRunning(
-                    jobId = job.id,
-                    itemId = current.id,
+            claimed.map { item ->
+                scope.launch {
+                    startClaimedItem(job, item, timeout)
+                }
+            }.joinAll()
+        }
+    }
+
+    private suspend fun startClaimedItem(
+        job: ScriptJob,
+        item: ScriptJobItem,
+        timeout: Duration,
+    ) {
+        executionLimiter.limit(
+            ScriptJobExecutionContext(
+                jobId = job.id,
+                itemId = item.id,
+                attempt = item.attempts.size + 1,
+                command = item.command(job, item.attempts.size + 1),
+                workerId = workerId,
+            ),
+        ) {
+            val latestJob = repository.find(job.id) ?: return@limit
+            val latestItem = repository.findItem(job.id, item.id) ?: item
+            if (latestItem.status != ScriptJobItemStatus.Pending) {
+                return@limit
+            }
+            if (
+                latestItem.leaseOwner != workerId ||
+                latestItem.leaseUntilMillis == null ||
+                latestItem.leaseUntilMillis <= System.currentTimeMillis()
+            ) {
+                return@limit
+            }
+            val attempt = latestItem.attempts.size + 1
+            val command = latestItem.command(latestJob, attempt)
+            repository.markItemRunning(
+                jobId = latestJob.id,
+                itemId = latestItem.id,
+                attempt = attempt,
+                command = command,
+                leaseOwner = workerId,
+                leaseUntilMillis = latestItem.leaseUntilMillis,
+            )
+            auditItemStarted(latestJob.id, latestItem.id, attempt, command)
+            runItem(latestJob.id, latestItem.id, attempt, command, timeout)
+        }
+    }
+
+    private suspend fun limitAndRunItem(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        command: ScriptExecutionCommand,
+        timeout: Duration,
+    ) {
+        val heartbeat = startLeaseHeartbeat(jobId, itemId, attempt, timeout)
+        try {
+            executionLimiter.limit(
+                ScriptJobExecutionContext(
+                    jobId = jobId,
+                    itemId = itemId,
                     attempt = attempt,
                     command = command,
-                    leaseOwner = workerId,
-                    leaseUntilMillis = current.leaseUntilMillis ?: leaseUntilMillis(timeout),
-                )
-                runItem(job.id, current.id, attempt, command, timeout)
+                    workerId = workerId,
+                ),
+            ) {
+                runItem(jobId, itemId, attempt, command, timeout, manageHeartbeat = false)
             }
+        } finally {
+            heartbeat.cancel()
         }
     }
 
@@ -172,10 +322,11 @@ class ScriptJobService(
         attempt: Int,
         command: ScriptExecutionCommand,
         timeout: Duration,
+        manageHeartbeat: Boolean = true,
     ) {
         tracer.span("script.job.item.run", jobTraceAttributes(jobId, command)) {
             metrics.counter("asteria.script.job.item.running.total", command.metricTags()).increment()
-            val heartbeat = startLeaseHeartbeat(jobId, itemId, attempt, timeout)
+            val heartbeat = if (manageHeartbeat) startLeaseHeartbeat(jobId, itemId, attempt, timeout) else null
             try {
                 val result = metrics.timer("asteria.script.job.item.duration", command.metricTags()).record {
                     runCatching {
@@ -205,18 +356,41 @@ class ScriptJobService(
                     error = result.results.firstOrNull { !it.success }?.error,
                 )
                 if (finished) {
+                    val finalStatus = repository.findItem(jobId, itemId)?.status ?: status
                     metrics.counter(
                         "asteria.script.job.item.finished.total",
-                        command.metricTags() + MetricTags.of("status" to status.name),
+                        command.metricTags() + MetricTags.of("status" to finalStatus.name),
                     ).increment()
+                    audit(
+                        ScriptJobAuditEvent(
+                            type = finalStatus.auditEventType(),
+                            jobId = jobId,
+                            itemId = itemId,
+                            attempt = attempt,
+                            workerId = workerId,
+                            status = finalStatus,
+                            operatorId = command.metadata.requester,
+                            attributes = command.auditAttributes() + result.results.auditSummary(),
+                        ),
+                    )
                 } else {
                     metrics.counter(
                         "asteria.script.job.item.stale_finish.total",
                         command.metricTags(),
                     ).increment()
+                    audit(
+                        ScriptJobAuditEvent(
+                            type = ScriptJobAuditEventType.ItemStaleFinishIgnored,
+                            jobId = jobId,
+                            itemId = itemId,
+                            attempt = attempt,
+                            workerId = workerId,
+                            attributes = command.auditAttributes(),
+                        ),
+                    )
                 }
             } finally {
-                heartbeat.cancel()
+                heartbeat?.cancel()
             }
         }
     }
@@ -249,6 +423,41 @@ class ScriptJobService(
             ScriptJobItemStatus.Completed
         } else {
             ScriptJobItemStatus.Failed
+        }
+    }
+
+    private suspend fun auditItemStarted(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        command: ScriptExecutionCommand,
+    ) {
+        audit(
+            ScriptJobAuditEvent(
+                type = ScriptJobAuditEventType.ItemStarted,
+                jobId = jobId,
+                itemId = itemId,
+                attempt = attempt,
+                workerId = workerId,
+                status = ScriptJobItemStatus.Running,
+                operatorId = command.metadata.requester,
+                attributes = command.auditAttributes(),
+            ),
+        )
+    }
+
+    private suspend fun audit(event: ScriptJobAuditEvent) {
+        auditSink.record(event)
+    }
+
+    private fun ScriptJobItemStatus.auditEventType(): ScriptJobAuditEventType {
+        return when (this) {
+            ScriptJobItemStatus.Completed -> ScriptJobAuditEventType.ItemCompleted
+            ScriptJobItemStatus.Failed -> ScriptJobAuditEventType.ItemFailed
+            ScriptJobItemStatus.Cancelled -> ScriptJobAuditEventType.ItemCancelled
+            ScriptJobItemStatus.Pending,
+            ScriptJobItemStatus.Running,
+            -> error("script job item status $this is not terminal")
         }
     }
 

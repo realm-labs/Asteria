@@ -237,6 +237,7 @@ class GmScriptController(
                 jobId = id,
                 itemId = ScriptJobItemId(itemId),
                 timeout = retryRequest.timeoutMillis.milliseconds,
+                requestedBy = operation.principal.id,
             )
         }
     }

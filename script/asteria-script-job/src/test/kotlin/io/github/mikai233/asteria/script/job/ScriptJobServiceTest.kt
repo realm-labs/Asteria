@@ -14,11 +14,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 class ScriptJobServiceTest {
     @Test
@@ -52,7 +55,10 @@ class ScriptJobServiceTest {
             assertEquals(1, job.failedItems)
             assertEquals(ScriptJobStatus.PartialFailed, job.status)
             assertEquals(2, items.sumOf { it.results.size })
-            assertEquals(listOf(ScriptJobItemStatus.Completed, ScriptJobItemStatus.Failed), items.map { it.status })
+            assertEquals(
+                listOf(ScriptJobItemStatus.Completed, ScriptJobItemStatus.Failed),
+                items.map { it.status }.sortedBy { it.name },
+            )
             assertTrue(items.all { it.attempts.size == 1 })
         } finally {
             scope.cancel()
@@ -392,6 +398,219 @@ class ScriptJobServiceTest {
         assertTrue(token.isCancellationRequested())
     }
 
+    @Test
+    fun auditSinkRecordsJobItemLifecycle() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val repository = InMemoryScriptJobRepository()
+        val auditSink = RecordingScriptJobAuditSink()
+        val service = ScriptJobService(
+            runtime = FakeScriptRuntime(
+                ScriptExecutionBatchResult(
+                    executionId = "job-1.1.1",
+                    results = listOf(ScriptExecutionResult("job-1.1.1", success = true, nodeAddress = "node-1")),
+                ),
+            ),
+            repository = repository,
+            scope = scope,
+            auditSink = auditSink,
+        )
+
+        try {
+            service.submit(command("job-1", listOf("node-1"), requester = "gm-1"))
+            awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Completed)
+
+            assertEquals(
+                listOf(
+                    ScriptJobAuditEventType.JobSubmitted,
+                    ScriptJobAuditEventType.ItemStarted,
+                    ScriptJobAuditEventType.ItemCompleted,
+                ),
+                auditSink.events.map { it.type },
+            )
+            assertTrue(auditSink.events.last().attributes["successCount"] == "1")
+            assertEquals("gm-1", auditSink.events.last().operatorId)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun executionLimiterCapsConcurrentItems() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val repository = InMemoryScriptJobRepository()
+        val runtime = MeasuringScriptRuntime(delayMillis = 50)
+        val service = ScriptJobService(
+            runtime = runtime,
+            repository = repository,
+            scope = scope,
+            executionLimiter = SemaphoreScriptJobExecutionLimiter(globalLimit = 2),
+        )
+
+        try {
+            service.submit(command("job-1", listOf("node-1", "node-2", "node-3", "node-4")))
+            awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Completed)
+
+            assertEquals(2, runtime.maxActive.get())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun sharedPermitRepositoryCapsConcurrentItemsAcrossWorkers() = runBlocking {
+        val scope1 = CoroutineScope(SupervisorJob())
+        val scope2 = CoroutineScope(SupervisorJob())
+        val repository = InMemoryScriptJobRepository()
+        val permitRepository = InMemoryScriptJobPermitRepository()
+        val runtime = MeasuringScriptRuntime(delayMillis = 50)
+        val service1 = ScriptJobService(
+            runtime = runtime,
+            repository = repository,
+            scope = scope1,
+            workerId = "worker-1",
+            executionLimiter = RepositoryScriptJobExecutionLimiter(
+                repository = permitRepository,
+                scope = scope1,
+                maxConcurrentItems = 2,
+                retryDelay = 5.milliseconds,
+            ),
+        )
+        val service2 = ScriptJobService(
+            runtime = runtime,
+            repository = repository,
+            scope = scope2,
+            workerId = "worker-2",
+            executionLimiter = RepositoryScriptJobExecutionLimiter(
+                repository = permitRepository,
+                scope = scope2,
+                maxConcurrentItems = 2,
+                retryDelay = 5.milliseconds,
+            ),
+        )
+
+        try {
+            service1.submit(command("job-1", listOf("node-1", "node-2", "node-3")))
+            service2.submit(command("job-2", listOf("node-4", "node-5", "node-6")))
+            awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Completed)
+            awaitJob(repository, ScriptJobId("job-2"), ScriptJobStatus.Completed)
+
+            assertEquals(2, runtime.maxActive.get())
+        } finally {
+            scope1.cancel()
+            scope2.cancel()
+        }
+    }
+
+    @Test
+    fun perJobConcurrencyOptionCapsOnlyThatJob() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val repository = InMemoryScriptJobRepository()
+        val permitRepository = InMemoryScriptJobPermitRepository()
+        val runtime = MeasuringScriptRuntime(delayMillis = 50)
+        val service = ScriptJobService(
+            runtime = runtime,
+            repository = repository,
+            scope = scope,
+            workerId = "worker-1",
+            executionLimiter = RepositoryScriptJobExecutionLimiter(
+                repository = permitRepository,
+                scope = scope,
+                maxConcurrentItems = 8,
+                retryDelay = 5.milliseconds,
+            ),
+        )
+
+        try {
+            service.submit(
+                command(
+                    "job-1",
+                    listOf("node-1", "node-2", "node-3", "node-4"),
+                    attributes = mapOf(ScriptJobExecutionAttributes.MaxConcurrentItems to "2"),
+                ),
+            )
+            awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Completed)
+
+            assertEquals(2, runtime.maxActive.get())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun permitRepositoryExpiresLeases() = runBlocking {
+        val repository = InMemoryScriptJobPermitRepository()
+        val first = assertNotNull(
+            repository.acquire(
+                pool = "scripts",
+                owner = "worker-1",
+                permits = 1,
+                limit = 1,
+                leaseUntilMillis = 2_000,
+                nowMillis = 1_000,
+            ),
+        )
+        val blocked = repository.acquire(
+            pool = "scripts",
+            owner = "worker-2",
+            permits = 1,
+            limit = 1,
+            leaseUntilMillis = 2_000,
+            nowMillis = 1_000,
+        )
+        val expired = assertNotNull(
+            repository.acquire(
+                pool = "scripts",
+                owner = "worker-2",
+                permits = 1,
+                limit = 1,
+                leaseUntilMillis = 3_000,
+                nowMillis = 2_001,
+            ),
+        )
+
+        assertEquals(null, blocked)
+        assertEquals(false, repository.renew(first, leaseUntilMillis = 3_000, nowMillis = 2_001))
+        assertEquals("worker-2", expired.owner)
+    }
+
+    @Test
+    fun moduleDefaultConcurrencyIsHighEnoughForLargeBatches() {
+        val options = ScriptJobModuleBuilder().build()
+
+        assertEquals(256, options.maxConcurrentItems)
+    }
+
+    @Test
+    fun recoveryLoopProcessesIncompleteJobs() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val repository = InMemoryScriptJobRepository()
+        val service = ScriptJobService(
+            runtime = FakeScriptRuntime(
+                ScriptExecutionBatchResult(
+                    executionId = "job-1.1.1",
+                    results = listOf(ScriptExecutionResult("job-1.1.1", success = true, nodeAddress = "node-1")),
+                ),
+            ),
+            repository = repository,
+            scope = scope,
+        )
+        val jobId = ScriptJobId("job-1")
+        repository.create(
+            ScriptJob(jobId, command("job-1", listOf("node-1"))),
+            listOf(ScriptJobItem(ScriptJobItemId("1"), jobId, ScriptTarget.Node(listOf("node-1")))),
+        )
+
+        try {
+            val loop = service.startRecoveryLoop(interval = 10.milliseconds)
+            val item = awaitItem(repository, jobId, ScriptJobItemId("1"), ScriptJobItemStatus.Completed)
+
+            assertEquals(ScriptJobItemStatus.Completed, item.status)
+            loop.cancel()
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private suspend fun awaitJob(
         repository: ScriptJobRepository,
         id: ScriptJobId,
@@ -427,12 +646,13 @@ class ScriptJobServiceTest {
         executionId: String,
         nodes: List<String> = listOf("node-1", "node-2"),
         requester: String? = null,
+        attributes: Map<String, String> = emptyMap(),
     ): ScriptExecutionCommand {
         return ScriptExecutionCommand(
             executionId = executionId,
             target = ScriptTarget.Node(nodes),
             artifact = ScriptArtifact("job-test", "fake", ByteArray(0)),
-            metadata = ScriptExecutionMetadata(requester = requester),
+            metadata = ScriptExecutionMetadata(requester = requester, attributes = attributes),
         )
     }
 }
@@ -451,5 +671,41 @@ private class FakeScriptRuntime(
     }
 
     override fun dispatch(command: ScriptExecutionCommand) {
+    }
+}
+
+private class MeasuringScriptRuntime(
+    private val delayMillis: Long,
+) : ScriptRuntime {
+    private val active = AtomicInteger()
+    val maxActive = AtomicInteger()
+
+    override suspend fun execute(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionResult {
+        return executeAll(command, timeout).results.single()
+    }
+
+    override suspend fun executeAll(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionBatchResult {
+        val current = active.incrementAndGet()
+        maxActive.updateAndGet { maxOf(it, current) }
+        try {
+            delay(delayMillis)
+            return ScriptExecutionBatchResult(
+                executionId = command.executionId,
+                results = listOf(ScriptExecutionResult(command.executionId, success = true)),
+            )
+        } finally {
+            active.decrementAndGet()
+        }
+    }
+
+    override fun dispatch(command: ScriptExecutionCommand) {
+    }
+}
+
+private class RecordingScriptJobAuditSink : ScriptJobAuditSink {
+    val events: MutableList<ScriptJobAuditEvent> = Collections.synchronizedList(mutableListOf())
+
+    override suspend fun record(event: ScriptJobAuditEvent) {
+        events += event
     }
 }

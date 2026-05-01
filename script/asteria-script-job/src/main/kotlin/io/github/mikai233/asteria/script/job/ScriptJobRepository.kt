@@ -157,6 +157,12 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
                 "script job item $itemId cannot start from status ${item.status}"
             }
             require(leaseUntilMillis > now) { "script job item lease must be in the future" }
+            item.leaseOwner?.let {
+                require(it == leaseOwner) { "script job item $itemId is leased by another worker" }
+            }
+            item.leaseUntilMillis?.let {
+                require(it > now) { "script job item $itemId lease already expired" }
+            }
             stored.items[itemId] = item.copy(
                 status = ScriptJobItemStatus.Running,
                 attempts = item.attempts + ScriptJobItemAttempt(

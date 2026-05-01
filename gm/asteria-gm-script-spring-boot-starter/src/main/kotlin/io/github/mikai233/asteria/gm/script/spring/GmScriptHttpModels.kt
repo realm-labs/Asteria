@@ -8,6 +8,7 @@ import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptResourceRef
 import io.github.mikai233.asteria.script.ScriptTarget
+import io.github.mikai233.asteria.script.job.ScriptJobExecutionAttributes
 import java.util.Base64
 
 /**
@@ -21,6 +22,7 @@ data class GmScriptSubmitRequest(
     val target: GmScriptTargetRequest,
     val artifact: GmScriptArtifactRequest,
     val metadata: GmScriptMetadataRequest = GmScriptMetadataRequest(),
+    val options: GmScriptExecutionOptionsRequest = GmScriptExecutionOptionsRequest(),
     val timeoutMillis: Long = 3_000,
 ) {
     init {
@@ -36,10 +38,27 @@ data class GmScriptSubmitRequest(
             metadata = ScriptExecutionMetadata(
                 requester = operatorId,
                 reason = metadata.reason,
-                attributes = metadata.attributes,
+                attributes = metadata.attributes + options.toMetadataAttributes(),
                 resources = metadata.resources.map { it.toScriptResourceRef() },
             ),
         )
+    }
+}
+
+/**
+ * Execution controls selected from the GM surface for one submitted job.
+ */
+data class GmScriptExecutionOptionsRequest(
+    val maxConcurrentItems: Int? = null,
+) {
+    init {
+        maxConcurrentItems?.let { require(it > 0) { "GM script max concurrent items must be positive" } }
+    }
+
+    fun toMetadataAttributes(): Map<String, String> {
+        return buildMap {
+            maxConcurrentItems?.let { put(ScriptJobExecutionAttributes.MaxConcurrentItems, it.toString()) }
+        }
     }
 }
 

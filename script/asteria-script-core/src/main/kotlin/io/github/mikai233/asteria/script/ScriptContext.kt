@@ -14,6 +14,8 @@ interface ScriptContext {
         get() = request?.metadata ?: ScriptExecutionMetadata()
     val resources: ScriptResources
         get() = ScriptResources(metadata.resources, services.find<ScriptResourceResolver>())
+    val tables: ScriptResourceTableReader
+        get() = ScriptResourceTableReader(resources)
     val cancellation: ScriptCancellationToken
         get() = request
             ?.let { services.find<ScriptCancellationProvider>()?.token(it) }

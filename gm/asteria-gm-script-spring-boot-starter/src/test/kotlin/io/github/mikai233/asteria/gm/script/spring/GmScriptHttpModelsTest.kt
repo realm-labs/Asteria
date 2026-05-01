@@ -1,6 +1,7 @@
 package io.github.mikai233.asteria.gm.script.spring
 
 import io.github.mikai233.asteria.script.ScriptTarget
+import io.github.mikai233.asteria.script.job.ScriptJobExecutionAttributes
 import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -56,5 +57,23 @@ class GmScriptHttpModelsTest {
         val target = assertIs<ScriptTarget.Entity>(command.target)
         assertEquals("player", target.kind.value)
         assertEquals(listOf("1001", "1002"), target.ids)
+    }
+
+    @Test
+    fun `converts GM execution options to script metadata`() {
+        val request = GmScriptSubmitRequest(
+            executionId = "exec-3",
+            target = GmScriptTargetRequest(type = "entity", kind = "player", ids = listOf("1001")),
+            artifact = GmScriptArtifactRequest(
+                name = "compensate-player",
+                engine = "groovy",
+                bodyBase64 = Base64.getEncoder().encodeToString("ok".encodeToByteArray()),
+            ),
+            options = GmScriptExecutionOptionsRequest(maxConcurrentItems = 64),
+        )
+
+        val command = request.toCommand("alice")
+
+        assertEquals("64", command.metadata.attributes[ScriptJobExecutionAttributes.MaxConcurrentItems])
     }
 }
