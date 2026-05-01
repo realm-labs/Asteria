@@ -40,17 +40,77 @@ data class MongoPath(
 
     companion object {
         /**
-         * Encodes path segments that are unsafe in Mongo field names.
+         * Encodes one logical field path segment into a Mongo update-safe segment.
+         *
+         * Dynamic map keys must go through this function before they are used in
+         * `$set`/`$unset` paths. The encoding is deliberately percent-based and
+         * escapes `%` first, so raw keys such as `a.b` and `a%2Eb` do not collapse
+         * to the same stored field name. Empty keys are also encoded because an
+         * empty update path segment would produce paths like `bag.`.
          */
         fun encodePathPart(part: Any?): String {
             val rawPart = when (part) {
                 is Enum<*> -> part.name
                 else -> part.toString()
             }
-            return rawPart
-                .replace("%", "%25")
-                .replace(".", "%2E")
-                .replace("$", "%24")
+            if (rawPart.isEmpty()) return "%EMPTY"
+
+            return buildString(rawPart.length) {
+                rawPart.forEach { char ->
+                    when (char) {
+                        '%' -> append("%25")
+                        '.' -> append("%2E")
+                        '$' -> append("%24")
+                        '\u0000' -> append("%00")
+                        else -> append(char)
+                    }
+                }
+            }
+        }
+
+        /**
+         * Decodes a path segment produced by [encodePathPart].
+         *
+         * This is mainly useful for diagnostics and tests. Normal dirty-write
+         * paths should stay encoded until Mongo applies the update.
+         */
+        fun decodePathPart(part: String): String {
+            if (part == "%EMPTY") return ""
+
+            return buildString(part.length) {
+                var index = 0
+                while (index < part.length) {
+                    if (part[index] == '%' && index + 2 < part.length) {
+                        when (part.substring(index + 1, index + 3).uppercase()) {
+                            "25" -> {
+                                append('%')
+                                index += 3
+                                continue
+                            }
+
+                            "2E" -> {
+                                append('.')
+                                index += 3
+                                continue
+                            }
+
+                            "24" -> {
+                                append('$')
+                                index += 3
+                                continue
+                            }
+
+                            "00" -> {
+                                append('\u0000')
+                                index += 3
+                                continue
+                            }
+                        }
+                    }
+                    append(part[index])
+                    index++
+                }
+            }
         }
     }
 }
