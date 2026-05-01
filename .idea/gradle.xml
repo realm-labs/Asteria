@@ -11,6 +11,7 @@
             <option value="$PROJECT_DIR$/asteria-actor" />
             <option value="$PROJECT_DIR$/asteria-cluster-pekko" />
             <option value="$PROJECT_DIR$/asteria-config" />
+            <option value="$PROJECT_DIR$/asteria-config-luban" />
             <option value="$PROJECT_DIR$/asteria-core" />
             <option value="$PROJECT_DIR$/asteria-gateway-netty" />
             <option value="$PROJECT_DIR$/asteria-message" />

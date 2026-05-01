@@ -23,5 +23,6 @@ include(
     "asteria-gateway-netty",
     "asteria-persistence",
     "asteria-config",
+    "asteria-config-luban",
     "asteria-starter",
 )
