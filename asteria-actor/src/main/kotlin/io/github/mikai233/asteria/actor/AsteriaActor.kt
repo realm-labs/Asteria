@@ -1,6 +1,12 @@
 package io.github.mikai233.asteria.actor
 
 import io.github.mikai233.asteria.core.NodeRuntime
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
+import io.github.mikai233.asteria.observability.NoopTracer
+import io.github.mikai233.asteria.observability.TraceAttributes
+import io.github.mikai233.asteria.observability.Tracer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -33,6 +39,35 @@ abstract class AsteriaActor<N : NodeRuntime>(
     }
 
     override fun aroundReceive(receive: PartialFunction<Any, BoxedUnit>?, msg: Any?) {
+        val tracer = runtime.services.find<Tracer>() ?: NoopTracer
+        val metrics = runtime.services.find<Metrics>() ?: NoopMetrics
+        val tags = MetricTags.of(
+            "actor" to javaClass.simpleName,
+            "message" to msg.messageName(),
+        )
+        val attributes = TraceAttributes.of(
+            "actor.class" to javaClass.name,
+            "actor.path" to self.path().toString(),
+            "actor.message" to msg.messageClassName(),
+        )
+        metrics.counter("asteria.actor.receive.total", tags).increment()
+        val startedAt = System.nanoTime()
+        try {
+            tracer.spanBlocking("actor.receive", attributes) {
+                runCatching {
+                    receiveMessage(receive, msg)
+                }.onFailure {
+                    error(it)
+                    metrics.counter("asteria.actor.receive.failed.total", tags).increment()
+                    throw it
+                }
+            }
+        } finally {
+            metrics.timer("asteria.actor.receive.duration", tags).record((System.nanoTime() - startedAt) / 1_000_000)
+        }
+    }
+
+    private fun receiveMessage(receive: PartialFunction<Any, BoxedUnit>?, msg: Any?) {
         when (msg) {
             is ActorCoroutineTask -> runCatching { msg.run() }
                 .onFailure { logger.error(it, "{} failed to run actor coroutine", self) }
@@ -42,6 +77,14 @@ abstract class AsteriaActor<N : NodeRuntime>(
 
             else -> super.aroundReceive(receive, msg)
         }
+    }
+
+    private fun Any?.messageName(): String {
+        return this?.javaClass?.simpleName ?: "null"
+    }
+
+    private fun Any?.messageClassName(): String {
+        return this?.javaClass?.name ?: "null"
     }
 
     fun execute(name: String, block: () -> Unit) {

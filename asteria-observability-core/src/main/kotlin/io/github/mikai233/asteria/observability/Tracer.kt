@@ -7,6 +7,12 @@ interface Tracer {
         block: suspend TraceScope.() -> T,
     ): T
 
+    fun <T> spanBlocking(
+        name: String,
+        attributes: TraceAttributes = TraceAttributes.Empty,
+        block: TraceScope.() -> T,
+    ): T
+
     fun currentContext(): TraceContext
 }
 
@@ -25,6 +31,15 @@ object NoopTracer : Tracer {
         name: String,
         attributes: TraceAttributes,
         block: suspend TraceScope.() -> T,
+    ): T {
+        require(name.isNotBlank()) { "span name must not be blank" }
+        return NoopTraceScope.block()
+    }
+
+    override fun <T> spanBlocking(
+        name: String,
+        attributes: TraceAttributes,
+        block: TraceScope.() -> T,
     ): T {
         require(name.isNotBlank()) { "span name must not be blank" }
         return NoopTraceScope.block()

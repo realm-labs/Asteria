@@ -3,6 +3,10 @@ package io.github.mikai233.asteria.script.job
 import io.github.mikai233.asteria.core.AsteriaDsl
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
+import io.github.mikai233.asteria.observability.NoopTracer
+import io.github.mikai233.asteria.observability.Tracer
 import io.github.mikai233.asteria.script.ScriptRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -27,6 +31,8 @@ class ScriptJobModule private constructor(
             runtime = context.services.get<ScriptRuntime>(),
             store = context.services.get(),
             scope = jobScope,
+            tracer = context.services.find<Tracer>() ?: NoopTracer,
+            metrics = context.services.find<Metrics>() ?: NoopMetrics,
         )
         scope = jobScope
         context.services.register(ScriptJobService::class, service)

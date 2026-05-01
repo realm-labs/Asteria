@@ -83,6 +83,9 @@ install(ObservabilityModule {
 })
 ```
 
+Installed observability services are consumed by framework modules such as actor receive/ask, script execution, and script
+jobs, so projects get baseline spans and metrics without changing game logic.
+
 Script execution is an opt-in extension:
 
 ```kotlin

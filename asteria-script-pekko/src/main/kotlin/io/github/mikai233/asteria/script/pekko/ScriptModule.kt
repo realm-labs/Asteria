@@ -3,6 +3,10 @@ package io.github.mikai233.asteria.script.pekko
 import io.github.mikai233.asteria.core.AsteriaDsl
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
+import io.github.mikai233.asteria.observability.NoopTracer
+import io.github.mikai233.asteria.observability.Tracer
 import io.github.mikai233.asteria.script.CompositeScriptAuditSink
 import io.github.mikai233.asteria.script.DefaultScriptPolicy
 import io.github.mikai233.asteria.script.InMemoryScriptExecutionStore
@@ -49,7 +53,12 @@ class ScriptModule private constructor(
     override suspend fun start(context: ModuleContext) {
         val system = context.services.get<ActorSystem>()
         val actor = system.actorOf(ScriptRuntimeActor.props(context.application), ScriptRuntimeActor.NAME)
-        val runtime = PekkoScriptRuntime(actor, system)
+        val runtime = PekkoScriptRuntime(
+            actor = actor,
+            system = system,
+            tracer = context.services.find<Tracer>() ?: NoopTracer,
+            metrics = context.services.find<Metrics>() ?: NoopMetrics,
+        )
         context.services.register(PekkoScriptRuntime::class, runtime)
         context.services.register(ScriptRuntime::class, runtime)
     }

@@ -1,5 +1,11 @@
 package io.github.mikai233.asteria.actor
 
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
+import io.github.mikai233.asteria.observability.NoopTracer
+import io.github.mikai233.asteria.observability.TraceAttributes
+import io.github.mikai233.asteria.observability.Tracer
 import kotlinx.coroutines.future.await
 import org.apache.pekko.actor.AbstractActor
 import org.apache.pekko.actor.ActorRef
@@ -26,8 +32,21 @@ suspend fun ActorRef.askAny(
 suspend inline fun <M : Any, reified R : Any> ActorRef.ask(
     message: M,
     timeout: Duration = 3.seconds,
+    tracer: Tracer = NoopTracer,
+    metrics: Metrics = NoopMetrics,
+    spanName: String = "actor.ask",
 ): R {
-    val response = askAny(message, timeout)
-    return response as? R
-        ?: error("expected actor response ${R::class.qualifiedName}, got ${response::class.qualifiedName}")
+    val tags = MetricTags.of("message" to message.javaClass.simpleName)
+    val attributes = TraceAttributes.of(
+        "actor.message" to message.javaClass.name,
+        "actor.response" to R::class.qualifiedName.orEmpty(),
+    )
+    return tracer.span(spanName, attributes) {
+        metrics.counter("asteria.actor.ask.total", tags).increment()
+        metrics.timer("asteria.actor.ask.duration", tags).record {
+            val response = askAny(message, timeout)
+            response as? R
+                ?: error("expected actor response ${R::class.qualifiedName}, got ${response::class.qualifiedName}")
+        }
+    }
 }
