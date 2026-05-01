@@ -216,6 +216,38 @@ class ScriptJobServiceTest {
     }
 
     @Test
+    fun repositoryRenewsRunningItemLease() = runBlocking {
+        val repository = InMemoryScriptJobRepository()
+        val jobId = ScriptJobId("job-1")
+        val itemId = ScriptJobItemId("1")
+        repository.create(
+            ScriptJob(jobId, command("job-1", listOf("node-1"))),
+            listOf(ScriptJobItem(itemId, jobId, ScriptTarget.Node(listOf("node-1")))),
+        )
+        val now = System.currentTimeMillis()
+        repository.markItemRunning(
+            jobId = jobId,
+            itemId = itemId,
+            attempt = 1,
+            command = command("job-1.1.1", listOf("node-1")),
+            leaseOwner = "worker-1",
+            leaseUntilMillis = now + 1_000,
+        )
+
+        val renewed = repository.renewRunningItemLease(
+            jobId = jobId,
+            itemId = itemId,
+            attempt = 1,
+            leaseOwner = "worker-1",
+            leaseUntilMillis = now + 2_000,
+        )
+        val item = assertNotNull(repository.findItem(jobId, itemId))
+
+        assertTrue(renewed)
+        assertEquals(now + 2_000, item.leaseUntilMillis)
+    }
+
+    @Test
     fun cancelJobCancelsPendingItems() = runBlocking {
         val repository = InMemoryScriptJobRepository()
         val jobId = ScriptJobId("job-1")

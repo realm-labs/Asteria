@@ -197,6 +197,33 @@ class MongoScriptJobRepository(
         refreshJob(jobId, now)
     }
 
+    override suspend fun renewRunningItemLease(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        leaseOwner: String,
+        leaseUntilMillis: Long,
+    ): Boolean {
+        require(attempt > 0) { "script job item attempt must be greater than 0" }
+        require(leaseOwner.isNotBlank()) { "script job item lease owner must not be blank" }
+        val now = System.currentTimeMillis()
+        require(leaseUntilMillis > now) { "script job item lease must be in the future" }
+        val result = items.updateOne(
+            and(
+                eq("jobId", jobId.value),
+                eq("itemId", itemId.value),
+                eq("status", ScriptJobItemStatus.Running.name),
+                eq("leaseOwner", leaseOwner),
+                eq("attempts.attempt", attempt),
+            ),
+            combine(
+                set("leaseUntilMillis", leaseUntilMillis),
+                set("updatedAtMillis", now),
+            ),
+        )
+        return result.modifiedCount == 1L
+    }
+
     override suspend fun expireLeasedRunningItems(
         id: ScriptJobId,
         nowMillis: Long,

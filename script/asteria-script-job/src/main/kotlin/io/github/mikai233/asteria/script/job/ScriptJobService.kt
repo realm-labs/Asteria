@@ -13,6 +13,9 @@ import io.github.mikai233.asteria.script.ScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptRuntime
 import io.github.mikai233.asteria.script.ScriptTarget
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.time.Duration
@@ -27,11 +30,13 @@ class ScriptJobService(
     private val workerId: String = "script-job-${UUID.randomUUID()}",
     private val claimBatchSize: Int = 64,
     private val leaseDuration: Duration = 30.seconds,
+    private val leaseRenewalInterval: Duration = 10.seconds,
 ) {
     init {
         require(workerId.isNotBlank()) { "script job worker id must not be blank" }
         require(claimBatchSize > 0) { "script job claim batch size must be positive" }
         require(leaseDuration > Duration.ZERO) { "script job lease duration must be positive" }
+        require(leaseRenewalInterval > Duration.ZERO) { "script job lease renewal interval must be positive" }
     }
 
     suspend fun submit(
@@ -170,36 +175,64 @@ class ScriptJobService(
     ) {
         tracer.span("script.job.item.run", jobTraceAttributes(jobId, command)) {
             metrics.counter("asteria.script.job.item.running.total", command.metricTags()).increment()
-            val result = metrics.timer("asteria.script.job.item.duration", command.metricTags()).record {
-                runCatching {
-                    runtime.executeAll(command, timeout)
-                }.getOrElse {
-                    error(it)
-                    ScriptExecutionBatchResult(
-                        executionId = command.executionId,
-                        results = listOf(
-                            ScriptExecutionResult(
-                                executionId = command.executionId,
-                                success = false,
-                                error = it.message,
+            val heartbeat = startLeaseHeartbeat(jobId, itemId, attempt, timeout)
+            try {
+                val result = metrics.timer("asteria.script.job.item.duration", command.metricTags()).record {
+                    runCatching {
+                        runtime.executeAll(command, timeout)
+                    }.getOrElse {
+                        error(it)
+                        ScriptExecutionBatchResult(
+                            executionId = command.executionId,
+                            results = listOf(
+                                ScriptExecutionResult(
+                                    executionId = command.executionId,
+                                    success = false,
+                                    error = it.message,
+                                ),
                             ),
-                        ),
-                    )
+                        )
+                    }
+                }
+                val status = result.itemStatus()
+                repository.markItemFinished(
+                    jobId = jobId,
+                    itemId = itemId,
+                    attempt = attempt,
+                    status = status,
+                    results = result.results,
+                    error = result.results.firstOrNull { !it.success }?.error,
+                )
+                metrics.counter(
+                    "asteria.script.job.item.finished.total",
+                    command.metricTags() + MetricTags.of("status" to status.name),
+                ).increment()
+            } finally {
+                heartbeat.cancel()
+            }
+        }
+    }
+
+    private fun startLeaseHeartbeat(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        timeout: Duration,
+    ): Job {
+        return scope.launch {
+            while (isActive) {
+                delay(leaseRenewalInterval)
+                val renewed = repository.renewRunningItemLease(
+                    jobId = jobId,
+                    itemId = itemId,
+                    attempt = attempt,
+                    leaseOwner = workerId,
+                    leaseUntilMillis = leaseUntilMillis(timeout),
+                )
+                if (!renewed) {
+                    return@launch
                 }
             }
-            val status = result.itemStatus()
-            repository.markItemFinished(
-                jobId = jobId,
-                itemId = itemId,
-                attempt = attempt,
-                status = status,
-                results = result.results,
-                error = result.results.firstOrNull { !it.success }?.error,
-            )
-            metrics.counter(
-                "asteria.script.job.item.finished.total",
-                command.metricTags() + MetricTags.of("status" to status.name),
-            ).increment()
         }
     }
 

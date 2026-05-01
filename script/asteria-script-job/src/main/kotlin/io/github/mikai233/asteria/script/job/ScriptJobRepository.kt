@@ -47,6 +47,14 @@ interface ScriptJobRepository {
         error: String? = null,
     )
 
+    suspend fun renewRunningItemLease(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        leaseOwner: String,
+        leaseUntilMillis: Long,
+    ): Boolean
+
     suspend fun expireLeasedRunningItems(
         id: ScriptJobId,
         nowMillis: Long = System.currentTimeMillis(),
@@ -197,6 +205,35 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
                 updatedAtMillis = now,
             )
             stored.refresh(now)
+        }
+    }
+
+    override suspend fun renewRunningItemLease(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        leaseOwner: String,
+        leaseUntilMillis: Long,
+    ): Boolean {
+        require(attempt > 0) { "script job item attempt must be greater than 0" }
+        require(leaseOwner.isNotBlank()) { "script job item lease owner must not be blank" }
+        return mutex.withLock {
+            val stored = jobs[jobId] ?: return@withLock false
+            val item = stored.items[itemId] ?: return@withLock false
+            val now = System.currentTimeMillis()
+            require(leaseUntilMillis > now) { "script job item lease must be in the future" }
+            if (
+                item.status != ScriptJobItemStatus.Running ||
+                item.attempts.lastOrNull()?.attempt != attempt ||
+                item.leaseOwner != leaseOwner
+            ) {
+                return@withLock false
+            }
+            stored.items[itemId] = item.copy(
+                leaseUntilMillis = leaseUntilMillis,
+                updatedAtMillis = now,
+            )
+            true
         }
     }
 
