@@ -7,6 +7,7 @@ import io.github.mikai233.asteria.core.SingletonName
 import io.github.mikai233.asteria.script.ScriptExecutionCommand as ModelScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionMetadata as ModelScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult as ModelScriptExecutionResult
+import io.github.mikai233.asteria.script.ScriptResourceRef as ModelScriptResourceRef
 import io.github.mikai233.asteria.script.ScriptTarget as ModelScriptTarget
 import io.github.mikai233.asteria.script.ScriptArtifact as ModelScriptArtifact
 
@@ -62,6 +63,7 @@ fun ModelScriptExecutionMetadata.toProto(): ScriptExecutionMetadata {
     requester?.let { builder.requester = it }
     reason?.let { builder.reason = it }
     builder.putAllAttributes(attributes)
+    builder.addAllResources(resources.map { it.toProto() })
     return builder.build()
 }
 
@@ -69,6 +71,29 @@ fun ScriptExecutionMetadata.toModel(): ModelScriptExecutionMetadata {
     return ModelScriptExecutionMetadata(
         requester = if (hasRequester()) requester else null,
         reason = if (hasReason()) reason else null,
+        attributes = attributesMap,
+        resources = resourcesList.map { it.toModel() },
+    )
+}
+
+fun ModelScriptResourceRef.toProto(): ScriptResourceRef {
+    val builder = ScriptResourceRef.newBuilder()
+        .setName(name)
+        .setUri(uri)
+        .putAllAttributes(attributes)
+    checksum?.let { builder.checksum = it }
+    format?.let { builder.format = it }
+    sizeBytes?.let { builder.sizeBytes = it }
+    return builder.build()
+}
+
+fun ScriptResourceRef.toModel(): ModelScriptResourceRef {
+    return ModelScriptResourceRef(
+        name = name,
+        uri = uri,
+        checksum = if (hasChecksum()) checksum else null,
+        format = if (hasFormat()) format else null,
+        sizeBytes = if (hasSizeBytes()) sizeBytes else null,
         attributes = attributesMap,
     )
 }

@@ -15,12 +15,16 @@ data class ScriptExecutionMetadata(
     val requester: String? = null,
     val reason: String? = null,
     val attributes: Map<String, String> = emptyMap(),
+    val resources: List<ScriptResourceRef> = emptyList(),
 ) {
     init {
         requester?.let { require(it.isNotBlank()) { "script requester must not be blank" } }
         reason?.let { require(it.isNotBlank()) { "script execution reason must not be blank" } }
         attributes.forEach { (key, _) ->
             require(key.isNotBlank()) { "script execution metadata attribute key must not be blank" }
+        }
+        resources.map { it.name }.let { names ->
+            require(names.distinct().size == names.size) { "script resource names must be unique" }
         }
     }
 }

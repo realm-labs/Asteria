@@ -13,6 +13,7 @@ import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult
+import io.github.mikai233.asteria.script.ScriptResourceRef
 import io.github.mikai233.asteria.script.ScriptTarget
 import io.github.mikai233.asteria.script.job.ScriptJob
 import io.github.mikai233.asteria.script.job.ScriptJobId
@@ -319,12 +320,34 @@ private fun ScriptExecutionMetadata.toDocument(): Document {
     return Document("requester", requester)
         .append("reason", reason)
         .append("attributes", Document(attributes))
+        .append("resources", resources.map { it.toDocument() })
 }
 
 private fun Document.toScriptExecutionMetadata(): ScriptExecutionMetadata {
     return ScriptExecutionMetadata(
         requester = nullableString("requester"),
         reason = nullableString("reason"),
+        attributes = requiredDocument("attributes").entries.associate { (key, value) -> key to value.toString() },
+        resources = documents("resources").map { it.toScriptResourceRef() },
+    )
+}
+
+private fun ScriptResourceRef.toDocument(): Document {
+    return Document("name", name)
+        .append("uri", uri)
+        .append("checksum", checksum)
+        .append("format", format)
+        .append("sizeBytes", sizeBytes)
+        .append("attributes", Document(attributes))
+}
+
+private fun Document.toScriptResourceRef(): ScriptResourceRef {
+    return ScriptResourceRef(
+        name = requiredString("name"),
+        uri = requiredString("uri"),
+        checksum = nullableString("checksum"),
+        format = nullableString("format"),
+        sizeBytes = nullableNumber("sizeBytes"),
         attributes = requiredDocument("attributes").entries.associate { (key, value) -> key to value.toString() },
     )
 }

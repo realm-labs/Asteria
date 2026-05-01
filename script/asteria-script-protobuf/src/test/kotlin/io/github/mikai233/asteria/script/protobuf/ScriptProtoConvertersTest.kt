@@ -5,6 +5,7 @@ import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult
+import io.github.mikai233.asteria.script.ScriptResourceRef
 import io.github.mikai233.asteria.script.ScriptTarget
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -27,6 +28,16 @@ class ScriptProtoConvertersTest {
                 requester = "ops:mikai",
                 reason = "fix stuck state",
                 attributes = mapOf("ticket" to "INC-10001"),
+                resources = listOf(
+                    ScriptResourceRef(
+                        name = "compensation-table",
+                        uri = "file:/data/ops/compensation.parquet",
+                        checksum = "sha256:resource",
+                        format = "parquet",
+                        sizeBytes = 1024,
+                        attributes = mapOf("source" to "analytics"),
+                    ),
+                ),
             ),
         )
 

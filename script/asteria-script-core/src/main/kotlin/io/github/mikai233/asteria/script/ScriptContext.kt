@@ -12,6 +12,8 @@ interface ScriptContext {
     val artifact: ScriptArtifact
     val metadata: ScriptExecutionMetadata
         get() = request?.metadata ?: ScriptExecutionMetadata()
+    val resources: ScriptResources
+        get() = ScriptResources(metadata.resources, services.find<ScriptResourceResolver>())
 }
 
 data class NodeScriptContext(

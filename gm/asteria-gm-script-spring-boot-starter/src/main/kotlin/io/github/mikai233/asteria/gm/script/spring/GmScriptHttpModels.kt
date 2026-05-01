@@ -6,6 +6,7 @@ import io.github.mikai233.asteria.core.SingletonName
 import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionMetadata
+import io.github.mikai233.asteria.script.ScriptResourceRef
 import io.github.mikai233.asteria.script.ScriptTarget
 import java.util.Base64
 
@@ -36,6 +37,7 @@ data class GmScriptSubmitRequest(
                 requester = operatorId,
                 reason = metadata.reason,
                 attributes = metadata.attributes,
+                resources = metadata.resources.map { it.toScriptResourceRef() },
             ),
         )
     }
@@ -104,6 +106,7 @@ data class GmScriptArtifactRequest(
 data class GmScriptMetadataRequest(
     val reason: String? = null,
     val attributes: Map<String, String> = emptyMap(),
+    val resources: List<GmScriptResourceRequest> = emptyList(),
 ) {
     init {
         reason?.let { require(it.isNotBlank()) { "GM script reason must not be blank" } }
@@ -111,6 +114,44 @@ data class GmScriptMetadataRequest(
             require(key.isNotBlank()) { "GM script metadata attribute key must not be blank" }
             require(value.isNotBlank()) { "GM script metadata attribute value must not be blank" }
         }
+        resources.map { it.name }.let { names ->
+            require(names.distinct().size == names.size) { "GM script resource names must be unique" }
+        }
+    }
+}
+
+/**
+ * External resource reference attached to a submitted script job.
+ */
+data class GmScriptResourceRequest(
+    val name: String,
+    val uri: String,
+    val checksum: String? = null,
+    val format: String? = null,
+    val sizeBytes: Long? = null,
+    val attributes: Map<String, String> = emptyMap(),
+) {
+    init {
+        require(name.isNotBlank()) { "GM script resource name must not be blank" }
+        require(uri.isNotBlank()) { "GM script resource uri must not be blank" }
+        checksum?.let { require(it.isNotBlank()) { "GM script resource checksum must not be blank" } }
+        format?.let { require(it.isNotBlank()) { "GM script resource format must not be blank" } }
+        sizeBytes?.let { require(it >= 0) { "GM script resource size must not be negative" } }
+        attributes.forEach { (key, value) ->
+            require(key.isNotBlank()) { "GM script resource attribute key must not be blank" }
+            require(value.isNotBlank()) { "GM script resource attribute value must not be blank" }
+        }
+    }
+
+    fun toScriptResourceRef(): ScriptResourceRef {
+        return ScriptResourceRef(
+            name = name,
+            uri = uri,
+            checksum = checksum,
+            format = format,
+            sizeBytes = sizeBytes,
+            attributes = attributes,
+        )
     }
 }
 
