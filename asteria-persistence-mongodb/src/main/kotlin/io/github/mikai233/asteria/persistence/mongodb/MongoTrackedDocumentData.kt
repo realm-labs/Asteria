@@ -18,9 +18,10 @@ abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrack
     private val entityType: KClass<E>,
     private val wrapper: (MongoTrackContext, E) -> T,
     database: MongoDatabase = scope.services.get(),
+    journal: MongoWriteJournal = NoopMongoWriteJournal,
 ) : AutoFlushMemData {
     protected val runtime: MongoTrackedDocumentRuntime =
-        MongoTrackedDocumentRuntime(collectionName, scope.entityId, database)
+        MongoTrackedDocumentRuntime(collectionName, scope.entityId, database, journal)
     protected val queue: MongoPendingWriteQueue
         get() = runtime.queue
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)

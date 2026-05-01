@@ -12,10 +12,11 @@ class MongoTrackedDocumentRuntime(
     private val collectionName: String,
     private val documentId: Any?,
     database: MongoDatabase,
+    journal: MongoWriteJournal = NoopMongoWriteJournal,
     onDirty: () -> Unit = {},
 ) : DataLeaseAware {
-    val queue: MongoPendingWriteQueue = MongoPendingWriteQueue(onDirty)
-    private val flusher: MongoPendingWriteFlusher = MongoPendingWriteFlusher(queue, database)
+    val queue: MongoPendingWriteQueue = MongoPendingWriteQueue(journal = journal, onDirty = onDirty)
+    private val flusher: MongoPendingWriteFlusher = MongoPendingWriteFlusher(queue, database, journal)
     private var lease: DataLease? = null
 
     fun context(): MongoTrackContext {

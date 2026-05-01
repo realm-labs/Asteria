@@ -18,6 +18,7 @@ import org.bson.conversions.Bson
 class MongoPendingWriteFlusher(
     private val queue: MongoPendingWriteQueue,
     private val database: MongoDatabase,
+    private val journal: MongoWriteJournal = NoopMongoWriteJournal,
     private val idField: String = "_id",
 ) {
     suspend fun flush(): List<BulkWriteResult> {
@@ -39,6 +40,7 @@ class MongoPendingWriteFlusher(
                     )
                 }
                 results += collection.bulkWrite(models, BulkWriteOptions().ordered(false))
+                journal.ack(collectionWrites.flatMap { it.journalSequences })
                 successfulCollections += collectionName
             }
             return results

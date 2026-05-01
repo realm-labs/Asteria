@@ -19,6 +19,7 @@ data class MongoPendingWrite(
     val key: MongoDocumentKey,
     val sets: Map<String, Any?> = emptyMap(),
     val unsets: Set<String> = emptySet(),
+    val journalSequences: Set<Long> = emptySet(),
 ) {
     val empty: Boolean
         get() = sets.isEmpty() && unsets.isEmpty()
@@ -34,13 +35,22 @@ data class MongoPendingWrite(
  * context.
  */
 class MongoPendingWriteQueue(
+    private val journal: MongoWriteJournal = NoopMongoWriteJournal,
     private val onDirty: () -> Unit = {},
 ) : MongoChangeQueue {
     private val patches: MutableMap<MongoDocumentKey, PendingMongoPatch> = linkedMapOf()
 
     override fun enqueue(op: MongoChangeOp) {
+        enqueue(op, journal.append(op))
+    }
+
+    fun replay(entry: MongoJournalEntry) {
+        enqueue(entry.op, entry.sequence)
+    }
+
+    private fun enqueue(op: MongoChangeOp, journalSequence: Long?) {
         val patch = patches.getOrPut(op.path.key) { PendingMongoPatch() }
-        patch.merge(op)
+        patch.merge(op, journalSequence)
         onDirty()
     }
 
@@ -53,12 +63,15 @@ class MongoPendingWriteQueue(
 
     fun requeue(writes: Iterable<MongoPendingWrite>) {
         writes.forEach { write ->
+            val patch = patches.getOrPut(write.key) { PendingMongoPatch() }
             write.sets.forEach { (fieldPath, value) ->
-                enqueue(MongoChangeOp.Set(write.key.path(fieldPath), value))
+                patch.merge(MongoChangeOp.Set(write.key.path(fieldPath), value), null)
             }
             write.unsets.forEach { fieldPath ->
-                enqueue(MongoChangeOp.Unset(write.key.path(fieldPath)))
+                patch.merge(MongoChangeOp.Unset(write.key.path(fieldPath)), null)
             }
+            write.journalSequences.forEach(patch::addJournalSequence)
+            onDirty()
         }
     }
 
@@ -71,12 +84,18 @@ class MongoPendingWriteQueue(
 private class PendingMongoPatch {
     private val sets: MutableMap<String, Any?> = linkedMapOf()
     private val unsets: MutableSet<String> = linkedSetOf()
+    private val journalSequences: MutableSet<Long> = linkedSetOf()
 
-    fun merge(op: MongoChangeOp) {
+    fun merge(op: MongoChangeOp, journalSequence: Long?) {
+        journalSequence?.let(journalSequences::add)
         when (op) {
             is MongoChangeOp.Set -> set(op.path.fieldPath, op.value)
             is MongoChangeOp.Unset -> unset(op.path.fieldPath)
         }
+    }
+
+    fun addJournalSequence(sequence: Long) {
+        journalSequences += sequence
     }
 
     private fun set(path: String, value: Any?) {
@@ -116,6 +135,7 @@ private class PendingMongoPatch {
             key = key,
             sets = sets.mapValues { (_, value) -> mongoValueOf(value) },
             unsets = unsets.toSet(),
+            journalSequences = journalSequences.toSet(),
         )
     }
 }

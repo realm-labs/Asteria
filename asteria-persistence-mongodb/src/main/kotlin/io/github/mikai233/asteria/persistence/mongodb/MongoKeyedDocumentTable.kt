@@ -29,6 +29,7 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
     entityType: KClass<E>,
     cachePolicy: RowCachePolicy,
     database: MongoDatabase,
+    private val journal: MongoWriteJournal = NoopMongoWriteJournal,
     clock: Clock = Clock.systemUTC(),
 ) : KeyedDataTable<ID, T>(cachePolicy, clock) {
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
@@ -107,9 +108,13 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
     }
 
     private fun attach(entity: E): T {
-        val runtime = MongoTrackedDocumentRuntime(collectionName, entity.id, database) {
-            dirtyRows.markDirty(entity.id)
-        }
+        val runtime = MongoTrackedDocumentRuntime(
+            collectionName = collectionName,
+            documentId = entity.id,
+            database = database,
+            journal = journal,
+            onDirty = { dirtyRows.markDirty(entity.id) },
+        )
         val row = wrap(runtime.context(), entity)
         runtimes[row] = runtime
         rowsById[entity.id] = row

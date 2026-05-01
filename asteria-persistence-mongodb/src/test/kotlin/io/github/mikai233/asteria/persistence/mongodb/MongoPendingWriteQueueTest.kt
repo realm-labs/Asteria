@@ -100,6 +100,7 @@ class MongoPendingWriteQueueTest {
             key = MongoDocumentKey("player", 1001L),
             sets = mapOf("level" to 2),
             unsets = setOf("nickname"),
+            journalSequences = setOf(1, 2),
         )
 
         queue.requeue(listOf(write))
