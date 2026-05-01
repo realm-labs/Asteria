@@ -1,5 +1,6 @@
 [versions]
 coroutines = "1.10.2"
+curator = "5.9.0"
 netty = "4.2.12.Final"
 pekko = "1.2.1"
 protobuf = "4.34.1"
@@ -13,6 +14,10 @@ opentelemetry = "1.61.0"
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-jdk8 = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-jdk8", version.ref = "coroutines" }
+curator-framework = { module = "org.apache.curator:curator-framework", version.ref = "curator" }
+curator-recipes = { module = "org.apache.curator:curator-recipes", version.ref = "curator" }
+curator-x-async = { module = "org.apache.curator:curator-x-async", version.ref = "curator" }
+curator-test = { module = "org.apache.curator:curator-test", version.ref = "curator" }
 netty-all = { module = "io.netty:netty-all", version.ref = "netty" }
 pekko-actor = { module = "org.apache.pekko:pekko-actor_2.13", version.ref = "pekko" }
 pekko-cluster-sharding = { module = "org.apache.pekko:pekko-cluster-sharding_2.13", version.ref = "pekko" }
@@ -21,6 +26,7 @@ protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref 
 kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
 groovy = { module = "org.apache.groovy:groovy", version.ref = "groovy" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 typesafe-config = { module = "com.typesafe:config", version.ref = "typesafe-config" }
 opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api", version.ref = "opentelemetry" }
 opentelemetry-extension-kotlin = { module = "io.opentelemetry:opentelemetry-extension-kotlin", version.ref = "opentelemetry" }

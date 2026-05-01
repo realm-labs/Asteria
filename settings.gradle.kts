@@ -25,6 +25,7 @@ include(
     "asteria-config",
     "asteria-config-luban",
     "asteria-config-center",
+    "asteria-config-center-zookeeper",
     "asteria-cluster-config",
     "asteria-starter",
 )

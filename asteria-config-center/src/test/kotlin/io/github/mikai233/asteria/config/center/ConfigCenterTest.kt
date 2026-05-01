@@ -73,7 +73,6 @@ class ConfigCenterTest {
             install(
                 ConfigCenterModule {
                     store(InMemoryConfigStore())
-                    codec(TestCodec)
                 },
             )
         }
@@ -85,6 +84,14 @@ class ConfigCenterTest {
         assertNotNull(app.services.get<RuntimeConfigRepository>())
 
         app.stop()
+    }
+
+    @Test
+    fun `jackson codec encodes and decodes config`() {
+        val codec = JacksonConfigCodec()
+        val bytes = codec.encode(TestConfig("jackson"))
+
+        assertEquals(TestConfig("jackson"), codec.decode<TestConfig>(bytes))
     }
 
     data class TestConfig(

@@ -25,6 +25,7 @@ application-level choices instead of framework requirements.
 - `asteria-config`: config table snapshot, reload, validation, and module contracts.
 - `asteria-config-luban`: optional Luban Java JSON and binary config loaders with module integration.
 - `asteria-config-center`: config center store, watch, typed repository, codec, and in-memory implementation contracts.
+- `asteria-config-center-zookeeper`: Zookeeper config center adapter backed by Apache Curator.
 - `asteria-cluster-config`: runtime node config, cluster topology, and config-center backed topology provider.
 - `asteria-starter`: starter DSL helpers for local projects.
 
@@ -149,7 +150,10 @@ watch, put, and delete operations; `RuntimeConfigRepository` adds typed decoding
 ```kotlin
 install(ConfigCenterModule {
     store(ZookeeperConfigStore(...))
-    codec(JacksonConfigCodec())
+})
+
+install(ZookeeperConfigCenterModule {
+    connectionString = "127.0.0.1:2181"
 })
 
 install(ClusterConfigModule {

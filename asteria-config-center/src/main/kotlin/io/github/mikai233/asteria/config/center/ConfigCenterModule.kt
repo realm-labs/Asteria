@@ -13,10 +13,9 @@ class ConfigCenterModule private constructor(
         val store = options.store ?: error("config store must be configured")
         context.services.register(ConfigStore::class, store)
 
-        options.codec?.let { codec ->
-            context.services.register(ConfigCodec::class, codec)
-            context.services.register(RuntimeConfigRepository::class, RuntimeConfigRepository(store, codec))
-        }
+        val codec = options.codec
+        context.services.register(ConfigCodec::class, codec)
+        context.services.register(RuntimeConfigRepository::class, RuntimeConfigRepository(store, codec))
     }
 
     companion object {
@@ -28,13 +27,13 @@ class ConfigCenterModule private constructor(
 
 data class ConfigCenterModuleOptions(
     val store: ConfigStore?,
-    val codec: ConfigCodec?,
+    val codec: ConfigCodec,
 )
 
 @AsteriaDsl
 class ConfigCenterModuleBuilder {
     private var store: ConfigStore? = null
-    private var codec: ConfigCodec? = null
+    private var codec: ConfigCodec = JacksonConfigCodec()
 
     fun store(store: ConfigStore) {
         this.store = store
