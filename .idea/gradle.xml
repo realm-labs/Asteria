@@ -16,6 +16,8 @@
             <option value="$PROJECT_DIR$/config/asteria-cluster-config" />
             <option value="$PROJECT_DIR$/config/asteria-config" />
             <option value="$PROJECT_DIR$/config/asteria-config-center" />
+            <option value="$PROJECT_DIR$/config/asteria-config-center-etcd" />
+            <option value="$PROJECT_DIR$/config/asteria-config-center-nacos" />
             <option value="$PROJECT_DIR$/config/asteria-config-center-zookeeper" />
             <option value="$PROJECT_DIR$/config/asteria-config-luban" />
             <option value="$PROJECT_DIR$/foundation/asteria-actor" />

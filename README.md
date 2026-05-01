@@ -32,6 +32,8 @@ Config modules:
 - `config/asteria-config-luban`: optional Luban Java JSON and binary config loaders with module integration.
 - `config/asteria-config-center`: config center store, watch, typed repository, codec, and in-memory implementation contracts.
 - `config/asteria-config-center-zookeeper`: Zookeeper config center adapter backed by Apache Curator.
+- `config/asteria-config-center-etcd`: Etcd config center adapter backed by jetcd.
+- `config/asteria-config-center-nacos`: Nacos config center adapter backed by the official Nacos client.
 - `config/asteria-cluster-config`: runtime node config, cluster topology, and config-center backed topology provider.
 
 Observability modules:
@@ -174,6 +176,16 @@ install(ZookeeperConfigCenterModule {
     connectionString = "127.0.0.1:2181"
 })
 
+install(EtcdConfigCenterModule {
+    endpoints("http://127.0.0.1:2379")
+    keyPrefix = "/asteria"
+})
+
+install(NacosConfigCenterModule {
+    serverAddr = "127.0.0.1:8848"
+    dataIdPrefix = "asteria"
+})
+
 install(ClusterConfigModule {
     layout = ClusterConfigLayout.default("demo-game")
 })
@@ -181,6 +193,8 @@ install(ClusterConfigModule {
 
 Pekko, gateway, database, and GM modules should consume typed services such as `ClusterTopologyProvider` instead of
 depending on Zookeeper, Nacos, Etcd, or any other config center directly.
+Nacos does not expose a native tree API, so the Nacos adapter maintains child indexes by convention when configs are
+written through Asteria.
 
 Script execution is an opt-in extension:
 

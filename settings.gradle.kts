@@ -26,6 +26,8 @@ include(
     "asteria-config-luban",
     "asteria-config-center",
     "asteria-config-center-zookeeper",
+    "asteria-config-center-etcd",
+    "asteria-config-center-nacos",
     "asteria-cluster-config",
     "asteria-starter",
 )
@@ -49,6 +51,8 @@ mapOf(
     "asteria-config-luban" to "config/asteria-config-luban",
     "asteria-config-center" to "config/asteria-config-center",
     "asteria-config-center-zookeeper" to "config/asteria-config-center-zookeeper",
+    "asteria-config-center-etcd" to "config/asteria-config-center-etcd",
+    "asteria-config-center-nacos" to "config/asteria-config-center-nacos",
     "asteria-cluster-config" to "config/asteria-cluster-config",
 ).forEach { (name, path) ->
     project(":$name").projectDir = file(path)

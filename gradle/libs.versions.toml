@@ -1,6 +1,8 @@
 [versions]
 coroutines = "1.10.2"
 curator = "5.9.0"
+jetcd = "0.8.6"
+nacos = "3.2.1"
 netty = "4.2.12.Final"
 pekko = "1.2.1"
 protobuf = "4.34.1"
@@ -18,6 +20,8 @@ curator-framework = { module = "org.apache.curator:curator-framework", version.r
 curator-recipes = { module = "org.apache.curator:curator-recipes", version.ref = "curator" }
 curator-x-async = { module = "org.apache.curator:curator-x-async", version.ref = "curator" }
 curator-test = { module = "org.apache.curator:curator-test", version.ref = "curator" }
+jetcd-core = { module = "io.etcd:jetcd-core", version.ref = "jetcd" }
+nacos-client = { module = "com.alibaba.nacos:nacos-client", version.ref = "nacos" }
 netty-all = { module = "io.netty:netty-all", version.ref = "netty" }
 pekko-actor = { module = "org.apache.pekko:pekko-actor_2.13", version.ref = "pekko" }
 pekko-cluster-sharding = { module = "org.apache.pekko:pekko-cluster-sharding_2.13", version.ref = "pekko" }
