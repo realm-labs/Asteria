@@ -6,7 +6,6 @@ package io.github.mikai233.asteria.persistence.mongodb
 sealed class MongoChangeOp(open val path: MongoPath) {
     data class Set(override val path: MongoPath, val value: Any?) : MongoChangeOp(path)
     data class Unset(override val path: MongoPath) : MongoChangeOp(path)
-    data class Inc(override val path: MongoPath, val delta: Number) : MongoChangeOp(path)
 }
 
 fun interface MongoChangeQueue {
@@ -20,13 +19,12 @@ data class MongoPendingWrite(
     val key: MongoDocumentKey,
     val sets: Map<String, Any?> = emptyMap(),
     val unsets: Set<String> = emptySet(),
-    val incs: Map<String, Number> = emptyMap(),
 ) {
     val empty: Boolean
-        get() = sets.isEmpty() && unsets.isEmpty() && incs.isEmpty()
+        get() = sets.isEmpty() && unsets.isEmpty()
 
     val upsert: Boolean
-        get() = sets.isNotEmpty() || incs.isNotEmpty()
+        get() = sets.isNotEmpty()
 }
 
 /**
@@ -61,9 +59,6 @@ class MongoPendingWriteQueue(
             write.unsets.forEach { fieldPath ->
                 enqueue(MongoChangeOp.Unset(write.key.path(fieldPath)))
             }
-            write.incs.forEach { (fieldPath, delta) ->
-                enqueue(MongoChangeOp.Inc(write.key.path(fieldPath), delta))
-            }
         }
     }
 
@@ -76,13 +71,11 @@ class MongoPendingWriteQueue(
 private class PendingMongoPatch {
     private val sets: MutableMap<String, Any?> = linkedMapOf()
     private val unsets: MutableSet<String> = linkedSetOf()
-    private val incs: MutableMap<String, Number> = linkedMapOf()
 
     fun merge(op: MongoChangeOp) {
         when (op) {
             is MongoChangeOp.Set -> set(op.path.fieldPath, op.value)
             is MongoChangeOp.Unset -> unset(op.path.fieldPath)
-            is MongoChangeOp.Inc -> inc(op.path.fieldPath, op.delta)
         }
     }
 
@@ -90,7 +83,6 @@ private class PendingMongoPatch {
         if (hasAncestorOperation(path)) return
         removeDescendantOperations(path)
         unsets.remove(path)
-        incs.remove(path)
         sets[path] = value
     }
 
@@ -98,24 +90,17 @@ private class PendingMongoPatch {
         if (hasAncestorOperation(path)) return
         removeDescendantOperations(path)
         sets.remove(path)
-        incs.remove(path)
         unsets.add(path)
     }
 
-    private fun inc(path: String, delta: Number) {
-        if (hasAncestorOperation(path) || path in sets || path in unsets) return
-        incs[path] = addNumbers(incs[path], delta)
-    }
-
     private fun hasAncestorOperation(path: String): Boolean {
-        return ancestors(path).any { ancestor -> ancestor in sets || ancestor in unsets || ancestor in incs }
+        return ancestors(path).any { ancestor -> ancestor in sets || ancestor in unsets }
     }
 
     private fun removeDescendantOperations(path: String) {
         val prefix = "$path."
         sets.keys.removeIf { it.startsWith(prefix) }
         unsets.removeIf { it.startsWith(prefix) }
-        incs.keys.removeIf { it.startsWith(prefix) }
     }
 
     private fun ancestors(path: String): Sequence<String> = sequence {
@@ -126,22 +111,11 @@ private class PendingMongoPatch {
         }
     }
 
-    private fun addNumbers(left: Number?, right: Number): Number {
-        return when {
-            left == null -> right
-            left is Double || right is Double -> left.toDouble() + right.toDouble()
-            left is Float || right is Float -> left.toFloat() + right.toFloat()
-            left is Long || right is Long -> left.toLong() + right.toLong()
-            else -> left.toInt() + right.toInt()
-        }
-    }
-
     fun toWrite(key: MongoDocumentKey): MongoPendingWrite {
         return MongoPendingWrite(
             key = key,
             sets = sets.mapValues { (_, value) -> mongoValueOf(value) },
             unsets = unsets.toSet(),
-            incs = incs.toMap(),
         )
     }
 }

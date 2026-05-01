@@ -6,7 +6,6 @@ import com.mongodb.client.model.Filters.eq
 import com.mongodb.client.model.UpdateOneModel
 import com.mongodb.client.model.UpdateOptions
 import com.mongodb.client.model.Updates.combine
-import com.mongodb.client.model.Updates.inc
 import com.mongodb.client.model.Updates.set
 import com.mongodb.client.model.Updates.unset
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
@@ -57,7 +56,6 @@ class MongoPendingWriteFlusher(
         val updates = mutableListOf<Bson>()
         sets.forEach { (path, value) -> updates += set(path, mongoValueOf(value)) }
         unsets.forEach { path -> updates += unset(path) }
-        incs.forEach { (path, delta) -> updates += inc(path, delta) }
         require(updates.isNotEmpty()) { "Mongo pending write must contain at least one update" }
         return combine(updates)
     }

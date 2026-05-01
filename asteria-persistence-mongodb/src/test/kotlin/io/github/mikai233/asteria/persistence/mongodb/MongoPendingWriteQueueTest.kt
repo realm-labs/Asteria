@@ -29,7 +29,7 @@ class MongoPendingWriteQueueTest {
         val root = MongoPath("player", 1001L, "profile")
 
         queue.enqueue(MongoChangeOp.Set(root.child("name"), "alice"))
-        queue.enqueue(MongoChangeOp.Inc(root.child("version"), 1))
+        queue.enqueue(MongoChangeOp.Set(root.child("version"), 1))
         queue.enqueue(MongoChangeOp.Unset(root))
         queue.enqueue(MongoChangeOp.Set(root.child("level"), 2))
 
@@ -37,7 +37,6 @@ class MongoPendingWriteQueueTest {
 
         assertTrue(write.sets.isEmpty())
         assertEquals(setOf("profile"), write.unsets)
-        assertTrue(write.incs.isEmpty())
     }
 
     @Test
@@ -55,36 +54,19 @@ class MongoPendingWriteQueueTest {
     }
 
     @Test
-    fun `inc is ignored when path is already set`() {
-        val queue = MongoPendingWriteQueue()
-        val path = MongoPath("player", 1001L, "level")
-
-        queue.enqueue(MongoChangeOp.Set(path, 10))
-        queue.enqueue(MongoChangeOp.Inc(path, 1))
-
-        val write = queue.drain().single()
-
-        assertEquals(mapOf("level" to 10), write.sets)
-        assertTrue(write.incs.isEmpty())
-    }
-
-    @Test
-    fun `queue encodes map keys and merges increments`() {
+    fun `queue encodes map keys`() {
         val queue = MongoPendingWriteQueue()
         val path = MongoPath("player", 1001L, "counters")
 
         queue.enqueue(MongoChangeOp.Set(path.child("a.b"), 1))
         queue.enqueue(MongoChangeOp.Set(path.child("a\$b"), 2))
         queue.enqueue(MongoChangeOp.Set(path.child("a%b"), 3))
-        queue.enqueue(MongoChangeOp.Inc(path.child("login"), 1))
-        queue.enqueue(MongoChangeOp.Inc(path.child("login"), 2L))
 
         val write = queue.drain().single()
 
         assertEquals(1, write.sets["counters.a%2Eb"])
         assertEquals(2, write.sets["counters.a%24b"])
         assertEquals(3, write.sets["counters.a%25b"])
-        assertEquals(3L, write.incs["counters.login"])
     }
 
     @Test
@@ -118,7 +100,6 @@ class MongoPendingWriteQueueTest {
             key = MongoDocumentKey("player", 1001L),
             sets = mapOf("level" to 2),
             unsets = setOf("nickname"),
-            incs = mapOf("version" to 1),
         )
 
         queue.requeue(listOf(write))
