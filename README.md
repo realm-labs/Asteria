@@ -22,7 +22,7 @@ application-level choices instead of framework requirements.
 - `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
 - `asteria-persistence`: entity, mem data, data scope, data manager, persistence provider contracts.
-- `asteria-config`: config provider and watch contracts.
+- `asteria-config`: config table snapshot, reload, validation, and module contracts.
 - `asteria-starter`: starter DSL helpers for local projects.
 
 ## Minimal Shape
@@ -89,6 +89,30 @@ install(ObservabilityModule {
 
 Installed observability services are consumed by framework modules such as actor receive/ask, script execution, and script
 jobs, so projects get baseline spans and metrics without changing game logic.
+
+Config tables are exposed through a snapshot service. The core module does not care whether rows come from Luban,
+Excel, JSON, a database, or generated project code; projects plug in a `ConfigLoader` and optional validators.
+
+```kotlin
+install(ConfigModule {
+    loader(GameConfigLoader())
+    validator { snapshot ->
+        val items = snapshot.requireTable<Int, ItemConfig>(ConfigTableName("items"))
+        items.all().forEach { item ->
+            check(item.price >= 0, "price must not be negative", items.name, item.id)
+        }
+    }
+})
+```
+
+Reload publishes a whole immutable `ConfigSnapshot`, so readers never observe half-loaded tables:
+
+```kotlin
+val configs = app.services.get<ConfigService>()
+val item = configs.current()
+    .requireTable<Int, ItemConfig>(ConfigTableName("items"))
+    .require(1001)
+```
 
 Script execution is an opt-in extension:
 
