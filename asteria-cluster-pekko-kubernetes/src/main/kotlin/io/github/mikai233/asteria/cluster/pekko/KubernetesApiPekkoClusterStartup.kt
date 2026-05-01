@@ -9,6 +9,9 @@ import io.github.mikai233.asteria.core.RoleKey
  *
  * Applications still own deployment-specific values such as canonical host/port, bind address, and
  * service account permissions. Pass them through config or application.conf.
+ *
+ * [serviceName], [namespace], [podLabelSelector], and [requiredContactPointNr] map directly to
+ * Pekko Management / Kubernetes API discovery settings.
  */
 class KubernetesApiPekkoClusterStartup(
     roles: Set<RoleKey>,

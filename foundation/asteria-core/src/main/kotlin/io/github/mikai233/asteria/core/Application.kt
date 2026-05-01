@@ -4,9 +4,18 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.reflect.KClass
 
+/**
+ * Marks Asteria builder DSL receivers to prevent accidental calls on the wrong builder.
+ */
 @DslMarker
 annotation class AsteriaDsl
 
+/**
+ * Runtime view shared with modules, actors, and other framework extensions.
+ *
+ * [roles] is the role set owned by this concrete process. It may differ from
+ * [AsteriaApplication.declaredRoles], which is the union of roles requested by application specs.
+ */
 interface NodeRuntime {
     val name: String
     /**
@@ -17,6 +26,12 @@ interface NodeRuntime {
     val services: ServiceRegistry
 }
 
+/**
+ * Built Asteria application.
+ *
+ * An application is immutable in terms of declared modules, entities, and singletons. Runtime
+ * services and lifecycle state are mutable and owned by [launch] / [stop].
+ */
 class AsteriaApplication internal constructor(
     override val name: String,
     /**
@@ -43,6 +58,9 @@ class AsteriaApplication internal constructor(
     private val stateListeners: MutableMap<NodeState, MutableList<suspend () -> Unit>> = linkedMapOf()
     private val lifecycleLock = Mutex()
 
+    /**
+     * Registers a listener that runs whenever the application enters [state].
+     */
     fun onState(state: NodeState, listener: suspend () -> Unit) {
         stateListeners.getOrPut(state) { mutableListOf() }.add(listener)
     }
@@ -54,6 +72,11 @@ class AsteriaApplication internal constructor(
         currentRoles = roles.toSet()
     }
 
+    /**
+     * Installs and starts all modules.
+     *
+     * A stopped application can be launched again, but concurrent launch/stop calls are serialized.
+     */
     suspend fun launch() {
         lifecycleLock.withLock {
             check(state == NodeState.Unstarted || state == NodeState.Stopped) {
@@ -67,6 +90,9 @@ class AsteriaApplication internal constructor(
         }
     }
 
+    /**
+     * Stops all modules in reverse order.
+     */
     suspend fun stop() {
         lifecycleLock.withLock {
             if (state == NodeState.Stopped || state == NodeState.Unstarted) {
@@ -85,8 +111,17 @@ class AsteriaApplication internal constructor(
     }
 }
 
+/**
+ * Builder used by [gameApplication].
+ *
+ * Use this DSL to declare the runtime name, modules, roles, sharded entities, and singletons before
+ * the application is launched.
+ */
 @AsteriaDsl
 class AsteriaApplicationBuilder {
+    /**
+     * Actor system / runtime name. Cluster runtimes commonly use this as the Pekko system name.
+     */
     var name: String = "asteria"
 
     private val declaredRoles: MutableSet<RoleKey> = linkedSetOf()
@@ -94,14 +129,23 @@ class AsteriaApplicationBuilder {
     private val entities: MutableList<EntitySpec<*>> = mutableListOf()
     private val singletons: MutableList<SingletonSpec> = mutableListOf()
 
+    /**
+     * Adds a module to the application lifecycle.
+     */
     fun install(module: AsteriaModule) {
         modules.add(module)
     }
 
+    /**
+     * Declares a role used by specs or runtime topology validation.
+     */
     fun role(value: String): RoleKey {
         return RoleKey(value).also { declaredRoles.add(it) }
     }
 
+    /**
+     * Declares a sharded entity type whose id type is inferred from [ID].
+     */
     inline fun <reified ID : Any> entity(
         kind: String,
         noinline configure: EntitySpecBuilder<ID>.() -> Unit = {},
@@ -109,6 +153,9 @@ class AsteriaApplicationBuilder {
         entity(kind, ID::class, configure)
     }
 
+    /**
+     * Declares a sharded entity type with an explicit id class.
+     */
     fun <ID : Any> entity(
         kind: String,
         idType: KClass<ID>,
@@ -119,6 +166,12 @@ class AsteriaApplicationBuilder {
         entities.add(builder.build())
     }
 
+    /**
+     * Declares a cluster singleton.
+     *
+     * By default the singleton role is the same as [name]. Override it inside [configure] when the
+     * singleton should be hosted by a different role.
+     */
     fun singleton(
         name: String,
         configure: SingletonSpecBuilder.() -> Unit,
@@ -128,6 +181,9 @@ class AsteriaApplicationBuilder {
         singletons.add(builder.build())
     }
 
+    /**
+     * Builds an immutable application definition.
+     */
     fun build(): AsteriaApplication {
         return AsteriaApplication(
             name = name,
@@ -139,20 +195,41 @@ class AsteriaApplicationBuilder {
     }
 }
 
+/**
+ * Builder for [EntitySpec].
+ */
 @AsteriaDsl
 class EntitySpecBuilder<ID : Any> internal constructor(
     private val kind: EntityKind,
     private val idType: KClass<ID>,
 ) {
+    /**
+     * Role that owns real shard regions for this entity. When absent, any node may host it.
+     */
     var role: RoleKey? = null
+    /**
+     * Number of logical shards used by runtime adapters.
+     */
     var shardCount: Int = 100
+    /**
+     * Message sent to entity actors during graceful shard handoff.
+     */
     var handoffMessage: Any? = null
     private val attributes: MutableMap<String, Any> = linkedMapOf()
 
+    /**
+     * Sets [role] from a string value.
+     */
     fun role(value: String) {
         role = RoleKey(value)
     }
 
+    /**
+     * Adds runtime-adapter-specific metadata.
+     *
+     * Application code should prefer typed extension functions, such as Pekko's `actor { ... }`,
+     * instead of writing raw attribute keys.
+     */
     fun attribute(key: String, value: Any) {
         require(key.isNotBlank()) { "attribute key must not be blank" }
         attributes[key] = value
@@ -163,18 +240,33 @@ class EntitySpecBuilder<ID : Any> internal constructor(
     }
 }
 
+/**
+ * Builder for [SingletonSpec].
+ */
 @AsteriaDsl
 class SingletonSpecBuilder internal constructor(
     private val name: SingletonName,
 ) {
+    /**
+     * Role that may host the singleton manager.
+     */
     var role: RoleKey = RoleKey(name.value)
+    /**
+     * Message sent to the singleton actor during graceful handoff.
+     */
     var handoffMessage: Any? = null
     private val attributes: MutableMap<String, Any> = linkedMapOf()
 
+    /**
+     * Sets [role] from a string value.
+     */
     fun role(value: String) {
         role = RoleKey(value)
     }
 
+    /**
+     * Adds runtime-adapter-specific metadata.
+     */
     fun attribute(key: String, value: Any) {
         require(key.isNotBlank()) { "attribute key must not be blank" }
         attributes[key] = value
@@ -185,6 +277,18 @@ class SingletonSpecBuilder internal constructor(
     }
 }
 
+/**
+ * Builds an [AsteriaApplication].
+ *
+ * Example:
+ *
+ * ```kotlin
+ * val app = gameApplication {
+ *     name = "demo-game"
+ *     role("player")
+ * }
+ * ```
+ */
 fun gameApplication(configure: AsteriaApplicationBuilder.() -> Unit): AsteriaApplication {
     return AsteriaApplicationBuilder().apply(configure).build()
 }

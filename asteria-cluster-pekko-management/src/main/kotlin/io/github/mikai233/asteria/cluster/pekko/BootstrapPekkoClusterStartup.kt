@@ -14,6 +14,9 @@ import org.apache.pekko.management.javadsl.PekkoManagement
  *
  * The concrete discovery method is supplied through config, so applications can use Kubernetes,
  * DNS, or any Pekko Discovery implementation without depending on a specific adapter module.
+ *
+ * [roles] is the role set owned by this process. Network binding and advertised address should be
+ * supplied through [config] or `application.conf`.
  */
 class BootstrapPekkoClusterStartup(
     private val roles: Set<RoleKey>,

@@ -16,8 +16,19 @@ import org.apache.pekko.actor.ActorSystem
  * decides node roles, Pekko config, and the cluster join mechanism.
  */
 interface PekkoClusterStartup {
+    /**
+     * Builds the startup plan before the ActorSystem is created.
+     *
+     * Use this phase to read topology/config services and return the final Pekko config and node
+     * roles. Do not start actors here because the ActorSystem does not exist yet.
+     */
     suspend fun resolve(context: ModuleContext): PekkoClusterStartPlan
 
+    /**
+     * Optional hook after the ActorSystem exists but before application entities/singletons start.
+     *
+     * Discovery strategies use this hook to start Pekko Management or other join mechanisms.
+     */
     suspend fun afterActorSystemCreated(
         context: ModuleContext,
         system: ActorSystem,
@@ -25,15 +36,39 @@ interface PekkoClusterStartup {
     ) = Unit
 }
 
+/**
+ * Complete plan used by [PekkoRuntimeModule] to create and join a Pekko cluster node.
+ */
 data class PekkoClusterStartPlan(
+    /**
+     * Final ActorSystem config.
+     */
     val config: Config,
+    /**
+     * Roles owned by the current node.
+     */
     val roles: Set<RoleKey>,
+    /**
+     * How the node joins the cluster after ActorSystem creation.
+     */
     val join: PekkoClusterJoin,
+    /**
+     * Optional concrete node config when startup is topology based.
+     */
     val node: RuntimeNodeConfig? = null,
+    /**
+     * Optional full topology when startup is topology based.
+     */
     val topology: ClusterTopology? = null,
 )
 
+/**
+ * Join behavior requested by a [PekkoClusterStartup].
+ */
 sealed interface PekkoClusterJoin {
+    /**
+     * Join the node to its own address. Intended for local single-node development.
+     */
     data object Self : PekkoClusterJoin
 
     /**
@@ -52,6 +87,11 @@ sealed interface PekkoClusterJoin {
     data object External : PekkoClusterJoin
 }
 
+/**
+ * Local development startup.
+ *
+ * The node uses declared application roles, binds Artery to `127.0.0.1:0`, and self-joins.
+ */
 class LocalPekkoClusterStartup(
     private val config: Config = ConfigFactory.empty(),
 ) : PekkoClusterStartup {
@@ -67,6 +107,12 @@ class LocalPekkoClusterStartup(
     }
 }
 
+/**
+ * Startup based on an Asteria [ClusterTopology].
+ *
+ * The current process is selected by [nodeId]. Asteria generates Pekko host, port, roles, and
+ * seed-node config from the selected [RuntimeNodeConfig].
+ */
 class TopologyPekkoClusterStartup(
     private val nodeId: String,
     private val topologyProvider: ClusterTopologyProvider? = null,
@@ -91,6 +137,12 @@ class TopologyPekkoClusterStartup(
     }
 }
 
+/**
+ * Escape hatch for applications that already own Pekko config or cluster join lifecycle.
+ *
+ * Use this when integrating with deployment-specific discovery that is not provided by an Asteria
+ * adapter module.
+ */
 class ConfiguredPekkoClusterStartup(
     private val configFactory: suspend (ModuleContext) -> Config,
     private val rolesFactory: suspend (ModuleContext, Config) -> Set<RoleKey> = { _, config -> config.configuredRoleKeys() },

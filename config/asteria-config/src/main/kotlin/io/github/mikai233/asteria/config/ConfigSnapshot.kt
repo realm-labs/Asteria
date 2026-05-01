@@ -2,6 +2,12 @@ package io.github.mikai233.asteria.config
 
 import kotlin.reflect.KClass
 
+/**
+ * Version marker for a loaded config snapshot.
+ *
+ * [version] should change whenever config content changes. [checksum] can be used by tooling to
+ * detect whether two versions contain identical data.
+ */
 data class ConfigRevision(
     val version: String,
     val checksum: String? = null,
@@ -12,18 +18,45 @@ data class ConfigRevision(
     }
 }
 
+/**
+ * Immutable view of all loaded config data.
+ *
+ * A snapshot may contain named [ConfigTable] instances and arbitrary typed components. Components
+ * are useful when a loader exposes generated aggregate APIs, such as Luban's `cfg.Tables`.
+ */
 interface ConfigSnapshot {
+    /**
+     * Version information for this snapshot.
+     */
     val revision: ConfigRevision
 
+    /**
+     * Returns an untyped table by name.
+     */
     fun table(name: ConfigTableName): ConfigTable<*, *>?
 
+    /**
+     * Returns all tables in this snapshot.
+     */
     fun tables(): Collection<ConfigTable<*, *>>
 
+    /**
+     * Returns a typed component by exact [type].
+     */
     fun <T : Any> component(type: KClass<T>): T?
 
+    /**
+     * Returns all registered components.
+     */
     fun components(): Collection<Any>
 }
 
+/**
+ * Default immutable [ConfigSnapshot] implementation.
+ *
+ * Duplicate table names or component types fail during construction so reload errors are caught
+ * before a snapshot is published to readers.
+ */
 class DefaultConfigSnapshot(
     override val revision: ConfigRevision,
     tables: Iterable<ConfigTable<*, *>> = emptyList(),
@@ -57,10 +90,18 @@ class DefaultConfigSnapshot(
     }
 }
 
+/**
+ * Returns an untyped table or throws with revision context.
+ */
 fun ConfigSnapshot.requireAnyTable(name: ConfigTableName): ConfigTable<*, *> {
     return table(name) ?: error("config table $name not found in revision ${revision.version}")
 }
 
+/**
+ * Returns a typed table by [name], or `null` when it is absent.
+ *
+ * The stored key and row types must match [K] and [R].
+ */
 inline fun <reified K : Any, reified R : Any> ConfigSnapshot.table(name: ConfigTableName): ConfigTable<K, R>? {
     val table = table(name) ?: return null
     require(table.keyType == K::class) {
@@ -73,14 +114,23 @@ inline fun <reified K : Any, reified R : Any> ConfigSnapshot.table(name: ConfigT
     return table as ConfigTable<K, R>
 }
 
+/**
+ * Returns a typed table by [name] or throws with revision context.
+ */
 inline fun <reified K : Any, reified R : Any> ConfigSnapshot.requireTable(name: ConfigTableName): ConfigTable<K, R> {
     return table<K, R>(name) ?: error("config table $name not found in revision ${revision.version}")
 }
 
+/**
+ * Returns a component by reified type, or `null` when it is absent.
+ */
 inline fun <reified T : Any> ConfigSnapshot.component(): T? {
     return component(T::class)
 }
 
+/**
+ * Returns a component by reified type or throws with revision context.
+ */
 inline fun <reified T : Any> ConfigSnapshot.requireComponent(): T {
     return component<T>() ?: error("config component ${T::class.qualifiedName} not found in revision ${revision.version}")
 }

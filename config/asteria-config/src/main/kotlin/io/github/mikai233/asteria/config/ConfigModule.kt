@@ -4,6 +4,12 @@ import io.github.mikai233.asteria.core.AsteriaDsl
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
 
+/**
+ * Application module that registers [ConfigService].
+ *
+ * Configure it with a [ConfigLoader] and optional validators. By default the first snapshot is
+ * loaded during application start.
+ */
 class ConfigModule private constructor(
     private val options: ConfigModuleOptions,
 ) : AsteriaModule {
@@ -31,27 +37,45 @@ class ConfigModule private constructor(
     }
 }
 
+/**
+ * Immutable options for [ConfigModule].
+ */
 data class ConfigModuleOptions(
     val loader: ConfigLoader?,
     val validators: List<ConfigValidator>,
     val loadOnStart: Boolean,
 )
 
+/**
+ * Builder for [ConfigModule].
+ */
 @AsteriaDsl
 class ConfigModuleBuilder {
+    /**
+     * Whether [ConfigService.load] should run during module start.
+     */
     var loadOnStart: Boolean = true
 
     private var loader: ConfigLoader? = null
     private val validators: MutableList<ConfigValidator> = mutableListOf()
 
+    /**
+     * Sets the loader that produces full config snapshots.
+     */
     fun loader(loader: ConfigLoader) {
         this.loader = loader
     }
 
+    /**
+     * Adds a reusable validator.
+     */
     fun validator(validator: ConfigValidator) {
         validators += validator
     }
 
+    /**
+     * Adds an inline validator.
+     */
     fun validator(validate: suspend ConfigValidationScope.(ConfigSnapshot) -> Unit) {
         validators += configValidator(validate)
     }

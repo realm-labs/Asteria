@@ -9,7 +9,14 @@ import org.apache.pekko.actor.Props
 import org.apache.pekko.cluster.sharding.ShardCoordinator
 import org.apache.pekko.cluster.sharding.ShardRegion
 
+/**
+ * Builds Pekko actor [Props] for a sharded entity region.
+ */
 typealias EntityPropsFactory = (runtime: NodeRuntime, spec: EntitySpec<*>) -> Props
+
+/**
+ * Builds Pekko actor [Props] for a singleton manager.
+ */
 typealias SingletonPropsFactory = (runtime: NodeRuntime, spec: SingletonSpec) -> Props
 
 /**
@@ -41,26 +48,49 @@ enum class PekkoSingletonStartup {
     Proxy,
 }
 
+/**
+ * Provides actor props for a Pekko sharded entity.
+ *
+ * This is required when the node may start a real shard region. Proxy-only specs do not need an
+ * actor factory.
+ */
 fun <ID : Any> EntitySpecBuilder<ID>.actor(factory: EntityPropsFactory) {
     attribute(PEKKO_ENTITY_PROPS_FACTORY, factory)
 }
 
+/**
+ * Uses a custom Pekko sharding message extractor for this entity.
+ *
+ * When absent, the runtime uses a hash extractor based on the entity id.
+ */
 fun <ID : Any> EntitySpecBuilder<ID>.extractor(extractor: ShardRegion.MessageExtractor) {
     attribute(PEKKO_ENTITY_EXTRACTOR, extractor)
 }
 
+/**
+ * Uses a custom shard allocation strategy for this entity.
+ */
 fun <ID : Any> EntitySpecBuilder<ID>.allocationStrategy(strategy: ShardCoordinator.ShardAllocationStrategy) {
     attribute(PEKKO_ENTITY_ALLOCATION_STRATEGY, strategy)
 }
 
+/**
+ * Controls whether this node starts a shard region or a proxy for this entity.
+ */
 fun <ID : Any> EntitySpecBuilder<ID>.shardStartup(startup: PekkoShardStartup) {
     attribute(PEKKO_ENTITY_SHARD_STARTUP, startup)
 }
 
+/**
+ * Provides actor props for a Pekko cluster singleton.
+ */
 fun SingletonSpecBuilder.actor(factory: SingletonPropsFactory) {
     attribute(PEKKO_SINGLETON_PROPS_FACTORY, factory)
 }
 
+/**
+ * Controls whether this node hosts the singleton manager or only starts a proxy.
+ */
 fun SingletonSpecBuilder.singletonStartup(startup: PekkoSingletonStartup) {
     attribute(PEKKO_SINGLETON_STARTUP, startup)
 }
