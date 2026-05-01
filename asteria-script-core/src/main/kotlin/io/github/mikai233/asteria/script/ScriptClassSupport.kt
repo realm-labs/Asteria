@@ -9,7 +9,8 @@ fun KClass<*>.toCompiledScript(): CompiledScript {
         is BlockingScriptFunction -> instance.asCompiledScript()
         else -> error(
             "script class $qualifiedName must implement " +
-                    "${CompiledScript::class.qualifiedName} or ${BlockingScriptFunction::class.qualifiedName}",
+                    "${CompiledScript::class.qualifiedName}, ${BlockingScriptFunction::class.qualifiedName}, " +
+                    "or one of the typed script base classes",
         )
     }
 }

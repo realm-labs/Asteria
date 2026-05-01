@@ -144,7 +144,7 @@ class ScriptRuntimeActor(
             )
             val result = runner.execute(
                 request = request,
-                context = NodeScriptContext(runtime, command.artifact),
+                context = NodeScriptContext(runtime, request),
                 defaultResult = { success(command, target = selfAddress()) },
                 failureResult = {
                 logger.error(it, "script {} failed on node {}", command.executionId, selfAddress())

@@ -36,7 +36,7 @@ abstract class ScriptableAsteriaActor<N : NodeRuntime>(
             )
             val result = runner.execute(
                 request = request,
-                context = DefaultActorScriptContext(runtime, command.artifact, this@ScriptableAsteriaActor),
+                context = DefaultActorScriptContext(runtime, request, this@ScriptableAsteriaActor),
                 defaultResult = { success(command) },
                 failureResult = {
                 logger.error(it, "script {} failed on actor {}", command.executionId, self)
