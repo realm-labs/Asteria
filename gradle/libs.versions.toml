@@ -20,6 +20,7 @@ jakarta-servlet = "6.1.0"
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-jdk8 = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-jdk8", version.ref = "coroutines" }
+kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "coroutines" }
 curator-framework = { module = "org.apache.curator:curator-framework", version.ref = "curator" }
 curator-recipes = { module = "org.apache.curator:curator-recipes", version.ref = "curator" }
 curator-x-async = { module = "org.apache.curator:curator-x-async", version.ref = "curator" }

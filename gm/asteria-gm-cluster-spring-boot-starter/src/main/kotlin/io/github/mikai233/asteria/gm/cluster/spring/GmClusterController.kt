@@ -5,7 +5,6 @@ import io.github.mikai233.asteria.gm.cluster.GmClusterStatus
 import io.github.mikai233.asteria.gm.cluster.GmClusterStatusService
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import jakarta.servlet.http.HttpServletRequest
-import kotlinx.coroutines.runBlocking
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -20,15 +19,13 @@ class GmClusterController(
     private val endpoints: GmEndpointSupport,
 ) {
     @GetMapping("/status")
-    fun status(request: HttpServletRequest): GmClusterStatus {
-        return runBlocking {
-            endpoints.execute(
-                request = request,
-                permission = GmClusterPermissions.Read,
-                action = "gm.cluster.status",
-            ) {
-                statusService.current()
-            }
+    suspend fun status(request: HttpServletRequest): GmClusterStatus {
+        return endpoints.execute(
+            request = request,
+            permission = GmClusterPermissions.Read,
+            action = "gm.cluster.status",
+        ) {
+            statusService.current()
         }
     }
 }

@@ -9,7 +9,6 @@ import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import io.github.mikai233.asteria.script.job.ScriptJob
 import io.github.mikai233.asteria.script.job.ScriptJobId
 import jakarta.servlet.http.HttpServletRequest
-import kotlinx.coroutines.runBlocking
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -32,54 +31,50 @@ class GmScriptController(
     private val endpoints: GmEndpointSupport,
 ) {
     @PostMapping("/jobs")
-    fun submit(
+    suspend fun submit(
         servletRequest: HttpServletRequest,
         @RequestBody request: GmScriptSubmitRequest,
     ): ScriptJob {
-        return runBlocking {
-            endpoints.execute(
-                request = servletRequest,
-                permission = GmScriptPermissions.Execute,
-                action = "gm.script.submit",
-                attributes = mapOf(
-                    "executionId" to request.executionId,
-                    "targetType" to request.target.type,
-                    "scriptName" to request.artifact.name,
-                    "scriptEngine" to request.artifact.engine,
-                ),
-            ) { operation ->
-                val command = request.toCommand(operation.principal.id)
-                when (val validation = validator.validate(GmScriptTargetValidationRequest(command, operation.principal.id))) {
-                    GmScriptTargetValidationResult.Allowed -> Unit
-                    is GmScriptTargetValidationResult.Rejected -> throw ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        validation.reasons.joinToString("; "),
-                    )
-                }
-                scripts.submit(
-                    command = command,
-                    timeout = request.timeoutMillis.milliseconds,
+        return endpoints.execute(
+            request = servletRequest,
+            permission = GmScriptPermissions.Execute,
+            action = "gm.script.submit",
+            attributes = mapOf(
+                "executionId" to request.executionId,
+                "targetType" to request.target.type,
+                "scriptName" to request.artifact.name,
+                "scriptEngine" to request.artifact.engine,
+            ),
+        ) { operation ->
+            val command = request.toCommand(operation.principal.id)
+            when (val validation = validator.validate(GmScriptTargetValidationRequest(command, operation.principal.id))) {
+                GmScriptTargetValidationResult.Allowed -> Unit
+                is GmScriptTargetValidationResult.Rejected -> throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    validation.reasons.joinToString("; "),
                 )
             }
+            scripts.submit(
+                command = command,
+                timeout = request.timeoutMillis.milliseconds,
+            )
         }
     }
 
     @GetMapping("/jobs/{jobId}")
-    fun find(
+    suspend fun find(
         servletRequest: HttpServletRequest,
         @PathVariable jobId: String,
     ): ResponseEntity<ScriptJob> {
-        return runBlocking {
-            endpoints.execute(
-                request = servletRequest,
-                permission = GmScriptPermissions.Read,
-                action = "gm.script.find",
-                attributes = mapOf("jobId" to jobId),
-            ) {
-                scripts.find(ScriptJobId(jobId))
-                    ?.let { ResponseEntity.ok(it) }
-                    ?: ResponseEntity.notFound().build()
-            }
+        return endpoints.execute(
+            request = servletRequest,
+            permission = GmScriptPermissions.Read,
+            action = "gm.script.find",
+            attributes = mapOf("jobId" to jobId),
+        ) {
+            scripts.find(ScriptJobId(jobId))
+                ?.let { ResponseEntity.ok(it) }
+                ?: ResponseEntity.notFound().build()
         }
     }
 }

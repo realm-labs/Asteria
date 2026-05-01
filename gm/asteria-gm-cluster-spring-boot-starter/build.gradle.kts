@@ -5,5 +5,4 @@ plugins {
 dependencies {
     api(project(":asteria-gm-cluster"))
     api(project(":asteria-gm-spring-boot-starter"))
-    implementation(libs.kotlinx.coroutines.core)
 }
