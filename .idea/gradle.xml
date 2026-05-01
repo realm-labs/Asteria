@@ -24,6 +24,7 @@
             <option value="$PROJECT_DIR$/asteria-cluster-pekko-management" />
             <option value="$PROJECT_DIR$/asteria-gateway-netty" />
             <option value="$PROJECT_DIR$/asteria-persistence" />
+            <option value="$PROJECT_DIR$/asteria-persistence-mongodb" />
             <option value="$PROJECT_DIR$/asteria-protocol-protobuf" />
             <option value="$PROJECT_DIR$/asteria-starter" />
             <option value="$PROJECT_DIR$/build-logic" />

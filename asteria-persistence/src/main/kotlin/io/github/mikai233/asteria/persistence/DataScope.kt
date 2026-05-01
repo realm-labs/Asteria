@@ -9,6 +9,9 @@ data class DataScope<ID : Any>(
     val services: ServiceRegistry,
 )
 
+/**
+ * Factory for one actor-local data unit.
+ */
 fun interface DataModule<ID : Any> {
     fun create(scope: DataScope<ID>): MemData
 }

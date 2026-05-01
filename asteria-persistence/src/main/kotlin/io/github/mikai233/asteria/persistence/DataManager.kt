@@ -10,6 +10,7 @@ class DataManager<ID : Any>(
     private val autoFlushData: MutableList<AutoFlushMemData> = mutableListOf()
 
     suspend fun loadAll() {
+        check(dataByType.isEmpty()) { "data manager for ${scope.entityKind}:${scope.entityId} already loaded" }
         modules.forEach { module ->
             val data = module.create(scope)
             data.load()
@@ -33,3 +34,5 @@ class DataManager<ID : Any>(
         return autoFlushData.all { it.flush() }
     }
 }
+
+inline fun <reified T : MemData> DataManager<*>.get(): T = get(T::class)

@@ -46,6 +46,7 @@ include(
     "asteria-protocol-protobuf",
     "asteria-gateway-netty",
     "asteria-persistence",
+    "asteria-persistence-mongodb",
     "asteria-game-utils",
     "asteria-config",
     "asteria-config-luban",
