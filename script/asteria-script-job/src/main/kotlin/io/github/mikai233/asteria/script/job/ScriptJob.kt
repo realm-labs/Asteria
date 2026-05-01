@@ -28,6 +28,7 @@ enum class ScriptJobStatus {
     Completed,
     PartialFailed,
     Failed,
+    Cancelled,
 }
 
 enum class ScriptJobItemStatus {
@@ -35,6 +36,7 @@ enum class ScriptJobItemStatus {
     Running,
     Completed,
     Failed,
+    Cancelled,
 }
 
 data class ScriptJob(
@@ -45,6 +47,7 @@ data class ScriptJob(
     val totalItems: Int = 0,
     val completedItems: Int = 0,
     val failedItems: Int = 0,
+    val cancelledItems: Int = 0,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = createdAtMillis,
 ) {
@@ -53,7 +56,10 @@ data class ScriptJob(
         require(totalItems >= 0) { "script job total items must not be negative" }
         require(completedItems >= 0) { "script job completed items must not be negative" }
         require(failedItems >= 0) { "script job failed items must not be negative" }
-        require(completedItems + failedItems <= totalItems) { "script job item counters exceed total items" }
+        require(cancelledItems >= 0) { "script job cancelled items must not be negative" }
+        require(completedItems + failedItems + cancelledItems <= totalItems) {
+            "script job item counters exceed total items"
+        }
     }
 }
 
@@ -66,12 +72,50 @@ data class ScriptJobItem(
     val attempts: List<ScriptJobItemAttempt> = emptyList(),
     val leaseOwner: String? = null,
     val leaseUntilMillis: Long? = null,
+    val cancelRequestedBy: String? = null,
+    val cancelReason: String? = null,
+    val cancelRequestedAtMillis: Long? = null,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = createdAtMillis,
 ) {
     init {
         leaseOwner?.let { require(it.isNotBlank()) { "script job item lease owner must not be blank" } }
         leaseUntilMillis?.let { require(it >= 0) { "script job item lease time must not be negative" } }
+        cancelRequestedBy?.let { require(it.isNotBlank()) { "script job item cancel requester must not be blank" } }
+        cancelReason?.let { require(it.isNotBlank()) { "script job item cancel reason must not be blank" } }
+        cancelRequestedAtMillis?.let { require(it >= 0) { "script job item cancel time must not be negative" } }
+    }
+}
+
+data class ScriptJobQuery(
+    val status: ScriptJobStatus? = null,
+    val requester: String? = null,
+    val offset: Int = 0,
+    val limit: Int = 100,
+) {
+    init {
+        requester?.let { require(it.isNotBlank()) { "script job query requester must not be blank" } }
+        require(offset >= 0) { "script job query offset must not be negative" }
+        require(limit > 0) { "script job query limit must be positive" }
+    }
+}
+
+data class ScriptJobPage(
+    val jobs: List<ScriptJob>,
+    val offset: Int,
+    val limit: Int,
+    val total: Long,
+) {
+    val nextOffset: Int? = if (offset + jobs.size < total) offset + jobs.size else null
+}
+
+data class ScriptJobCancellation(
+    val requestedBy: String? = null,
+    val reason: String? = null,
+) {
+    init {
+        requestedBy?.let { require(it.isNotBlank()) { "script job cancellation requester must not be blank" } }
+        reason?.let { require(it.isNotBlank()) { "script job cancellation reason must not be blank" } }
     }
 }
 

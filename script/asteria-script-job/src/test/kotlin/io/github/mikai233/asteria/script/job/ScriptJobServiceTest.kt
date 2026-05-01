@@ -3,6 +3,7 @@ package io.github.mikai233.asteria.script.job
 import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptExecutionBatchResult
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
+import io.github.mikai233.asteria.script.ScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptRuntime
 import io.github.mikai233.asteria.script.ScriptTarget
@@ -75,6 +76,24 @@ class ScriptJobServiceTest {
         assertEquals(1, page.items.size)
         assertEquals(ScriptJobItemId("2"), page.items.single().id)
         assertEquals(2, page.nextOffset)
+    }
+
+    @Test
+    fun repositoryListsJobsWithQuery() = runBlocking {
+        val repository = InMemoryScriptJobRepository()
+        repository.create(
+            ScriptJob(ScriptJobId("job-1"), command("job-1", requester = "alice")),
+            listOf(ScriptJobItem(ScriptJobItemId("1"), ScriptJobId("job-1"), ScriptTarget.Node(listOf("node-1")))),
+        )
+        repository.create(
+            ScriptJob(ScriptJobId("job-2"), command("job-2", requester = "bob")),
+            listOf(ScriptJobItem(ScriptJobItemId("1"), ScriptJobId("job-2"), ScriptTarget.Node(listOf("node-1")))),
+        )
+
+        val page = repository.listJobs(ScriptJobQuery(requester = "alice"))
+
+        assertEquals(1L, page.total)
+        assertEquals(listOf(ScriptJobId("job-1")), page.jobs.map { it.id })
     }
 
     @Test
@@ -196,6 +215,75 @@ class ScriptJobServiceTest {
         assertEquals(ScriptJobStatus.Failed, job.status)
     }
 
+    @Test
+    fun cancelJobCancelsPendingItems() = runBlocking {
+        val repository = InMemoryScriptJobRepository()
+        val jobId = ScriptJobId("job-1")
+        repository.create(
+            ScriptJob(jobId, command("job-1")),
+            listOf(
+                ScriptJobItem(ScriptJobItemId("1"), jobId, ScriptTarget.Node(listOf("node-1"))),
+                ScriptJobItem(ScriptJobItemId("2"), jobId, ScriptTarget.Node(listOf("node-2"))),
+            ),
+        )
+
+        val job = assertNotNull(
+            repository.cancelJob(
+                jobId,
+                ScriptJobCancellation(requestedBy = "gm-1", reason = "mistake"),
+            ),
+        )
+        val items = repository.listItems(jobId).items
+
+        assertEquals(ScriptJobStatus.Cancelled, job.status)
+        assertEquals(2, job.cancelledItems)
+        assertEquals(listOf(ScriptJobItemStatus.Cancelled, ScriptJobItemStatus.Cancelled), items.map { it.status })
+        assertTrue(items.all { it.cancelRequestedBy == "gm-1" })
+    }
+
+    @Test
+    fun cancelRunningItemFinishesAsCancelled() = runBlocking {
+        val repository = InMemoryScriptJobRepository()
+        val jobId = ScriptJobId("job-1")
+        val itemId = ScriptJobItemId("1")
+        repository.create(
+            ScriptJob(jobId, command("job-1", listOf("node-1"))),
+            listOf(ScriptJobItem(itemId, jobId, ScriptTarget.Node(listOf("node-1")))),
+        )
+        val now = System.currentTimeMillis()
+        repository.markItemRunning(
+            jobId = jobId,
+            itemId = itemId,
+            attempt = 1,
+            command = command("job-1.1.1", listOf("node-1")),
+            leaseOwner = "worker-1",
+            leaseUntilMillis = now + 1_000,
+        )
+
+        val cancelled = assertNotNull(
+            repository.cancelItem(
+                jobId,
+                itemId,
+                ScriptJobCancellation(requestedBy = "gm-1", reason = "stop"),
+            ),
+        )
+        repository.markItemFinished(
+            jobId = jobId,
+            itemId = itemId,
+            attempt = 1,
+            status = ScriptJobItemStatus.Completed,
+            results = listOf(ScriptExecutionResult("job-1.1.1", success = true)),
+        )
+        val item = assertNotNull(repository.findItem(jobId, itemId))
+        val job = assertNotNull(repository.find(jobId))
+
+        assertEquals(ScriptJobItemStatus.Running, cancelled.status)
+        assertEquals("gm-1", cancelled.cancelRequestedBy)
+        assertEquals(ScriptJobItemStatus.Cancelled, item.status)
+        assertEquals(ScriptJobItemStatus.Cancelled, item.attempts.single().status)
+        assertEquals(ScriptJobStatus.Cancelled, job.status)
+    }
+
     private suspend fun awaitJob(
         repository: ScriptJobRepository,
         id: ScriptJobId,
@@ -230,11 +318,13 @@ class ScriptJobServiceTest {
     private fun command(
         executionId: String,
         nodes: List<String> = listOf("node-1", "node-2"),
+        requester: String? = null,
     ): ScriptExecutionCommand {
         return ScriptExecutionCommand(
             executionId = executionId,
             target = ScriptTarget.Node(nodes),
             artifact = ScriptArtifact("job-test", "fake", ByteArray(0)),
+            metadata = ScriptExecutionMetadata(requester = requester),
         )
     }
 }

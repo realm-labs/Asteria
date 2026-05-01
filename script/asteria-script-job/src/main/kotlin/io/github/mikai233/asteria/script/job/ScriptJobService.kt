@@ -82,12 +82,31 @@ class ScriptJobService(
         return repository.find(id)
     }
 
+    suspend fun listJobs(query: ScriptJobQuery = ScriptJobQuery()): ScriptJobPage {
+        return repository.listJobs(query)
+    }
+
     suspend fun listItems(id: ScriptJobId, query: ScriptJobItemQuery = ScriptJobItemQuery()): ScriptJobItemPage {
         return repository.listItems(id, query)
     }
 
     suspend fun findItem(id: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem? {
         return repository.findItem(id, itemId)
+    }
+
+    suspend fun cancelJob(
+        id: ScriptJobId,
+        cancellation: ScriptJobCancellation = ScriptJobCancellation(),
+    ): ScriptJob? {
+        return repository.cancelJob(id, cancellation)
+    }
+
+    suspend fun cancelItem(
+        id: ScriptJobId,
+        itemId: ScriptJobItemId,
+        cancellation: ScriptJobCancellation = ScriptJobCancellation(),
+    ): ScriptJobItem? {
+        return repository.cancelItem(id, itemId, cancellation)
     }
 
     suspend fun resumeIncompleteJobs(

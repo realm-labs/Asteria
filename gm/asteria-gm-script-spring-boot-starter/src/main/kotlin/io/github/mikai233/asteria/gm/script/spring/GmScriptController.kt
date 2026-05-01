@@ -6,6 +6,7 @@ import io.github.mikai233.asteria.gm.script.GmScriptTargetValidationRequest
 import io.github.mikai233.asteria.gm.script.GmScriptTargetValidationResult
 import io.github.mikai233.asteria.gm.script.GmScriptTargetValidator
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
+import io.github.mikai233.asteria.script.job.ScriptJobCancellation
 import io.github.mikai233.asteria.script.job.ScriptJob
 import io.github.mikai233.asteria.script.job.ScriptJobId
 import io.github.mikai233.asteria.script.job.ScriptJobItem
@@ -13,6 +14,9 @@ import io.github.mikai233.asteria.script.job.ScriptJobItemId
 import io.github.mikai233.asteria.script.job.ScriptJobItemPage
 import io.github.mikai233.asteria.script.job.ScriptJobItemQuery
 import io.github.mikai233.asteria.script.job.ScriptJobItemStatus
+import io.github.mikai233.asteria.script.job.ScriptJobPage
+import io.github.mikai233.asteria.script.job.ScriptJobQuery
+import io.github.mikai233.asteria.script.job.ScriptJobStatus
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -69,6 +73,36 @@ class GmScriptController(
         }
     }
 
+    @GetMapping("/jobs")
+    suspend fun listJobs(
+        servletRequest: HttpServletRequest,
+        @RequestParam status: ScriptJobStatus? = null,
+        @RequestParam requester: String? = null,
+        @RequestParam offset: Int = 0,
+        @RequestParam limit: Int = 100,
+    ): ResponseEntity<ScriptJobPage> {
+        return endpoints.execute(
+            request = servletRequest,
+            permission = GmScriptPermissions.Read,
+            action = "gm.script.jobs.list",
+            attributes = buildMap {
+                status?.let { put("status", it.name) }
+                requester?.let { put("requester", it) }
+            },
+        ) {
+            ResponseEntity.ok(
+                scripts.listJobs(
+                    ScriptJobQuery(
+                        status = status,
+                        requester = requester,
+                        offset = offset,
+                        limit = limit,
+                    ),
+                ),
+            )
+        }
+    }
+
     @GetMapping("/jobs/{jobId}")
     suspend fun find(
         servletRequest: HttpServletRequest,
@@ -83,6 +117,30 @@ class GmScriptController(
             scripts.find(ScriptJobId(jobId))
                 ?.let { ResponseEntity.ok(it) }
                 ?: ResponseEntity.notFound().build()
+        }
+    }
+
+    @PostMapping("/jobs/{jobId}/cancel")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    suspend fun cancelJob(
+        servletRequest: HttpServletRequest,
+        @PathVariable jobId: String,
+        @RequestBody(required = false) request: GmScriptCancelRequest?,
+    ): ScriptJob {
+        val cancelRequest = request ?: GmScriptCancelRequest()
+        return endpoints.execute(
+            request = servletRequest,
+            permission = GmScriptPermissions.Cancel,
+            action = "gm.script.cancel",
+            attributes = mapOf("jobId" to jobId),
+        ) { operation ->
+            scripts.cancelJob(
+                jobId = ScriptJobId(jobId),
+                cancellation = ScriptJobCancellation(
+                    requestedBy = operation.principal.id,
+                    reason = cancelRequest.reason,
+                ),
+            ) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "script job $jobId not found")
         }
     }
 
@@ -103,6 +161,35 @@ class GmScriptController(
             val id = ScriptJobId(jobId)
             scripts.find(id) ?: return@execute ResponseEntity.notFound().build()
             ResponseEntity.ok(scripts.listItems(id, ScriptJobItemQuery(status = status, offset = offset, limit = limit)))
+        }
+    }
+
+    @PostMapping("/jobs/{jobId}/items/{itemId}/cancel")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    suspend fun cancelItem(
+        servletRequest: HttpServletRequest,
+        @PathVariable jobId: String,
+        @PathVariable itemId: String,
+        @RequestBody(required = false) request: GmScriptCancelRequest?,
+    ): ScriptJobItem {
+        val cancelRequest = request ?: GmScriptCancelRequest()
+        return endpoints.execute(
+            request = servletRequest,
+            permission = GmScriptPermissions.Cancel,
+            action = "gm.script.items.cancel",
+            attributes = mapOf(
+                "jobId" to jobId,
+                "itemId" to itemId,
+            ),
+        ) { operation ->
+            scripts.cancelItem(
+                jobId = ScriptJobId(jobId),
+                itemId = ScriptJobItemId(itemId),
+                cancellation = ScriptJobCancellation(
+                    requestedBy = operation.principal.id,
+                    reason = cancelRequest.reason,
+                ),
+            ) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "script job item $itemId not found")
         }
     }
 

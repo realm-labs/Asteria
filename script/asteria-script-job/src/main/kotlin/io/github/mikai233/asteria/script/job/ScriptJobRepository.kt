@@ -55,11 +55,21 @@ interface ScriptJobRepository {
 
     suspend fun find(id: ScriptJobId): ScriptJob?
 
+    suspend fun listJobs(query: ScriptJobQuery = ScriptJobQuery()): ScriptJobPage
+
     suspend fun listRecoverableJobs(limit: Int = 100): List<ScriptJob>
 
     suspend fun listItems(id: ScriptJobId, query: ScriptJobItemQuery = ScriptJobItemQuery()): ScriptJobItemPage
 
     suspend fun findItem(id: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem?
+
+    suspend fun cancelJob(id: ScriptJobId, cancellation: ScriptJobCancellation = ScriptJobCancellation()): ScriptJob?
+
+    suspend fun cancelItem(
+        id: ScriptJobId,
+        itemId: ScriptJobItemId,
+        cancellation: ScriptJobCancellation = ScriptJobCancellation(),
+    ): ScriptJobItem?
 }
 
 /**
@@ -171,14 +181,15 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
             require(item.attempts.last().attempt == attempt) {
                 "script job item $itemId latest attempt is ${item.attempts.last().attempt}, got $attempt"
             }
+            val finalStatus = item.finalStatus(status)
             val updatedAttempt = item.attempts.last().copy(
-                status = status,
+                status = finalStatus,
                 results = results,
                 error = error,
                 finishedAtMillis = now,
             )
             stored.items[itemId] = item.copy(
-                status = status,
+                status = finalStatus,
                 results = results,
                 attempts = item.attempts.dropLast(1) + updatedAttempt,
                 leaseOwner = null,
@@ -202,17 +213,22 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
                 .filter { it.leaseUntilMillis != null && it.leaseUntilMillis <= nowMillis }
                 .map { item ->
                     val attempt = item.attempts.lastOrNull()
+                    val finalStatus = item.expiredStatus()
                     val attempts = if (attempt == null) {
                         item.attempts
                     } else {
                         item.attempts.dropLast(1) + attempt.copy(
-                            status = ScriptJobItemStatus.Failed,
-                            error = error,
+                            status = finalStatus,
+                            error = if (finalStatus == ScriptJobItemStatus.Cancelled) {
+                                item.cancelReason ?: "script job item cancelled"
+                            } else {
+                                error
+                            },
                             finishedAtMillis = nowMillis,
                         )
                     }
                     val updated = item.copy(
-                        status = ScriptJobItemStatus.Failed,
+                        status = finalStatus,
                         attempts = attempts,
                         leaseOwner = null,
                         leaseUntilMillis = null,
@@ -230,6 +246,23 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
 
     override suspend fun find(id: ScriptJobId): ScriptJob? {
         return mutex.withLock { jobs[id]?.job }
+    }
+
+    override suspend fun listJobs(query: ScriptJobQuery): ScriptJobPage {
+        return mutex.withLock {
+            val values = jobs.values
+                .asSequence()
+                .map { it.job }
+                .filter { query.status == null || it.status == query.status }
+                .filter { query.requester == null || it.command.metadata.requester == query.requester }
+                .toList()
+            ScriptJobPage(
+                jobs = values.drop(query.offset).take(query.limit),
+                offset = query.offset,
+                limit = query.limit,
+                total = values.size.toLong(),
+            )
+        }
     }
 
     override suspend fun listRecoverableJobs(limit: Int): List<ScriptJob> {
@@ -264,6 +297,34 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
         return mutex.withLock { jobs[id]?.items?.get(itemId) }
     }
 
+    override suspend fun cancelJob(id: ScriptJobId, cancellation: ScriptJobCancellation): ScriptJob? {
+        return mutex.withLock {
+            val stored = jobs[id] ?: return@withLock null
+            val now = System.currentTimeMillis()
+            stored.items.values.forEach { item ->
+                stored.items[item.id] = item.cancel(cancellation, now)
+            }
+            stored.refresh(now)
+            stored.job
+        }
+    }
+
+    override suspend fun cancelItem(
+        id: ScriptJobId,
+        itemId: ScriptJobItemId,
+        cancellation: ScriptJobCancellation,
+    ): ScriptJobItem? {
+        return mutex.withLock {
+            val stored = jobs[id] ?: return@withLock null
+            val item = stored.items[itemId] ?: return@withLock null
+            val now = System.currentTimeMillis()
+            val updated = item.cancel(cancellation, now)
+            stored.items[itemId] = updated
+            stored.refresh(now)
+            updated
+        }
+    }
+
     private suspend fun update(
         id: ScriptJobId,
         block: (StoredScriptJob, Long) -> Unit,
@@ -286,10 +347,12 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
             val values = items.values
             val completed = values.count { it.status == ScriptJobItemStatus.Completed }
             val failed = values.count { it.status == ScriptJobItemStatus.Failed }
+            val cancelled = values.count { it.status == ScriptJobItemStatus.Cancelled }
             val running = values.any { it.status == ScriptJobItemStatus.Running }
             val pending = values.any { it.status == ScriptJobItemStatus.Pending }
             val status = when {
                 running || pending -> ScriptJobStatus.Running
+                cancelled > 0 && failed == 0 -> ScriptJobStatus.Cancelled
                 failed == 0 -> ScriptJobStatus.Completed
                 completed == 0 -> ScriptJobStatus.Failed
                 else -> ScriptJobStatus.PartialFailed
@@ -298,8 +361,43 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
                 status = status,
                 completedItems = completed,
                 failedItems = failed,
+                cancelledItems = cancelled,
                 updatedAtMillis = now,
             )
         }
     }
+}
+
+private fun ScriptJobItem.cancel(cancellation: ScriptJobCancellation, now: Long): ScriptJobItem {
+    return when (status) {
+        ScriptJobItemStatus.Pending -> copy(
+            status = ScriptJobItemStatus.Cancelled,
+            leaseOwner = null,
+            leaseUntilMillis = null,
+            cancelRequestedBy = cancellation.requestedBy,
+            cancelReason = cancellation.reason,
+            cancelRequestedAtMillis = now,
+            updatedAtMillis = now,
+        )
+
+        ScriptJobItemStatus.Running -> copy(
+            cancelRequestedBy = cancellation.requestedBy,
+            cancelReason = cancellation.reason,
+            cancelRequestedAtMillis = cancelRequestedAtMillis ?: now,
+            updatedAtMillis = now,
+        )
+
+        ScriptJobItemStatus.Completed,
+        ScriptJobItemStatus.Failed,
+        ScriptJobItemStatus.Cancelled,
+        -> this
+    }
+}
+
+private fun ScriptJobItem.finalStatus(status: ScriptJobItemStatus): ScriptJobItemStatus {
+    return if (cancelRequestedAtMillis == null) status else ScriptJobItemStatus.Cancelled
+}
+
+private fun ScriptJobItem.expiredStatus(): ScriptJobItemStatus {
+    return if (cancelRequestedAtMillis == null) ScriptJobItemStatus.Failed else ScriptJobItemStatus.Cancelled
 }

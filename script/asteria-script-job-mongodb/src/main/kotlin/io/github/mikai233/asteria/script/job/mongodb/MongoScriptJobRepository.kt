@@ -22,18 +22,22 @@ import io.github.mikai233.asteria.script.ScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptResourceRef
 import io.github.mikai233.asteria.script.ScriptTarget
 import io.github.mikai233.asteria.script.job.ScriptJob
+import io.github.mikai233.asteria.script.job.ScriptJobCancellation
 import io.github.mikai233.asteria.script.job.ScriptJobId
 import io.github.mikai233.asteria.script.job.ScriptJobItem
 import io.github.mikai233.asteria.script.job.ScriptJobItemAttempt
 import io.github.mikai233.asteria.script.job.ScriptJobItemId
 import io.github.mikai233.asteria.script.job.ScriptJobItemPage
 import io.github.mikai233.asteria.script.job.ScriptJobItemQuery
+import io.github.mikai233.asteria.script.job.ScriptJobPage
+import io.github.mikai233.asteria.script.job.ScriptJobQuery
 import io.github.mikai233.asteria.script.job.ScriptJobItemStatus
 import io.github.mikai233.asteria.script.job.ScriptJobRepository
 import io.github.mikai233.asteria.script.job.ScriptJobStatus
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.toList
 import org.bson.Document
+import org.bson.conversions.Bson
 import java.util.Base64
 
 /**
@@ -174,14 +178,15 @@ class MongoScriptJobRepository(
             "script job item $itemId latest attempt is ${item.attempts.last().attempt}, got $attempt"
         }
         val now = System.currentTimeMillis()
+        val finalStatus = item.finalStatus(status)
         val updatedAttempt = item.attempts.last().copy(
-            status = status,
+            status = finalStatus,
             results = results,
             error = error,
             finishedAtMillis = now,
         )
         val updated = item.copy(
-            status = status,
+            status = finalStatus,
             results = results,
             attempts = item.attempts.dropLast(1) + updatedAttempt,
             leaseOwner = null,
@@ -208,17 +213,22 @@ class MongoScriptJobRepository(
         val expired = mutableListOf<ScriptJobItem>()
         candidates.forEach { item ->
             val attempt = item.attempts.lastOrNull()
+            val finalStatus = item.expiredStatus()
             val attempts = if (attempt == null) {
                 item.attempts
             } else {
                 item.attempts.dropLast(1) + attempt.copy(
-                    status = ScriptJobItemStatus.Failed,
-                    error = error,
+                    status = finalStatus,
+                    error = if (finalStatus == ScriptJobItemStatus.Cancelled) {
+                        item.cancelReason ?: "script job item cancelled"
+                    } else {
+                        error
+                    },
                     finishedAtMillis = nowMillis,
                 )
             }
             val updated = item.copy(
-                status = ScriptJobItemStatus.Failed,
+                status = finalStatus,
                 attempts = attempts,
                 leaseOwner = null,
                 leaseUntilMillis = null,
@@ -245,6 +255,23 @@ class MongoScriptJobRepository(
 
     override suspend fun find(id: ScriptJobId): ScriptJob? {
         return jobs.find(eq("_id", id.value)).firstOrNull()?.toScriptJob()
+    }
+
+    override suspend fun listJobs(query: ScriptJobQuery): ScriptJobPage {
+        val filter = query.toFilter()
+        val total = jobs.countDocuments(filter)
+        val page = jobs.find(filter)
+            .sort(Sorts.descending("createdAtMillis"))
+            .skip(query.offset)
+            .limit(query.limit)
+            .toList()
+            .map { it.toScriptJob() }
+        return ScriptJobPage(
+            jobs = page,
+            offset = query.offset,
+            limit = query.limit,
+            total = total,
+        )
     }
 
     override suspend fun listRecoverableJobs(limit: Int): List<ScriptJob> {
@@ -284,6 +311,32 @@ class MongoScriptJobRepository(
             ?.toScriptJobItem()
     }
 
+    override suspend fun cancelJob(id: ScriptJobId, cancellation: ScriptJobCancellation): ScriptJob? {
+        find(id) ?: return null
+        val jobItems = items.find(eq("jobId", id.value)).toList().map { it.toScriptJobItem() }
+        var changed = false
+        jobItems.forEach { item ->
+            changed = cancelItemWithoutRefresh(item, cancellation) || changed
+        }
+        if (changed) {
+            refreshJob(id, System.currentTimeMillis())
+        }
+        return find(id)
+    }
+
+    override suspend fun cancelItem(
+        id: ScriptJobId,
+        itemId: ScriptJobItemId,
+        cancellation: ScriptJobCancellation,
+    ): ScriptJobItem? {
+        val item = findItem(id, itemId) ?: return null
+        val changed = cancelItemWithoutRefresh(item, cancellation)
+        if (changed) {
+            refreshJob(id, System.currentTimeMillis())
+        }
+        return findItem(id, itemId)
+    }
+
     private suspend fun replaceItem(item: ScriptJobItem) {
         items.replaceOne(
             and(eq("jobId", item.jobId.value), eq("itemId", item.id.value)),
@@ -295,10 +348,12 @@ class MongoScriptJobRepository(
         val job = requireNotNull(find(jobId)) { "script job $jobId not found" }
         val completed = countItems(jobId, ScriptJobItemStatus.Completed).toInt()
         val failed = countItems(jobId, ScriptJobItemStatus.Failed).toInt()
+        val cancelled = countItems(jobId, ScriptJobItemStatus.Cancelled).toInt()
         val running = countItems(jobId, ScriptJobItemStatus.Running) > 0
         val pending = countItems(jobId, ScriptJobItemStatus.Pending) > 0
         val status = when {
             running || pending -> ScriptJobStatus.Running
+            cancelled > 0 && failed == 0 -> ScriptJobStatus.Cancelled
             failed == 0 -> ScriptJobStatus.Completed
             completed == 0 -> ScriptJobStatus.Failed
             else -> ScriptJobStatus.PartialFailed
@@ -309,6 +364,7 @@ class MongoScriptJobRepository(
                 status = status,
                 completedItems = completed,
                 failedItems = failed,
+                cancelledItems = cancelled,
                 updatedAtMillis = now,
             ).toDocument(),
         )
@@ -317,10 +373,71 @@ class MongoScriptJobRepository(
     private suspend fun countItems(jobId: ScriptJobId, status: ScriptJobItemStatus): Long {
         return items.countDocuments(and(eq("jobId", jobId.value), eq("status", status.name)))
     }
+
+    private suspend fun cancelItemWithoutRefresh(
+        item: ScriptJobItem,
+        cancellation: ScriptJobCancellation,
+    ): Boolean {
+        val now = System.currentTimeMillis()
+        val updated = item.cancel(cancellation, now)
+        if (updated == item) {
+            return false
+        }
+        val result = items.replaceOne(
+            and(
+                eq("jobId", item.jobId.value),
+                eq("itemId", item.id.value),
+                eq("status", item.status.name),
+            ),
+            updated.toDocument(),
+        )
+        return result.modifiedCount == 1L
+    }
 }
 
-private fun leaseAvailable(nowMillis: Long): org.bson.conversions.Bson {
+private fun ScriptJobQuery.toFilter(): Bson {
+    val filters = mutableListOf<Bson>()
+    status?.let { filters += eq("status", it.name) }
+    requester?.let { filters += eq("command.metadata.requester", it) }
+    return if (filters.isEmpty()) Document() else and(filters)
+}
+
+private fun leaseAvailable(nowMillis: Long): Bson {
     return or(eq("leaseUntilMillis", null), lte("leaseUntilMillis", nowMillis))
+}
+
+private fun ScriptJobItem.cancel(cancellation: ScriptJobCancellation, now: Long): ScriptJobItem {
+    return when (status) {
+        ScriptJobItemStatus.Pending -> copy(
+            status = ScriptJobItemStatus.Cancelled,
+            leaseOwner = null,
+            leaseUntilMillis = null,
+            cancelRequestedBy = cancellation.requestedBy,
+            cancelReason = cancellation.reason,
+            cancelRequestedAtMillis = now,
+            updatedAtMillis = now,
+        )
+
+        ScriptJobItemStatus.Running -> copy(
+            cancelRequestedBy = cancellation.requestedBy,
+            cancelReason = cancellation.reason,
+            cancelRequestedAtMillis = cancelRequestedAtMillis ?: now,
+            updatedAtMillis = now,
+        )
+
+        ScriptJobItemStatus.Completed,
+        ScriptJobItemStatus.Failed,
+        ScriptJobItemStatus.Cancelled,
+        -> this
+    }
+}
+
+private fun ScriptJobItem.finalStatus(status: ScriptJobItemStatus): ScriptJobItemStatus {
+    return if (cancelRequestedAtMillis == null) status else ScriptJobItemStatus.Cancelled
+}
+
+private fun ScriptJobItem.expiredStatus(): ScriptJobItemStatus {
+    return if (cancelRequestedAtMillis == null) ScriptJobItemStatus.Failed else ScriptJobItemStatus.Cancelled
 }
 
 private fun ScriptJob.toDocument(): Document {
@@ -331,6 +448,7 @@ private fun ScriptJob.toDocument(): Document {
         .append("totalItems", totalItems)
         .append("completedItems", completedItems)
         .append("failedItems", failedItems)
+        .append("cancelledItems", cancelledItems)
         .append("createdAtMillis", createdAtMillis)
         .append("updatedAtMillis", updatedAtMillis)
 }
@@ -344,6 +462,7 @@ private fun Document.toScriptJob(): ScriptJob {
         totalItems = number("totalItems").toInt(),
         completedItems = number("completedItems").toInt(),
         failedItems = number("failedItems").toInt(),
+        cancelledItems = number("cancelledItems").toInt(),
         createdAtMillis = number("createdAtMillis"),
         updatedAtMillis = number("updatedAtMillis"),
     )
@@ -359,6 +478,9 @@ private fun ScriptJobItem.toDocument(): Document {
         .append("attempts", attempts.map { it.toDocument() })
         .append("leaseOwner", leaseOwner)
         .append("leaseUntilMillis", leaseUntilMillis)
+        .append("cancelRequestedBy", cancelRequestedBy)
+        .append("cancelReason", cancelReason)
+        .append("cancelRequestedAtMillis", cancelRequestedAtMillis)
         .append("createdAtMillis", createdAtMillis)
         .append("updatedAtMillis", updatedAtMillis)
 }
@@ -373,6 +495,9 @@ private fun Document.toScriptJobItem(): ScriptJobItem {
         attempts = documents("attempts").map { it.toScriptJobItemAttempt() },
         leaseOwner = nullableString("leaseOwner"),
         leaseUntilMillis = nullableNumber("leaseUntilMillis"),
+        cancelRequestedBy = nullableString("cancelRequestedBy"),
+        cancelReason = nullableString("cancelReason"),
+        cancelRequestedAtMillis = nullableNumber("cancelRequestedAtMillis"),
         createdAtMillis = number("createdAtMillis"),
         updatedAtMillis = number("updatedAtMillis"),
     )

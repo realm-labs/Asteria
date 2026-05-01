@@ -166,6 +166,17 @@ data class GmScriptRetryItemRequest(
     }
 }
 
+/**
+ * HTTP request for cancelling a script job or item.
+ */
+data class GmScriptCancelRequest(
+    val reason: String? = null,
+) {
+    init {
+        reason?.let { require(it.isNotBlank()) { "GM script cancel reason must not be blank" } }
+    }
+}
+
 private fun requireValue(value: String?, name: String): String {
     return value?.takeIf { it.isNotBlank() } ?: error("GM script target $name is required")
 }
