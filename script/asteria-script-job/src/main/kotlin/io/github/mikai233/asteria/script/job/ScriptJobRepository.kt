@@ -5,7 +5,14 @@ import io.github.mikai233.asteria.script.ScriptExecutionResult
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-interface ScriptJobStore {
+/**
+ * Durable storage contract for script jobs.
+ *
+ * The repository is deliberately shaped around job semantics instead of generic CRUD. Implementations are responsible
+ * for making item state transitions durable enough that submitted jobs can be inspected, audited, and retried after the
+ * request that created them has returned.
+ */
+interface ScriptJobRepository {
     suspend fun create(job: ScriptJob, items: List<ScriptJobItem>)
 
     suspend fun markItemRunning(
@@ -31,7 +38,13 @@ interface ScriptJobStore {
     suspend fun findItem(id: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem?
 }
 
-class InMemoryScriptJobStore : ScriptJobStore {
+/**
+ * In-memory repository for tests and local development.
+ *
+ * It preserves the same state transition semantics as durable implementations, but it is not restart-safe and should
+ * not be used for production GM operations.
+ */
+class InMemoryScriptJobRepository : ScriptJobRepository {
     private val mutex = Mutex()
     private val jobs: MutableMap<ScriptJobId, StoredScriptJob> = linkedMapOf()
 
@@ -161,7 +174,6 @@ class InMemoryScriptJobStore : ScriptJobStore {
             }
             job = job.copy(
                 status = status,
-                results = values.flatMap { it.results },
                 completedItems = completed,
                 failedItems = failed,
                 updatedAtMillis = now,

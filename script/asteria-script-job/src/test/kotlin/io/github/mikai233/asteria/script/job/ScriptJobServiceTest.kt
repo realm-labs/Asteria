@@ -21,7 +21,7 @@ class ScriptJobServiceTest {
     @Test
     fun submitCreatesItemsAndStoresResults() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
-        val store = InMemoryScriptJobStore()
+        val repository = InMemoryScriptJobRepository()
         val runtime = FakeScriptRuntime(
             ScriptExecutionBatchResult(
                 executionId = "job-1.1.1",
@@ -36,19 +36,19 @@ class ScriptJobServiceTest {
                 ),
             ),
         )
-        val service = ScriptJobService(runtime, store, scope)
+        val service = ScriptJobService(runtime, repository, scope)
 
         try {
             val submitted = service.submit(command("job-1"))
-            val job = awaitJob(store, ScriptJobId("job-1"), ScriptJobStatus.PartialFailed)
-            val items = store.listItems(ScriptJobId("job-1"))
+            val job = awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.PartialFailed)
+            val items = repository.listItems(ScriptJobId("job-1"))
 
             assertEquals(2, submitted.totalItems)
-            assertEquals(2, job.results.size)
             assertEquals(2, job.totalItems)
             assertEquals(1, job.completedItems)
             assertEquals(1, job.failedItems)
             assertEquals(ScriptJobStatus.PartialFailed, job.status)
+            assertEquals(2, items.sumOf { it.results.size })
             assertEquals(listOf(ScriptJobItemStatus.Completed, ScriptJobItemStatus.Failed), items.map { it.status })
             assertTrue(items.all { it.attempts.size == 1 })
         } finally {
@@ -59,7 +59,7 @@ class ScriptJobServiceTest {
     @Test
     fun retryItemAppendsNextAttempt() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
-        val store = InMemoryScriptJobStore()
+        val repository = InMemoryScriptJobRepository()
         val runtime = FakeScriptRuntime(
             ScriptExecutionBatchResult(
                 executionId = "job-1.1.1",
@@ -70,15 +70,15 @@ class ScriptJobServiceTest {
                 results = listOf(ScriptExecutionResult("job-1.1.2", success = true, nodeAddress = "node-1")),
             ),
         )
-        val service = ScriptJobService(runtime, store, scope)
+        val service = ScriptJobService(runtime, repository, scope)
 
         try {
             service.submit(command("job-1", listOf("node-1")))
-            awaitJob(store, ScriptJobId("job-1"), ScriptJobStatus.Failed)
+            awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Failed)
 
             service.retryItem(ScriptJobId("job-1"), ScriptJobItemId("1"))
-            val retry = awaitItem(store, ScriptJobId("job-1"), ScriptJobItemId("1"), ScriptJobItemStatus.Completed)
-            val job = awaitJob(store, ScriptJobId("job-1"), ScriptJobStatus.Completed)
+            val retry = awaitItem(repository, ScriptJobId("job-1"), ScriptJobItemId("1"), ScriptJobItemStatus.Completed)
+            val job = awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Completed)
 
             assertEquals(2, retry.attempts.size)
             assertEquals(ScriptJobItemStatus.Completed, retry.status)
@@ -89,34 +89,34 @@ class ScriptJobServiceTest {
     }
 
     private suspend fun awaitJob(
-        store: ScriptJobStore,
+        repository: ScriptJobRepository,
         id: ScriptJobId,
         status: ScriptJobStatus,
     ): ScriptJob {
         repeat(100) {
-            val job = store.find(id)
+            val job = repository.find(id)
             if (job?.status == status) {
                 return job
             }
             delay(10)
         }
-        return assertNotNull(store.find(id))
+        return assertNotNull(repository.find(id))
     }
 
     private suspend fun awaitItem(
-        store: ScriptJobStore,
+        repository: ScriptJobRepository,
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
         status: ScriptJobItemStatus,
     ): ScriptJobItem {
         repeat(100) {
-            val item = store.findItem(jobId, itemId)
+            val item = repository.findItem(jobId, itemId)
             if (item?.status == status) {
                 return item
             }
             delay(10)
         }
-        return assertNotNull(store.findItem(jobId, itemId))
+        return assertNotNull(repository.findItem(jobId, itemId))
     }
 
     private fun command(

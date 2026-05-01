@@ -19,7 +19,7 @@ import kotlin.time.Duration.Companion.seconds
 
 class ScriptJobService(
     private val runtime: ScriptRuntime,
-    private val store: ScriptJobStore,
+    private val repository: ScriptJobRepository,
     private val scope: CoroutineScope,
     private val tracer: Tracer = NoopTracer,
     private val metrics: Metrics = NoopMetrics,
@@ -33,11 +33,11 @@ class ScriptJobService(
             metrics.counter("asteria.script.job.submitted.total", command.metricTags()).increment()
             val job = ScriptJob(id, command)
             val items = command.expandItems(id)
-            store.create(job, items)
+            repository.create(job, items)
             scope.launch {
                 runItems(job, items, timeout)
             }
-            requireNotNull(store.find(id))
+            requireNotNull(repository.find(id))
         }
     }
 
@@ -46,38 +46,38 @@ class ScriptJobService(
         itemId: ScriptJobItemId,
         timeout: Duration = 3.seconds,
     ): ScriptJobItem {
-        val job = requireNotNull(store.find(jobId)) { "script job $jobId not found" }
-        val item = requireNotNull(store.findItem(jobId, itemId)) { "script job item $itemId not found" }
+        val job = requireNotNull(repository.find(jobId)) { "script job $jobId not found" }
+        val item = requireNotNull(repository.findItem(jobId, itemId)) { "script job item $itemId not found" }
         require(item.status == ScriptJobItemStatus.Failed) { "script job item $itemId is not failed" }
         val attempt = item.attempts.size + 1
         val command = item.command(job, attempt)
         return tracer.span("script.job.item.retry", jobTraceAttributes(job.id, command)) {
             metrics.counter("asteria.script.job.item.retry.total", command.metricTags()).increment()
-            store.markItemRunning(job.id, item.id, attempt, command)
+            repository.markItemRunning(job.id, item.id, attempt, command)
             scope.launch {
                 runItem(job.id, item.id, attempt, command, timeout)
             }
-            requireNotNull(store.findItem(job.id, item.id))
+            requireNotNull(repository.findItem(job.id, item.id))
         }
     }
 
     suspend fun find(id: ScriptJobId): ScriptJob? {
-        return store.find(id)
+        return repository.find(id)
     }
 
     suspend fun listItems(id: ScriptJobId, status: ScriptJobItemStatus? = null): List<ScriptJobItem> {
-        return store.listItems(id, status)
+        return repository.listItems(id, status)
     }
 
     suspend fun findItem(id: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem? {
-        return store.findItem(id, itemId)
+        return repository.findItem(id, itemId)
     }
 
     private suspend fun runItems(job: ScriptJob, items: List<ScriptJobItem>, timeout: Duration) {
         items.forEach { item ->
             val attempt = item.attempts.size + 1
             val command = item.command(job, attempt)
-            store.markItemRunning(job.id, item.id, attempt, command)
+            repository.markItemRunning(job.id, item.id, attempt, command)
             runItem(job.id, item.id, attempt, command, timeout)
         }
     }
@@ -109,7 +109,7 @@ class ScriptJobService(
                 }
             }
             val status = result.itemStatus()
-            store.markItemFinished(
+            repository.markItemFinished(
                 jobId = jobId,
                 itemId = itemId,
                 attempt = attempt,

@@ -20,8 +20,8 @@ class ScriptJobModule private constructor(
     private var scope: CoroutineScope? = null
 
     override suspend fun install(context: ModuleContext) {
-        val store = options.store ?: InMemoryScriptJobStore()
-        context.services.register(ScriptJobStore::class, store)
+        val repository = options.repository ?: InMemoryScriptJobRepository()
+        context.services.register(ScriptJobRepository::class, repository)
         context.services.register(ScriptJobModuleOptions::class, options)
     }
 
@@ -29,7 +29,7 @@ class ScriptJobModule private constructor(
         val jobScope = CoroutineScope(SupervisorJob())
         val service = ScriptJobService(
             runtime = context.services.get<ScriptRuntime>(),
-            store = context.services.get(),
+            repository = context.services.get(),
             scope = jobScope,
             tracer = context.services.find<Tracer>() ?: NoopTracer,
             metrics = context.services.find<Metrics>() ?: NoopMetrics,
@@ -51,18 +51,18 @@ class ScriptJobModule private constructor(
 }
 
 data class ScriptJobModuleOptions(
-    val store: ScriptJobStore?,
+    val repository: ScriptJobRepository?,
 )
 
 @AsteriaDsl
 class ScriptJobModuleBuilder {
-    private var store: ScriptJobStore? = null
+    private var repository: ScriptJobRepository? = null
 
-    fun store(store: ScriptJobStore) {
-        this.store = store
+    fun repository(repository: ScriptJobRepository) {
+        this.repository = repository
     }
 
     internal fun build(): ScriptJobModuleOptions {
-        return ScriptJobModuleOptions(store)
+        return ScriptJobModuleOptions(repository)
     }
 }

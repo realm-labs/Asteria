@@ -41,7 +41,6 @@ data class ScriptJob(
     val id: ScriptJobId,
     val command: ScriptExecutionCommand,
     val status: ScriptJobStatus = ScriptJobStatus.Pending,
-    val results: List<ScriptExecutionResult> = emptyList(),
     val attempt: Int = 1,
     val totalItems: Int = 0,
     val completedItems: Int = 0,
