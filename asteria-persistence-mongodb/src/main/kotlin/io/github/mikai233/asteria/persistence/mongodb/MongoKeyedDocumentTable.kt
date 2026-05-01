@@ -1,0 +1,137 @@
+package io.github.mikai233.asteria.persistence.mongodb
+
+import com.mongodb.client.model.Filters.eq
+import com.mongodb.kotlin.client.coroutine.MongoCollection
+import com.mongodb.kotlin.client.coroutine.MongoDatabase
+import io.github.mikai233.asteria.persistence.DataLease
+import io.github.mikai233.asteria.persistence.DataLeaseAware
+import io.github.mikai233.asteria.persistence.Entity
+import io.github.mikai233.asteria.persistence.KeyedDataTable
+import io.github.mikai233.asteria.persistence.RowCachePolicy
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.toList
+import org.bson.Document
+import org.bson.conversions.Bson
+import java.time.Clock
+import java.util.IdentityHashMap
+import kotlin.reflect.KClass
+import kotlin.time.TimeSource
+
+/**
+ * Mongo implementation for a row-level table.
+ *
+ * Each loaded row owns a [MongoTrackedDocumentRuntime], so [flushRow] writes only the dirty Mongo patch accumulated by
+ * the row wrapper. Database-side queries return entity snapshots or row keys; callers should re-enter [use] before
+ * mutating a candidate row.
+ */
+abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTrackedDocument<ID, E>>(
+    private val collectionName: String,
+    entityType: KClass<E>,
+    cachePolicy: RowCachePolicy,
+    database: MongoDatabase,
+    clock: Clock = Clock.systemUTC(),
+) : KeyedDataTable<ID, T>(cachePolicy, clock) {
+    protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
+    private val database: MongoDatabase = database
+    private val runtimes: MutableMap<T, MongoTrackedDocumentRuntime> = IdentityHashMap()
+    private val rowsById: MutableMap<ID, T> = linkedMapOf()
+    private val dirtyRows: ArrayDeque<ID> = ArrayDeque()
+    private val dirtyRowSet: MutableSet<ID> = linkedSetOf()
+
+    override suspend fun loadRow(key: ID): T? {
+        return collection.find(eq("_id", key)).firstOrNull()?.let(::attach)
+    }
+
+    override suspend fun loadAllRows(): Iterable<T> {
+        return collection.find(Document()).toList().map(::attach)
+    }
+
+    override fun keyOf(row: T): ID = row.id
+
+    override suspend fun flushRow(row: T): Boolean {
+        val flushed = runtime(row).flushSafely()
+        if (flushed) {
+            dirtyRowSet.remove(row.id)
+        }
+        return flushed
+    }
+
+    override fun bindLease(row: T, lease: DataLease) {
+        runtime(row).bindLease(lease)
+        if (row is DataLeaseAware) {
+            row.bindLease(lease)
+        }
+    }
+
+    override fun afterUnload(row: T) {
+        runtimes.remove(row)
+        rowsById.remove(row.id)
+        dirtyRowSet.remove(row.id)
+        dirtyRows.removeAll { it == row.id }
+    }
+
+    suspend fun flushSome(budget: MongoFlushBudget): MongoFlushProgress {
+        val start = TimeSource.Monotonic.markNow()
+        var attemptedRows = 0
+        var flushedRows = 0
+        var failedRows = 0
+        while (attemptedRows < budget.maxRows && start.elapsedNow() < budget.maxDuration) {
+            val id = nextDirtyRowId() ?: break
+            val row = rowsById[id]
+            if (row == null) {
+                dirtyRowSet.remove(id)
+                continue
+            }
+
+            attemptedRows += 1
+            if (flushRow(row)) {
+                flushedRows += 1
+            } else {
+                failedRows += 1
+                markDirty(id)
+            }
+        }
+        return MongoFlushProgress(attemptedRows, flushedRows, failedRows)
+    }
+
+    suspend fun queryKeys(filter: Bson = Document()): List<ID> {
+        return collection.find(filter).toList().map { it.id }
+    }
+
+    suspend fun querySnapshots(filter: Bson = Document()): List<E> {
+        return collection.find(filter).toList()
+    }
+
+    protected abstract fun wrap(context: MongoTrackContext, entity: E): T
+
+    protected fun runtime(row: T): MongoTrackedDocumentRuntime {
+        return requireNotNull(runtimes[row]) { "Mongo runtime for row ${row.id} is not loaded" }
+    }
+
+    private fun attach(entity: E): T {
+        val runtime = MongoTrackedDocumentRuntime(collectionName, entity.id, database) {
+            markDirty(entity.id)
+        }
+        val row = wrap(runtime.context(), entity)
+        runtimes[row] = runtime
+        rowsById[entity.id] = row
+        return row
+    }
+
+    private fun markDirty(id: ID) {
+        if (dirtyRowSet.add(id)) {
+            dirtyRows.addLast(id)
+        }
+    }
+
+    private fun nextDirtyRowId(): ID? {
+        while (dirtyRows.isNotEmpty()) {
+            val id = dirtyRows.removeFirst()
+            if (id in dirtyRowSet) {
+                dirtyRowSet.remove(id)
+                return id
+            }
+        }
+        return null
+    }
+}

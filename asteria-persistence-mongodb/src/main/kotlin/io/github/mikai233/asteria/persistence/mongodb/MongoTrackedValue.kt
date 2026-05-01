@@ -1,5 +1,7 @@
 package io.github.mikai233.asteria.persistence.mongodb
 
+import io.github.mikai233.asteria.persistence.DataLease
+import io.github.mikai233.asteria.persistence.DataLeaseAware
 import java.util.Deque
 import kotlin.reflect.KProperty
 
@@ -70,7 +72,7 @@ fun trackMongoMutableValue(
 
         is Deque<*> -> MongoTrackedMutableList(
             path = path,
-            initialValue = value.toMutableList() as MutableList<Any?>,
+            initialValue = value.toMutableList(),
             queue = queue,
             dirtyTarget = effectiveDirtyTarget,
         )
@@ -100,6 +102,7 @@ class MongoTrackedValue<T>(
     initialValue: T,
     private val queue: MongoChangeQueue,
     private val dirtyTarget: () -> MongoDirtyTarget? = { null },
+    private val leaseProvider: () -> DataLease? = { null },
 ) {
     private var value = initialValue
 
@@ -107,6 +110,7 @@ class MongoTrackedValue<T>(
 
     operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
         if (value == newValue) return
+        leaseProvider()?.ensureActive()
         value = newValue
         queue.enqueueSet(path, newValue, dirtyTarget())
     }
@@ -118,7 +122,7 @@ fun <T> mongoTrackedValue(
     queue: MongoChangeQueue,
     dirtyTarget: MongoDirtyTarget? = null,
 ): MongoTrackedValue<T> {
-    return MongoTrackedValue(path, initialValue, queue) { dirtyTarget }
+    return MongoTrackedValue(path, initialValue, queue, dirtyTarget = { dirtyTarget })
 }
 
 fun <T> mongoTrackedValue(
@@ -126,21 +130,32 @@ fun <T> mongoTrackedValue(
     initialValue: T,
     queue: MongoChangeQueue,
     dirtyTarget: () -> MongoDirtyTarget?,
+    leaseProvider: () -> DataLease? = { null },
 ): MongoTrackedValue<T> {
-    return MongoTrackedValue(path, initialValue, queue, dirtyTarget)
+    return MongoTrackedValue(path, initialValue, queue, dirtyTarget, leaseProvider)
 }
 
 abstract class MongoTrackedObjectSupport(
     private val queue: MongoChangeQueue,
-) : MongoPersistentValue, MongoDirtyTargetAware {
+) : MongoPersistentValue, MongoDirtyTargetAware, DataLeaseAware {
     private var dirtyTarget: MongoDirtyTarget? = null
+    private var lease: DataLease? = null
 
     override fun bindDirtyTarget(dirtyTarget: MongoDirtyTarget?) {
         this.dirtyTarget = dirtyTarget
     }
 
+    override fun bindLease(lease: DataLease) {
+        this.lease = lease
+    }
+
     protected fun markSet(path: MongoPath, value: Any?) {
+        lease?.ensureActive()
         queue.enqueueSet(path, value, dirtyTarget)
+    }
+
+    protected fun ensureActive() {
+        lease?.ensureActive()
     }
 
     protected fun currentDirtyTarget(): MongoDirtyTarget? = dirtyTarget

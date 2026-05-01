@@ -1,5 +1,7 @@
 package io.github.mikai233.asteria.persistence.mongodb
 
+import io.github.mikai233.asteria.persistence.DataLease
+
 /**
  * Context passed to generated or hand-written tracked document wrappers.
  */
@@ -8,6 +10,7 @@ data class MongoTrackContext(
     val documentId: Any?,
     val queue: MongoChangeQueue,
     val fieldRoot: String = "",
+    val leaseProvider: () -> DataLease? = { null },
 ) {
     init {
         require(collection.isNotBlank()) { "Mongo collection name must not be blank" }
@@ -23,6 +26,14 @@ data class MongoTrackContext(
             "${MongoPath.encodePathPart(fieldRoot)}.$field"
         }
         return MongoPath(collection, documentId, path)
+    }
+
+    fun ensureActive() {
+        leaseProvider()?.ensureActive()
+    }
+
+    fun <T> trackedValue(fieldName: String, initialValue: T): MongoTrackedValue<T> {
+        return MongoTrackedValue(path(fieldName), initialValue, queue, leaseProvider = leaseProvider)
     }
 }
 

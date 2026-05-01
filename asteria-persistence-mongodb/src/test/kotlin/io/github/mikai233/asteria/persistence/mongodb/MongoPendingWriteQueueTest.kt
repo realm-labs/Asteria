@@ -52,4 +52,15 @@ class MongoPendingWriteQueueTest {
 
         assertEquals(write, queue.drain().single())
     }
+
+    @Test
+    fun `queue notifies dirty callback when writes are enqueued`() {
+        var dirtyCount = 0
+        val queue = MongoPendingWriteQueue { dirtyCount += 1 }
+
+        queue.enqueue(MongoChangeOp.Set(MongoPath("player", 1001L, "level"), 2))
+        queue.enqueue(MongoChangeOp.Unset(MongoPath("player", 1001L, "name")))
+
+        assertEquals(2, dirtyCount)
+    }
 }

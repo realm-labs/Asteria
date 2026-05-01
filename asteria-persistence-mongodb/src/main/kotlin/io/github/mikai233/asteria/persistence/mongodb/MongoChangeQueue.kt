@@ -31,17 +31,21 @@ data class MongoPendingWrite(
 
 /**
  * Actor-local dirty queue that collapses repeated writes to the same document.
+ *
+ * This type is not thread-safe. It is expected to be used by one owning actor or row cache on its serialized execution
+ * context.
  */
-class MongoPendingWriteQueue : MongoChangeQueue {
+class MongoPendingWriteQueue(
+    private val onDirty: () -> Unit = {},
+) : MongoChangeQueue {
     private val patches: MutableMap<MongoDocumentKey, PendingMongoPatch> = linkedMapOf()
 
-    @Synchronized
     override fun enqueue(op: MongoChangeOp) {
         val patch = patches.getOrPut(op.path.key) { PendingMongoPatch() }
         patch.merge(op)
+        onDirty()
     }
 
-    @Synchronized
     fun drain(): List<MongoPendingWrite> {
         val writes = patches.map { (key, patch) -> patch.toWrite(key) }
             .filterNot { it.empty }
@@ -49,7 +53,6 @@ class MongoPendingWriteQueue : MongoChangeQueue {
         return writes
     }
 
-    @Synchronized
     fun requeue(writes: Iterable<MongoPendingWrite>) {
         writes.forEach { write ->
             write.sets.forEach { (fieldPath, value) ->
@@ -64,7 +67,6 @@ class MongoPendingWriteQueue : MongoChangeQueue {
         }
     }
 
-    @Synchronized
     fun snapshot(): List<MongoPendingWrite> {
         return patches.map { (key, patch) -> patch.toWrite(key) }
             .filterNot { it.empty }

@@ -19,8 +19,10 @@ abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrack
     private val wrapper: (MongoTrackContext, E) -> T,
     database: MongoDatabase = scope.services.get(),
 ) : AutoFlushMemData {
-    protected val queue: MongoPendingWriteQueue = MongoPendingWriteQueue()
-    protected val flusher: MongoPendingWriteFlusher = MongoPendingWriteFlusher(queue, database)
+    protected val runtime: MongoTrackedDocumentRuntime =
+        MongoTrackedDocumentRuntime(collectionName, scope.entityId, database)
+    protected val queue: MongoPendingWriteQueue
+        get() = runtime.queue
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
 
     var value: T? = null
@@ -32,13 +34,13 @@ abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrack
     }
 
     protected fun attachLoaded(entity: E): T {
-        return wrapper(trackContext(entity.id), entity)
+        return wrapper(runtime.context(), entity)
     }
 
     protected fun createTracked(entity: E): T {
         require(value == null) { "tracked document $collectionName:${entity.id} is already loaded" }
         val tracked = attachLoaded(entity)
-        enqueueCreated(tracked)
+        runtime.enqueueCreated(tracked)
         value = tracked
         return tracked
     }
@@ -52,23 +54,6 @@ abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrack
     }
 
     override suspend fun flush(): Boolean {
-        return runCatching { flusher.flush() }.isSuccess
-    }
-
-    private fun trackContext(documentId: Any?): MongoTrackContext {
-        return MongoTrackContext(collectionName, documentId, queue)
-    }
-
-    private fun enqueueCreated(document: T) {
-        val persistentValue = document.toMongoValue()
-        require(persistentValue is Map<*, *>) {
-            "Tracked Mongo document ${document::class.qualifiedName} persistent value must be a map"
-        }
-        val entries = persistentValue.entries.map { (key, value) -> key.toString() to value }
-        entries.forEach { (fieldPath, fieldValue) ->
-            if (fieldPath != "_id") {
-                queue.enqueue(MongoChangeOp.Set(MongoPath(collectionName, document.id, fieldPath), fieldValue))
-            }
-        }
+        return runtime.flushSafely()
     }
 }
