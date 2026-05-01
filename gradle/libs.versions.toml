@@ -2,15 +2,15 @@
 coroutines = "1.10.2"
 curator = "5.9.0"
 jetcd = "0.8.6"
-nacos = "3.2.1"
+nacos = "3.2.1-2026.04.03"
 netty = "4.2.12.Final"
 pekko = "1.2.1"
 pekko-management = "1.2.1"
 protobuf = "4.34.1"
 kotlinpoet = "2.3.0"
 groovy = "5.0.5"
-jackson = "2.21.2"
-typesafe-config = "1.4.4"
+jackson = "2.21.3"
+typesafe-config = "1.4.7"
 opentelemetry = "1.61.0"
 
 [libraries]
@@ -43,4 +43,4 @@ opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk", version.ref
 opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing", version.ref = "opentelemetry" }
 
 [plugins]
-protobuf = { id = "com.google.protobuf", version = "0.9.6" }
+protobuf = { id = "com.google.protobuf", version = "0.10.0" }
