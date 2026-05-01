@@ -1,7 +1,7 @@
 package io.github.mikai233.asteria.rpc.protobuf.generator
 
 import com.google.protobuf.DescriptorProtos
-import io.github.mikai233.asteria.rpc.RpcRouteRegistryProvider
+import io.github.mikai233.asteria.rpc.RpcEntityIdRegistryProvider
 import io.github.mikai233.asteria.rpc.protobuf.AsteriaRpcOptionsProto
 import kotlin.io.path.Path
 import kotlin.io.path.createTempDirectory
@@ -12,49 +12,42 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertTrue
 
-class ProtobufRpcRouteGeneratorTest {
+class ProtobufRpcEntityIdGeneratorTest {
     @Test
-    fun generatesRoutesFromMessageOptions() {
+    fun generatesEntityIdsFromMessageOptions() {
         val workDir = createTempDirectory("asteria-rpc-generator")
-        val descriptorSetPath = workDir.resolve("routes.pb")
+        val descriptorSetPath = workDir.resolve("entity-ids.pb")
         val kotlinOutput = workDir.resolve("kotlin")
         val resourcesOutput = workDir.resolve("resources")
 
         descriptorSetPath.writeBytes(testDescriptorSet().toByteArray())
 
-        ProtobufRpcRouteGenerator.generate(
+        ProtobufRpcEntityIdGenerator.generate(
             GeneratorConfig(
                 descriptorSet = descriptorSetPath,
                 kotlinOutput = kotlinOutput,
                 resourcesOutput = resourcesOutput,
                 packageName = "com.example.generated",
-                className = "GeneratedRoutes",
+                className = "GeneratedEntityIds",
             ),
         )
 
-        val generatedFile = kotlinOutput.resolve(Path("com/example/generated/GeneratedRoutes.kt"))
+        val generatedFile = kotlinOutput.resolve(Path("com/example/generated/GeneratedEntityIds.kt"))
         assertTrue(generatedFile.exists())
         val generatedCode = generatedFile.readText()
-        assertContains(generatedCode, "object GeneratedRoutes")
-        assertContains(generatedCode, "route<ProtoLogin.LoginReq>")
-        assertContains(generatedCode, "RpcTarget.Entity(EntityKind(\"player\"), message.playerId.toString())")
+        assertContains(generatedCode, "object GeneratedEntityIds")
+        assertContains(generatedCode, "entityId<ProtoLogin.LoginReq>")
+        assertContains(generatedCode, "message.playerId.toString()")
 
         val serviceFile = resourcesOutput
             .resolve("META-INF")
             .resolve("services")
-            .resolve(RpcRouteRegistryProvider::class.qualifiedName!!)
+            .resolve(RpcEntityIdRegistryProvider::class.qualifiedName!!)
         assertTrue(serviceFile.exists())
-        assertContains(serviceFile.readText(), "com.example.generated.GeneratedRoutes")
+        assertContains(serviceFile.readText(), "com.example.generated.GeneratedEntityIds")
     }
 
     private fun testDescriptorSet(): DescriptorProtos.FileDescriptorSet {
-        val route = AsteriaRpcOptionsProto.RpcRoute.newBuilder()
-            .setEntity(
-                AsteriaRpcOptionsProto.EntityRpcRoute.newBuilder()
-                    .setKind("player")
-                    .setIdField("player_id"),
-            )
-            .build()
         val message = DescriptorProtos.DescriptorProto.newBuilder()
             .setName("LoginReq")
             .addField(
@@ -65,7 +58,7 @@ class ProtobufRpcRouteGeneratorTest {
             )
             .setOptions(
                 DescriptorProtos.MessageOptions.newBuilder()
-                    .setExtension(AsteriaRpcOptionsProto.rpcRoute, route),
+                    .setExtension(AsteriaRpcOptionsProto.rpcEntityIdField, "player_id"),
             )
         val file = DescriptorProtos.FileDescriptorProto.newBuilder()
             .setName("proto_login.proto")

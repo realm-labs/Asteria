@@ -1,9 +1,8 @@
 package io.github.mikai233.asteria.starter
 
 import io.github.mikai233.asteria.cluster.pekko.PekkoRuntime
-import io.github.mikai233.asteria.cluster.pekko.PekkoRpcRouter
 import io.github.mikai233.asteria.core.NodeState
-import io.github.mikai233.asteria.rpc.RpcRouteRegistry
+import io.github.mikai233.asteria.rpc.RpcEntityIdRegistry
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,8 +19,7 @@ class LocalGameApplicationTest {
         app.launch()
         assertEquals(NodeState.Started, app.state)
         assertNotNull(app.services.find<PekkoRuntime>())
-        assertNotNull(app.services.find<RpcRouteRegistry>())
-        assertNotNull(app.services.find<PekkoRpcRouter>())
+        assertNotNull(app.services.find<RpcEntityIdRegistry>())
 
         app.stop()
         assertEquals(NodeState.Stopped, app.state)

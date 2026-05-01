@@ -1,26 +1,18 @@
 package io.github.mikai233.asteria.cluster.pekko
 
-import io.github.mikai233.asteria.rpc.RpcRouteRegistry
-import io.github.mikai233.asteria.rpc.RpcTarget
+import io.github.mikai233.asteria.rpc.MissingRpcEntityIdException
+import io.github.mikai233.asteria.rpc.RpcEntityIdRegistry
 
 object PekkoRpcShardExtractors {
-    fun byRpcEntityTarget(
+    fun byRpcEntityId(
         shardCount: Int,
-        routeRegistry: RpcRouteRegistry,
+        entityIds: RpcEntityIdRegistry,
     ): PekkoMessageExtractor<Any> {
         PekkoShardExtractors.validateShardCount(shardCount)
         return PekkoMessageExtractor(
             messageClass = Any::class.java,
-            entityIdResolver = { message -> entityTarget(message, routeRegistry).entityId },
+            entityIdResolver = { message -> entityIds.entityId(message) ?: throw MissingRpcEntityIdException(message) },
             shardIdResolver = { _, entityId -> Math.floorMod(entityId.hashCode(), shardCount).toString() },
         )
-    }
-
-    private fun entityTarget(message: Any, routeRegistry: RpcRouteRegistry): RpcTarget.Entity {
-        val target = routeRegistry.resolve(message) ?: error("rpc route for ${message::class.qualifiedName} not found")
-        require(target is RpcTarget.Entity) {
-            "rpc route for ${message::class.qualifiedName} must target entity, but was $target"
-        }
-        return target
     }
 }

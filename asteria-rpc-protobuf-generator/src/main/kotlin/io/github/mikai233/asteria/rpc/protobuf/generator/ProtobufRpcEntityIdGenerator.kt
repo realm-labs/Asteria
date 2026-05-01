@@ -9,15 +9,10 @@ import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.TypeSpec
-import io.github.mikai233.asteria.core.EntityKind
-import io.github.mikai233.asteria.core.RoleKey
-import io.github.mikai233.asteria.core.SingletonName
-import io.github.mikai233.asteria.rpc.RpcRouteRegistryProvider
-import io.github.mikai233.asteria.rpc.RpcTarget
+import io.github.mikai233.asteria.rpc.RpcEntityIdRegistryProvider
 import io.github.mikai233.asteria.rpc.protobuf.AsteriaRpcOptionsProto
-import io.github.mikai233.asteria.rpc.protobuf.GeneratedProtobufRpcRoutes
-import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcRouteRegistry
-import io.github.mikai233.asteria.rpc.protobuf.protobufRpcRouteRegistry
+import io.github.mikai233.asteria.rpc.protobuf.GeneratedProtobufRpcEntityIds
+import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcEntityIdRegistry
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.Path
@@ -25,7 +20,7 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.inputStream
 import kotlin.io.path.writeText
 
-object ProtobufRpcRouteGenerator {
+object ProtobufRpcEntityIdGenerator {
     @JvmStatic
     fun main(args: Array<String>) {
         val config = GeneratorConfig.parse(args)
@@ -33,28 +28,28 @@ object ProtobufRpcRouteGenerator {
     }
 
     fun generate(config: GeneratorConfig) {
-        val routes = readRoutes(config.descriptorSet)
-        val file = buildRouteFile(config, routes)
+        val entityIds = readEntityIds(config.descriptorSet)
+        val file = buildEntityIdFile(config, entityIds)
         file.writeTo(config.kotlinOutput)
         writeServiceProvider(config)
     }
 
-    private fun readRoutes(descriptorSetPath: Path): List<MessageRoute> {
+    private fun readEntityIds(descriptorSetPath: Path): List<MessageEntityId> {
         val registry = ExtensionRegistry.newInstance().apply {
-            add(AsteriaRpcOptionsProto.rpcRoute)
+            add(AsteriaRpcOptionsProto.rpcEntityIdField)
         }
         val descriptorSet = descriptorSetPath.inputStream().use {
             DescriptorProtos.FileDescriptorSet.parseFrom(it, registry)
         }
-        return descriptorSet.fileList.flatMap(::routesInFile)
+        return descriptorSet.fileList.flatMap(::entityIdsInFile)
     }
 
-    private fun routesInFile(file: DescriptorProtos.FileDescriptorProto): List<MessageRoute> {
+    private fun entityIdsInFile(file: DescriptorProtos.FileDescriptorProto): List<MessageEntityId> {
         val javaPackage = file.options.javaPackage.takeIf { it.isNotBlank() } ?: file.`package`
         val outerClassName = file.options.javaOuterClassname.takeIf { it.isNotBlank() } ?: defaultOuterClassName(file.name)
         val multipleFiles = file.options.javaMultipleFiles
         return file.messageTypeList.flatMap { message ->
-            routesInMessage(
+            entityIdsInMessage(
                 file = file,
                 message = message,
                 javaPackage = javaPackage,
@@ -65,54 +60,54 @@ object ProtobufRpcRouteGenerator {
         }
     }
 
-    private fun routesInMessage(
+    private fun entityIdsInMessage(
         file: DescriptorProtos.FileDescriptorProto,
         message: DescriptorProtos.DescriptorProto,
         javaPackage: String,
         outerClassName: String,
         multipleFiles: Boolean,
         parents: List<String>,
-    ): List<MessageRoute> {
+    ): List<MessageEntityId> {
         val currentPath = parents + message.name
-        val ownRoute = if (message.options.hasExtension(AsteriaRpcOptionsProto.rpcRoute)) {
-            val rpcRoute = message.options.getExtension(AsteriaRpcOptionsProto.rpcRoute)
+        val ownEntityId = if (message.options.hasExtension(AsteriaRpcOptionsProto.rpcEntityIdField)) {
+            val fieldName = message.options.getExtension(AsteriaRpcOptionsProto.rpcEntityIdField)
             val messageClass = messageClassName(javaPackage, outerClassName, multipleFiles, currentPath)
-            listOf(MessageRoute(file.name, currentPath.joinToString("."), message, messageClass, rpcRoute))
+            listOf(MessageEntityId(file.name, currentPath.joinToString("."), message, messageClass, fieldName))
         } else {
             emptyList()
         }
-        return ownRoute + message.nestedTypeList.flatMap { nested ->
-            routesInMessage(file, nested, javaPackage, outerClassName, multipleFiles, currentPath)
+        return ownEntityId + message.nestedTypeList.flatMap { nested ->
+            entityIdsInMessage(file, nested, javaPackage, outerClassName, multipleFiles, currentPath)
         }
     }
 
-    private fun buildRouteFile(
+    private fun buildEntityIdFile(
         config: GeneratorConfig,
-        routes: List<MessageRoute>,
+        entityIds: List<MessageEntityId>,
     ): FileSpec {
         val registryFunction = FunSpec.builder("registry")
             .addModifiers(KModifier.OVERRIDE, KModifier.PROTECTED)
-            .returns(ProtobufRpcRouteRegistry::class)
-            .addCode(buildRegistryCode(routes))
+            .returns(ProtobufRpcEntityIdRegistry::class)
+            .addCode(buildRegistryCode(entityIds))
             .build()
-        val routeType = TypeSpec.objectBuilder(config.className)
-            .superclass(GeneratedProtobufRpcRoutes::class)
+        val entityIdType = TypeSpec.objectBuilder(config.className)
+            .superclass(GeneratedProtobufRpcEntityIds::class)
             .addFunction(registryFunction)
             .build()
         return FileSpec.builder(config.packageName, config.className)
-            .addType(routeType)
+            .addType(entityIdType)
             .build()
     }
 
-    private fun buildRegistryCode(routes: List<MessageRoute>): CodeBlock {
+    private fun buildRegistryCode(entityIds: List<MessageEntityId>): CodeBlock {
         val builder = CodeBlock.builder()
-        builder.add("return %M {\n", MemberName(PROTOBUF_RPC_PACKAGE, "protobufRpcRouteRegistry"))
+        builder.add("return %M {\n", MemberName(PROTOBUF_RPC_PACKAGE, "protobufRpcEntityIdRegistry"))
         builder.indent()
-        routes.forEach { route ->
-            builder.add("route<%T> { message ->\n", route.messageClass)
+        entityIds.forEach { entityId ->
+            validateField(entityId)
+            builder.add("entityId<%T> { message ->\n", entityId.messageClass)
             builder.indent()
-            builder.add(routeTargetCode(route))
-            builder.add("\n")
+            builder.add("message.%L.toString()\n", entityId.fieldName.protoFieldNameToKotlinProperty())
             builder.unindent()
             builder.add("}\n")
         }
@@ -121,53 +116,12 @@ object ProtobufRpcRouteGenerator {
         return builder.build()
     }
 
-    private fun routeTargetCode(route: MessageRoute): CodeBlock {
-        val rpcRoute = route.route
-        return when (rpcRoute.targetCase) {
-            AsteriaRpcOptionsProto.RpcRoute.TargetCase.ENTITY -> {
-                val entity = rpcRoute.entity
-                validateField(route, entity.idField)
-                CodeBlock.of(
-                    "%T.Entity(%T(%S), message.%L.toString())",
-                    RpcTarget::class,
-                    EntityKind::class,
-                    entity.kind,
-                    entity.idField.protoFieldNameToKotlinProperty(),
-                )
-            }
-
-            AsteriaRpcOptionsProto.RpcRoute.TargetCase.SINGLETON -> {
-                CodeBlock.of(
-                    "%T.Singleton(%T(%S))",
-                    RpcTarget::class,
-                    SingletonName::class,
-                    rpcRoute.singleton.name,
-                )
-            }
-
-            AsteriaRpcOptionsProto.RpcRoute.TargetCase.SERVICE -> {
-                CodeBlock.of(
-                    "%T.Service(%T(%S), %S)",
-                    RpcTarget::class,
-                    RoleKey::class,
-                    rpcRoute.service.role,
-                    rpcRoute.service.path,
-                )
-            }
-
-            AsteriaRpcOptionsProto.RpcRoute.TargetCase.LOCAL -> CodeBlock.of("%T.Local", RpcTarget::class)
-            AsteriaRpcOptionsProto.RpcRoute.TargetCase.TARGET_NOT_SET,
-            null,
-            -> error("rpc route target not set for ${route.protoName}")
+    private fun validateField(entityId: MessageEntityId) {
+        require(entityId.fieldName.isNotBlank()) {
+            "rpc_entity_id_field for ${entityId.protoName} must not be blank"
         }
-    }
-
-    private fun validateField(route: MessageRoute, fieldName: String) {
-        require(fieldName.isNotBlank()) {
-            "entity id_field for ${route.protoName} must not be blank"
-        }
-        require(route.message.fieldList.any { it.name == fieldName }) {
-            "field $fieldName not found in ${route.protoName}"
+        require(entityId.message.fieldList.any { it.name == entityId.fieldName }) {
+            "field ${entityId.fieldName} not found in ${entityId.protoName}"
         }
     }
 
@@ -177,7 +131,7 @@ object ProtobufRpcRouteGenerator {
             .resolve("services")
             .also(Path::createDirectories)
         serviceDir
-            .resolve(RpcRouteRegistryProvider::class.qualifiedName!!)
+            .resolve(RpcEntityIdRegistryProvider::class.qualifiedName!!)
             .writeText("${config.packageName}.${config.className}\n")
     }
 
@@ -237,16 +191,16 @@ data class GeneratorConfig(
                 resourcesOutput = Path(requireNotNull(values["--resources-output"]) { "--resources-output is required" })
                     .also { Files.createDirectories(it) },
                 packageName = values["--package"] ?: "io.github.mikai233.asteria.generated.rpc",
-                className = values["--class-name"] ?: "GeneratedRpcRoutes",
+                className = values["--class-name"] ?: "GeneratedRpcEntityIds",
             )
         }
     }
 }
 
-private data class MessageRoute(
+private data class MessageEntityId(
     val fileName: String,
     val protoName: String,
     val message: DescriptorProtos.DescriptorProto,
     val messageClass: ClassName,
-    val route: AsteriaRpcOptionsProto.RpcRoute,
+    val fieldName: String,
 )

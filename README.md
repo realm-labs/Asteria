@@ -53,26 +53,24 @@ val app = localGameApplication {
 app.launch()
 ```
 
-RPC routes are intended to be generated from protobuf route metadata and loaded through `RpcModule.autoDiscover()`.
-The runtime consumes `RpcRouteRegistry`; game projects should not have to register every message in application DSL.
+RPC entity ids are intended to be generated from protobuf metadata and loaded through `RpcModule.autoDiscover()`.
+The runtime consumes `RpcEntityIdRegistry`; game projects should not have to register every sharded RPC message in the
+application DSL.
 
 ```protobuf
 import "asteria_rpc_options.proto";
 
 message LoginReq {
-  option (asteria.rpc.rpc_route) = {
-    entity: {
-      kind: "player"
-      id_field: "player_id"
-    }
-  };
+  option (asteria.rpc.rpc_entity_id_field) = "player_id";
 
   int64 player_id = 1;
 }
 ```
 
-The protobuf route generator reads a descriptor set with `asteria.rpc.rpc_route` options and emits a
-`GeneratedProtobufRpcRoutes` implementation plus the `ServiceLoader` metadata used by `RpcModule.autoDiscover()`.
+The protobuf entity id generator reads a descriptor set with `asteria.rpc.rpc_entity_id_field` options and emits a
+`GeneratedProtobufRpcEntityIds` implementation plus the `ServiceLoader` metadata used by `RpcModule.autoDiscover()`.
+Actor targets are selected by application code through the shard or singleton `ActorRef`; RPC metadata only describes how
+cluster sharding extracts the entity id.
 
 Observability is optional and defaults to no-op tracing and metrics:
 

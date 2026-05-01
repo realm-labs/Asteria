@@ -8,28 +8,5 @@ option java_package = "io.github.mikai233.asteria.rpc.protobuf";
 option java_outer_classname = "AsteriaRpcOptionsProto";
 
 extend google.protobuf.MessageOptions {
-  RpcRoute rpc_route = 50001;
-}
-
-message RpcRoute {
-  oneof target {
-    EntityRpcRoute entity = 1;
-    SingletonRpcRoute singleton = 2;
-    ServiceRpcRoute service = 3;
-    bool local = 4;
-  }
-}
-
-message EntityRpcRoute {
-  string kind = 1;
-  string id_field = 2;
-}
-
-message SingletonRpcRoute {
-  string name = 1;
-}
-
-message ServiceRpcRoute {
-  string role = 1;
-  string path = 2;
+  string rpc_entity_id_field = 50001;
 }

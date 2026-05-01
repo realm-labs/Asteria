@@ -4,22 +4,22 @@ import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
 
 class RpcModule private constructor(
-    private val registryFactory: (ModuleContext) -> RpcRouteRegistry,
+    private val registryFactory: (ModuleContext) -> RpcEntityIdRegistry,
 ) : AsteriaModule {
     override val name: String = "rpc"
 
     override suspend fun install(context: ModuleContext) {
-        context.services.register(RpcRouteRegistry::class, registryFactory(context))
+        context.services.register(RpcEntityIdRegistry::class, registryFactory(context))
     }
 
     companion object {
         fun autoDiscover(
             classLoader: ClassLoader = Thread.currentThread().contextClassLoader,
         ): RpcModule {
-            return RpcModule { RpcRouteRegistries.load(classLoader) }
+            return RpcModule { RpcEntityIdRegistries.load(classLoader) }
         }
 
-        fun withRegistry(registry: RpcRouteRegistry): RpcModule {
+        fun withRegistry(registry: RpcEntityIdRegistry): RpcModule {
             return RpcModule { registry }
         }
     }
