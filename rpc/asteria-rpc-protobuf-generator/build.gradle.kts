@@ -1,3 +1,7 @@
+plugins {
+    id("asteria.kotlin-library-conventions")
+}
+
 dependencies {
     implementation(project(":asteria-rpc-protobuf"))
     implementation(libs.kotlinpoet)

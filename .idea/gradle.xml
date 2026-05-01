@@ -4,6 +4,17 @@
   <component name="GradleSettings">
     <option name="linkedExternalProjectsSettings">
       <GradleProjectSettings>
+        <compositeConfiguration>
+          <compositeBuild compositeDefinitionSource="SCRIPT">
+            <builds>
+              <build path="$PROJECT_DIR$/build-logic" name="asteria-build-logic">
+                <projects>
+                  <project path="$PROJECT_DIR$/build-logic" />
+                </projects>
+              </build>
+            </builds>
+          </compositeBuild>
+        </compositeConfiguration>
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="modules">
           <set>
@@ -15,6 +26,7 @@
             <option value="$PROJECT_DIR$/asteria-persistence" />
             <option value="$PROJECT_DIR$/asteria-protocol-protobuf" />
             <option value="$PROJECT_DIR$/asteria-starter" />
+            <option value="$PROJECT_DIR$/build-logic" />
             <option value="$PROJECT_DIR$/config/asteria-cluster-config" />
             <option value="$PROJECT_DIR$/config/asteria-config" />
             <option value="$PROJECT_DIR$/config/asteria-config-center" />

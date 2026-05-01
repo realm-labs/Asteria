@@ -1,6 +1,7 @@
 import com.google.protobuf.gradle.id
 
 plugins {
+    id("asteria.kotlin-library-conventions")
     alias(libs.plugins.protobuf)
 }
 
