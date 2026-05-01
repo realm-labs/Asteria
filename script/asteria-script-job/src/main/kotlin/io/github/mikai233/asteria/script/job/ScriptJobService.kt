@@ -8,8 +8,10 @@ import io.github.mikai233.asteria.observability.TraceAttributes
 import io.github.mikai233.asteria.observability.Tracer
 import io.github.mikai233.asteria.script.ScriptExecutionBatchResult
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
+import io.github.mikai233.asteria.script.ScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptRuntime
+import io.github.mikai233.asteria.script.ScriptTarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
@@ -30,34 +32,32 @@ class ScriptJobService(
         return tracer.span("script.job.submit", jobTraceAttributes(id, command)) {
             metrics.counter("asteria.script.job.submitted.total", command.metricTags()).increment()
             val job = ScriptJob(id, command)
-            store.create(job)
+            val items = command.expandItems(id)
+            store.create(job, items)
             scope.launch {
-                runJob(job, timeout)
+                runItems(job, items, timeout)
             }
-            job
+            requireNotNull(store.find(id))
         }
     }
 
-    suspend fun retryFailed(
-        sourceJobId: ScriptJobId,
-        retryCommand: ScriptExecutionCommand,
+    suspend fun retryItem(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
         timeout: Duration = 3.seconds,
-        retryJobId: ScriptJobId = ScriptJobId(retryCommand.executionId),
-    ): ScriptJob {
-        return tracer.span("script.job.retry", jobTraceAttributes(retryJobId, retryCommand)) {
-            metrics.counter("asteria.script.job.retry.total", retryCommand.metricTags()).increment()
-            val source = requireNotNull(store.find(sourceJobId)) { "script job $sourceJobId not found" }
-            require(source.results.any { !it.success }) { "script job $sourceJobId has no failed results" }
-            val retry = ScriptJob(
-                id = retryJobId,
-                command = retryCommand,
-                attempt = source.attempt + 1,
-            )
-            store.create(retry)
+    ): ScriptJobItem {
+        val job = requireNotNull(store.find(jobId)) { "script job $jobId not found" }
+        val item = requireNotNull(store.findItem(jobId, itemId)) { "script job item $itemId not found" }
+        require(item.status == ScriptJobItemStatus.Failed) { "script job item $itemId is not failed" }
+        val attempt = item.attempts.size + 1
+        val command = item.command(job, attempt)
+        return tracer.span("script.job.item.retry", jobTraceAttributes(job.id, command)) {
+            metrics.counter("asteria.script.job.item.retry.total", command.metricTags()).increment()
+            store.markItemRunning(job.id, item.id, attempt, command)
             scope.launch {
-                runJob(retry, timeout)
+                runItem(job.id, item.id, attempt, command, timeout)
             }
-            retry
+            requireNotNull(store.findItem(job.id, item.id))
         }
     }
 
@@ -65,20 +65,42 @@ class ScriptJobService(
         return store.find(id)
     }
 
-    private suspend fun runJob(job: ScriptJob, timeout: Duration) {
-        tracer.span("script.job.run", jobTraceAttributes(job.id, job.command)) {
-            metrics.counter("asteria.script.job.running.total", job.command.metricTags()).increment()
-            store.markRunning(job.id)
-            val result = metrics.timer("asteria.script.job.duration", job.command.metricTags()).record {
+    suspend fun listItems(id: ScriptJobId, status: ScriptJobItemStatus? = null): List<ScriptJobItem> {
+        return store.listItems(id, status)
+    }
+
+    suspend fun findItem(id: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem? {
+        return store.findItem(id, itemId)
+    }
+
+    private suspend fun runItems(job: ScriptJob, items: List<ScriptJobItem>, timeout: Duration) {
+        items.forEach { item ->
+            val attempt = item.attempts.size + 1
+            val command = item.command(job, attempt)
+            store.markItemRunning(job.id, item.id, attempt, command)
+            runItem(job.id, item.id, attempt, command, timeout)
+        }
+    }
+
+    private suspend fun runItem(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        command: ScriptExecutionCommand,
+        timeout: Duration,
+    ) {
+        tracer.span("script.job.item.run", jobTraceAttributes(jobId, command)) {
+            metrics.counter("asteria.script.job.item.running.total", command.metricTags()).increment()
+            val result = metrics.timer("asteria.script.job.item.duration", command.metricTags()).record {
                 runCatching {
-                    runtime.executeAll(job.command, timeout)
+                    runtime.executeAll(command, timeout)
                 }.getOrElse {
                     error(it)
                     ScriptExecutionBatchResult(
-                        executionId = job.command.executionId,
+                        executionId = command.executionId,
                         results = listOf(
                             ScriptExecutionResult(
-                                executionId = job.command.executionId,
+                                executionId = command.executionId,
                                 success = false,
                                 error = it.message,
                             ),
@@ -86,24 +108,27 @@ class ScriptJobService(
                     )
                 }
             }
-            val status = result.status()
-            store.appendResults(job.id, result.results)
-            store.markFinished(job.id, status)
+            val status = result.itemStatus()
+            store.markItemFinished(
+                jobId = jobId,
+                itemId = itemId,
+                attempt = attempt,
+                status = status,
+                results = result.results,
+                error = result.results.firstOrNull { !it.success }?.error,
+            )
             metrics.counter(
-                "asteria.script.job.finished.total",
-                job.command.metricTags() + MetricTags.of("status" to status.name),
+                "asteria.script.job.item.finished.total",
+                command.metricTags() + MetricTags.of("status" to status.name),
             ).increment()
         }
     }
 
-    private fun ScriptExecutionBatchResult.status(): ScriptJobStatus {
-        if (results.isEmpty()) {
-            return ScriptJobStatus.Failed
-        }
-        return when {
-            results.all { it.success } -> ScriptJobStatus.Completed
-            results.any { it.success } -> ScriptJobStatus.PartialFailed
-            else -> ScriptJobStatus.Failed
+    private fun ScriptExecutionBatchResult.itemStatus(): ScriptJobItemStatus {
+        return if (success) {
+            ScriptJobItemStatus.Completed
+        } else {
+            ScriptJobItemStatus.Failed
         }
     }
 
@@ -121,5 +146,43 @@ class ScriptJobService(
             "target" to target.javaClass.simpleName,
             "engine" to artifact.engine,
         )
+    }
+
+    private fun ScriptExecutionCommand.expandItems(jobId: ScriptJobId): List<ScriptJobItem> {
+        return target.expand().mapIndexed { index, target ->
+            ScriptJobItem(
+                id = ScriptJobItemId((index + 1).toString()),
+                jobId = jobId,
+                target = target,
+            )
+        }
+    }
+
+    private fun ScriptTarget.expand(): List<ScriptTarget> {
+        return when (this) {
+            ScriptTarget.AllNodes -> listOf(this)
+            is ScriptTarget.Role -> listOf(this)
+            is ScriptTarget.Node -> addresses.map { ScriptTarget.Node(listOf(it)) }
+            is ScriptTarget.ActorPath -> paths.map { ScriptTarget.ActorPath(listOf(it)) }
+            is ScriptTarget.Entity -> ids.map { ScriptTarget.Entity(kind, listOf(it)) }
+            is ScriptTarget.Singleton -> listOf(this)
+        }
+    }
+
+    private fun ScriptJobItem.command(job: ScriptJob, attempt: Int): ScriptExecutionCommand {
+        return job.command.copy(
+            executionId = "${job.command.executionId}.${id.value}.$attempt",
+            target = target,
+            metadata = job.command.metadata.withAttributes(
+                "script.jobId" to job.id.value,
+                "script.itemId" to id.value,
+                "script.attempt" to attempt.toString(),
+                "script.sourceExecutionId" to job.command.executionId,
+            ),
+        )
+    }
+
+    private fun ScriptExecutionMetadata.withAttributes(vararg entries: Pair<String, String>): ScriptExecutionMetadata {
+        return copy(attributes = attributes + entries)
     }
 }

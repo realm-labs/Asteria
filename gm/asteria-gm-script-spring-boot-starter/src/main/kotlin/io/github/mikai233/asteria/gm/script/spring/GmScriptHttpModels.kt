@@ -114,6 +114,17 @@ data class GmScriptMetadataRequest(
     }
 }
 
+/**
+ * HTTP request for retrying one failed script job item.
+ */
+data class GmScriptRetryItemRequest(
+    val timeoutMillis: Long = 3_000,
+) {
+    init {
+        require(timeoutMillis > 0) { "GM script retry timeout must be positive" }
+    }
+}
+
 private fun requireValue(value: String?, name: String): String {
     return value?.takeIf { it.isNotBlank() } ?: error("GM script target $name is required")
 }

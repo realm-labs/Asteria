@@ -9,65 +9,80 @@ import io.github.mikai233.asteria.script.ScriptTarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration
 
 class ScriptJobServiceTest {
     @Test
-    fun submitRunsScriptAndStoresResults() = runBlocking {
+    fun submitCreatesItemsAndStoresResults() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val store = InMemoryScriptJobStore()
         val runtime = FakeScriptRuntime(
             ScriptExecutionBatchResult(
-                executionId = "job-1",
+                executionId = "job-1.1.1",
                 results = listOf(
-                    ScriptExecutionResult("job-1", success = true, nodeAddress = "node-1"),
-                    ScriptExecutionResult("job-1", success = false, nodeAddress = "node-2", error = "failed"),
+                    ScriptExecutionResult("job-1.1.1", success = true, nodeAddress = "node-1"),
+                ),
+            ),
+            ScriptExecutionBatchResult(
+                executionId = "job-1.2.1",
+                results = listOf(
+                    ScriptExecutionResult("job-1.2.1", success = false, nodeAddress = "node-2", error = "failed"),
                 ),
             ),
         )
         val service = ScriptJobService(runtime, store, scope)
 
         try {
-            service.submit(command("job-1"))
+            val submitted = service.submit(command("job-1"))
             val job = awaitJob(store, ScriptJobId("job-1"), ScriptJobStatus.PartialFailed)
+            val items = store.listItems(ScriptJobId("job-1"))
 
+            assertEquals(2, submitted.totalItems)
             assertEquals(2, job.results.size)
+            assertEquals(2, job.totalItems)
+            assertEquals(1, job.completedItems)
+            assertEquals(1, job.failedItems)
             assertEquals(ScriptJobStatus.PartialFailed, job.status)
+            assertEquals(listOf(ScriptJobItemStatus.Completed, ScriptJobItemStatus.Failed), items.map { it.status })
+            assertTrue(items.all { it.attempts.size == 1 })
         } finally {
             scope.cancel()
         }
     }
 
     @Test
-    fun retryFailedCreatesNextAttempt() = runBlocking {
+    fun retryItemAppendsNextAttempt() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val store = InMemoryScriptJobStore()
         val runtime = FakeScriptRuntime(
             ScriptExecutionBatchResult(
-                executionId = "job-1",
-                results = listOf(ScriptExecutionResult("job-1", success = false, nodeAddress = "node-1")),
+                executionId = "job-1.1.1",
+                results = listOf(ScriptExecutionResult("job-1.1.1", success = false, nodeAddress = "node-1")),
             ),
             ScriptExecutionBatchResult(
-                executionId = "job-1-retry-1",
-                results = listOf(ScriptExecutionResult("job-1-retry-1", success = true, nodeAddress = "node-1")),
+                executionId = "job-1.1.2",
+                results = listOf(ScriptExecutionResult("job-1.1.2", success = true, nodeAddress = "node-1")),
             ),
         )
         val service = ScriptJobService(runtime, store, scope)
 
         try {
-            service.submit(command("job-1"))
+            service.submit(command("job-1", listOf("node-1")))
             awaitJob(store, ScriptJobId("job-1"), ScriptJobStatus.Failed)
 
-            service.retryFailed(ScriptJobId("job-1"), command("job-1-retry-1"))
-            val retry = awaitJob(store, ScriptJobId("job-1-retry-1"), ScriptJobStatus.Completed)
+            service.retryItem(ScriptJobId("job-1"), ScriptJobItemId("1"))
+            val retry = awaitItem(store, ScriptJobId("job-1"), ScriptJobItemId("1"), ScriptJobItemStatus.Completed)
+            val job = awaitJob(store, ScriptJobId("job-1"), ScriptJobStatus.Completed)
 
-            assertEquals(2, retry.attempt)
-            assertEquals(ScriptJobStatus.Completed, retry.status)
+            assertEquals(2, retry.attempts.size)
+            assertEquals(ScriptJobItemStatus.Completed, retry.status)
+            assertEquals(ScriptJobStatus.Completed, job.status)
         } finally {
             scope.cancel()
         }
@@ -83,15 +98,34 @@ class ScriptJobServiceTest {
             if (job?.status == status) {
                 return job
             }
-            yield()
+            delay(10)
         }
         return assertNotNull(store.find(id))
     }
 
-    private fun command(executionId: String): ScriptExecutionCommand {
+    private suspend fun awaitItem(
+        store: ScriptJobStore,
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        status: ScriptJobItemStatus,
+    ): ScriptJobItem {
+        repeat(100) {
+            val item = store.findItem(jobId, itemId)
+            if (item?.status == status) {
+                return item
+            }
+            delay(10)
+        }
+        return assertNotNull(store.findItem(jobId, itemId))
+    }
+
+    private fun command(
+        executionId: String,
+        nodes: List<String> = listOf("node-1", "node-2"),
+    ): ScriptExecutionCommand {
         return ScriptExecutionCommand(
             executionId = executionId,
-            target = ScriptTarget.AllNodes,
+            target = ScriptTarget.Node(nodes),
             artifact = ScriptArtifact("job-test", "fake", ByteArray(0)),
         )
     }
