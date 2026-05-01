@@ -14,6 +14,7 @@ import io.github.mikai233.asteria.script.ScriptRuntime
 import io.github.mikai233.asteria.script.ScriptTarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import java.util.UUID
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -23,7 +24,16 @@ class ScriptJobService(
     private val scope: CoroutineScope,
     private val tracer: Tracer = NoopTracer,
     private val metrics: Metrics = NoopMetrics,
+    private val workerId: String = "script-job-${UUID.randomUUID()}",
+    private val claimBatchSize: Int = 64,
+    private val leaseDuration: Duration = 30.seconds,
 ) {
+    init {
+        require(workerId.isNotBlank()) { "script job worker id must not be blank" }
+        require(claimBatchSize > 0) { "script job claim batch size must be positive" }
+        require(leaseDuration > Duration.ZERO) { "script job lease duration must be positive" }
+    }
+
     suspend fun submit(
         command: ScriptExecutionCommand,
         timeout: Duration = 3.seconds,
@@ -35,7 +45,7 @@ class ScriptJobService(
             val items = command.expandItems(id)
             repository.create(job, items)
             scope.launch {
-                runItems(job, items, timeout)
+                runClaimedItems(job.id, timeout)
             }
             requireNotNull(repository.find(id))
         }
@@ -65,21 +75,38 @@ class ScriptJobService(
         return repository.find(id)
     }
 
-    suspend fun listItems(id: ScriptJobId, status: ScriptJobItemStatus? = null): List<ScriptJobItem> {
-        return repository.listItems(id, status)
+    suspend fun listItems(id: ScriptJobId, query: ScriptJobItemQuery = ScriptJobItemQuery()): ScriptJobItemPage {
+        return repository.listItems(id, query)
     }
 
     suspend fun findItem(id: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem? {
         return repository.findItem(id, itemId)
     }
 
-    private suspend fun runItems(job: ScriptJob, items: List<ScriptJobItem>, timeout: Duration) {
-        items.forEach { item ->
-            val attempt = item.attempts.size + 1
-            val command = item.command(job, attempt)
-            repository.markItemRunning(job.id, item.id, attempt, command)
-            runItem(job.id, item.id, attempt, command, timeout)
+    private suspend fun runClaimedItems(jobId: ScriptJobId, timeout: Duration) {
+        while (true) {
+            val job = repository.find(jobId) ?: return
+            val claimed = repository.claimPendingItems(
+                id = jobId,
+                workerId = workerId,
+                limit = claimBatchSize,
+                leaseUntilMillis = leaseUntilMillis(),
+            )
+            if (claimed.isEmpty()) {
+                return
+            }
+            claimed.forEach { item ->
+                val current = repository.findItem(jobId, item.id) ?: item
+                val attempt = current.attempts.size + 1
+                val command = current.command(job, attempt)
+                repository.markItemRunning(job.id, current.id, attempt, command)
+                runItem(job.id, current.id, attempt, command, timeout)
+            }
         }
+    }
+
+    private fun leaseUntilMillis(): Long {
+        return System.currentTimeMillis() + leaseDuration.inWholeMilliseconds
     }
 
     private suspend fun runItem(

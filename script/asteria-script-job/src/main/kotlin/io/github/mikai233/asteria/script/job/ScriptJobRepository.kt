@@ -15,6 +15,20 @@ import kotlinx.coroutines.sync.withLock
 interface ScriptJobRepository {
     suspend fun create(job: ScriptJob, items: List<ScriptJobItem>)
 
+    /**
+     * Claims pending items for one worker without starting an attempt yet.
+     *
+     * Implementations must claim atomically enough that multiple workers using the same durable store cannot receive
+     * the same pending item while its lease is still active.
+     */
+    suspend fun claimPendingItems(
+        id: ScriptJobId,
+        workerId: String,
+        limit: Int,
+        leaseUntilMillis: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): List<ScriptJobItem>
+
     suspend fun markItemRunning(
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
@@ -33,7 +47,7 @@ interface ScriptJobRepository {
 
     suspend fun find(id: ScriptJobId): ScriptJob?
 
-    suspend fun listItems(id: ScriptJobId, status: ScriptJobItemStatus? = null): List<ScriptJobItem>
+    suspend fun listItems(id: ScriptJobId, query: ScriptJobItemQuery = ScriptJobItemQuery()): ScriptJobItemPage
 
     suspend fun findItem(id: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem?
 }
@@ -65,6 +79,36 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
         }
     }
 
+    override suspend fun claimPendingItems(
+        id: ScriptJobId,
+        workerId: String,
+        limit: Int,
+        leaseUntilMillis: Long,
+        nowMillis: Long,
+    ): List<ScriptJobItem> {
+        require(workerId.isNotBlank()) { "script job worker id must not be blank" }
+        require(limit > 0) { "script job claim limit must be positive" }
+        require(leaseUntilMillis > nowMillis) { "script job item lease must be in the future" }
+        return mutex.withLock {
+            val stored = jobs[id] ?: return@withLock emptyList()
+            stored.items.values
+                .asSequence()
+                .filter { it.status == ScriptJobItemStatus.Pending }
+                .filter { it.leaseUntilMillis == null || it.leaseUntilMillis <= nowMillis }
+                .take(limit)
+                .map { item ->
+                    val claimed = item.copy(
+                        leaseOwner = workerId,
+                        leaseUntilMillis = leaseUntilMillis,
+                        updatedAtMillis = nowMillis,
+                    )
+                    stored.items[item.id] = claimed
+                    claimed
+                }
+                .toList()
+        }
+    }
+
     override suspend fun markItemRunning(
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
@@ -76,6 +120,9 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
             val item = stored.item(itemId)
             require(attempt == item.attempts.size + 1) {
                 "script job item $itemId expected attempt ${item.attempts.size + 1}, got $attempt"
+            }
+            require(item.status == ScriptJobItemStatus.Pending || item.status == ScriptJobItemStatus.Failed) {
+                "script job item $itemId cannot start from status ${item.status}"
             }
             stored.items[itemId] = item.copy(
                 status = ScriptJobItemStatus.Running,
@@ -118,6 +165,8 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
                 status = status,
                 results = results,
                 attempts = item.attempts.dropLast(1) + updatedAttempt,
+                leaseOwner = null,
+                leaseUntilMillis = null,
                 updatedAtMillis = now,
             )
             stored.refresh(now)
@@ -128,13 +177,19 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
         return mutex.withLock { jobs[id]?.job }
     }
 
-    override suspend fun listItems(id: ScriptJobId, status: ScriptJobItemStatus?): List<ScriptJobItem> {
+    override suspend fun listItems(id: ScriptJobId, query: ScriptJobItemQuery): ScriptJobItemPage {
         return mutex.withLock {
-            jobs[id]
+            val values = jobs[id]
                 ?.items
                 ?.values
-                ?.filter { status == null || it.status == status }
+                ?.filter { query.status == null || it.status == query.status }
                 ?: emptyList()
+            ScriptJobItemPage(
+                items = values.drop(query.offset).take(query.limit),
+                offset = query.offset,
+                limit = query.limit,
+                total = values.size.toLong(),
+            )
         }
     }
 

@@ -2,8 +2,13 @@ package io.github.mikai233.asteria.script.job.mongodb
 
 import com.mongodb.client.model.Filters.and
 import com.mongodb.client.model.Filters.eq
+import com.mongodb.client.model.Filters.lte
+import com.mongodb.client.model.Filters.or
 import com.mongodb.client.model.IndexOptions
 import com.mongodb.client.model.Indexes
+import com.mongodb.client.model.Sorts
+import com.mongodb.client.model.Updates.combine
+import com.mongodb.client.model.Updates.set
 import com.mongodb.kotlin.client.coroutine.MongoCollection
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.mikai233.asteria.core.EntityKind
@@ -20,6 +25,8 @@ import io.github.mikai233.asteria.script.job.ScriptJobId
 import io.github.mikai233.asteria.script.job.ScriptJobItem
 import io.github.mikai233.asteria.script.job.ScriptJobItemAttempt
 import io.github.mikai233.asteria.script.job.ScriptJobItemId
+import io.github.mikai233.asteria.script.job.ScriptJobItemPage
+import io.github.mikai233.asteria.script.job.ScriptJobItemQuery
 import io.github.mikai233.asteria.script.job.ScriptJobItemStatus
 import io.github.mikai233.asteria.script.job.ScriptJobRepository
 import io.github.mikai233.asteria.script.job.ScriptJobStatus
@@ -55,6 +62,13 @@ class MongoScriptJobRepository(
             IndexOptions().unique(true),
         )
         items.createIndex(Indexes.compoundIndex(Indexes.ascending("jobId"), Indexes.ascending("status")))
+        items.createIndex(
+            Indexes.compoundIndex(
+                Indexes.ascending("jobId"),
+                Indexes.ascending("status"),
+                Indexes.ascending("leaseUntilMillis"),
+            ),
+        )
     }
 
     override suspend fun create(job: ScriptJob, items: List<ScriptJobItem>) {
@@ -62,6 +76,49 @@ class MongoScriptJobRepository(
         val storedJob = job.copy(totalItems = items.size)
         jobs.insertOne(storedJob.toDocument())
         this.items.insertMany(items.map { it.toDocument() })
+    }
+
+    override suspend fun claimPendingItems(
+        id: ScriptJobId,
+        workerId: String,
+        limit: Int,
+        leaseUntilMillis: Long,
+        nowMillis: Long,
+    ): List<ScriptJobItem> {
+        require(workerId.isNotBlank()) { "script job worker id must not be blank" }
+        require(limit > 0) { "script job claim limit must be positive" }
+        require(leaseUntilMillis > nowMillis) { "script job item lease must be in the future" }
+        val availableFilter = and(
+            eq("jobId", id.value),
+            eq("status", ScriptJobItemStatus.Pending.name),
+            leaseAvailable(nowMillis),
+        )
+        val candidates = items.find(availableFilter)
+            .sort(Sorts.ascending("itemId"))
+            .limit(limit)
+            .toList()
+        val claimed = mutableListOf<ScriptJobItem>()
+        for (candidate in candidates) {
+            val itemId = candidate.requiredString("itemId")
+            val itemFilter = and(
+                eq("jobId", id.value),
+                eq("itemId", itemId),
+                eq("status", ScriptJobItemStatus.Pending.name),
+                leaseAvailable(nowMillis),
+            )
+            val result = items.updateOne(
+                itemFilter,
+                combine(
+                    set("leaseOwner", workerId),
+                    set("leaseUntilMillis", leaseUntilMillis),
+                    set("updatedAtMillis", nowMillis),
+                ),
+            )
+            if (result.matchedCount == 1L) {
+                findItem(id, ScriptJobItemId(itemId))?.let { claimed += it }
+            }
+        }
+        return claimed
     }
 
     override suspend fun markItemRunning(
@@ -75,8 +132,10 @@ class MongoScriptJobRepository(
         require(attempt == item.attempts.size + 1) {
             "script job item $itemId expected attempt ${item.attempts.size + 1}, got $attempt"
         }
+        require(item.status == ScriptJobItemStatus.Pending || item.status == ScriptJobItemStatus.Failed) {
+            "script job item $itemId cannot start from status ${item.status}"
+        }
         val now = System.currentTimeMillis()
-        val oldStatus = item.status
         val updated = item.copy(
             status = ScriptJobItemStatus.Running,
             attempts = item.attempts + ScriptJobItemAttempt(
@@ -88,7 +147,7 @@ class MongoScriptJobRepository(
             updatedAtMillis = now,
         )
         replaceItem(updated)
-        refreshJob(jobId, oldStatus, ScriptJobItemStatus.Running, now)
+        refreshJob(jobId, now)
     }
 
     override suspend fun markItemFinished(
@@ -108,7 +167,6 @@ class MongoScriptJobRepository(
             "script job item $itemId latest attempt is ${item.attempts.last().attempt}, got $attempt"
         }
         val now = System.currentTimeMillis()
-        val oldStatus = item.status
         val updatedAttempt = item.attempts.last().copy(
             status = status,
             results = results,
@@ -119,23 +177,38 @@ class MongoScriptJobRepository(
             status = status,
             results = results,
             attempts = item.attempts.dropLast(1) + updatedAttempt,
+            leaseOwner = null,
+            leaseUntilMillis = null,
             updatedAtMillis = now,
         )
         replaceItem(updated)
-        refreshJob(jobId, oldStatus, status, now)
+        refreshJob(jobId, now)
     }
 
     override suspend fun find(id: ScriptJobId): ScriptJob? {
         return jobs.find(eq("_id", id.value)).firstOrNull()?.toScriptJob()
     }
 
-    override suspend fun listItems(id: ScriptJobId, status: ScriptJobItemStatus?): List<ScriptJobItem> {
+    override suspend fun listItems(id: ScriptJobId, query: ScriptJobItemQuery): ScriptJobItemPage {
+        val status = query.status
         val filter = if (status == null) {
             eq("jobId", id.value)
         } else {
             and(eq("jobId", id.value), eq("status", status.name))
         }
-        return items.find(filter).toList().map { it.toScriptJobItem() }
+        val total = items.countDocuments(filter)
+        val page = items.find(filter)
+            .sort(Sorts.ascending("itemId"))
+            .skip(query.offset)
+            .limit(query.limit)
+            .toList()
+            .map { it.toScriptJobItem() }
+        return ScriptJobItemPage(
+            items = page,
+            offset = query.offset,
+            limit = query.limit,
+            total = total,
+        )
     }
 
     override suspend fun findItem(id: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem? {
@@ -151,17 +224,14 @@ class MongoScriptJobRepository(
         )
     }
 
-    private suspend fun refreshJob(
-        jobId: ScriptJobId,
-        oldStatus: ScriptJobItemStatus,
-        newStatus: ScriptJobItemStatus,
-        now: Long,
-    ) {
+    private suspend fun refreshJob(jobId: ScriptJobId, now: Long) {
         val job = requireNotNull(find(jobId)) { "script job $jobId not found" }
-        val completed = job.completedItems + newStatus.completedDelta() - oldStatus.completedDelta()
-        val failed = job.failedItems + newStatus.failedDelta() - oldStatus.failedDelta()
+        val completed = countItems(jobId, ScriptJobItemStatus.Completed).toInt()
+        val failed = countItems(jobId, ScriptJobItemStatus.Failed).toInt()
+        val running = countItems(jobId, ScriptJobItemStatus.Running) > 0
+        val pending = countItems(jobId, ScriptJobItemStatus.Pending) > 0
         val status = when {
-            completed + failed < job.totalItems -> ScriptJobStatus.Running
+            running || pending -> ScriptJobStatus.Running
             failed == 0 -> ScriptJobStatus.Completed
             completed == 0 -> ScriptJobStatus.Failed
             else -> ScriptJobStatus.PartialFailed
@@ -176,6 +246,14 @@ class MongoScriptJobRepository(
             ).toDocument(),
         )
     }
+
+    private suspend fun countItems(jobId: ScriptJobId, status: ScriptJobItemStatus): Long {
+        return items.countDocuments(and(eq("jobId", jobId.value), eq("status", status.name)))
+    }
+}
+
+private fun leaseAvailable(nowMillis: Long): org.bson.conversions.Bson {
+    return or(eq("leaseUntilMillis", null), lte("leaseUntilMillis", nowMillis))
 }
 
 private fun ScriptJob.toDocument(): Document {
@@ -204,14 +282,6 @@ private fun Document.toScriptJob(): ScriptJob {
     )
 }
 
-private fun ScriptJobItemStatus.completedDelta(): Int {
-    return if (this == ScriptJobItemStatus.Completed) 1 else 0
-}
-
-private fun ScriptJobItemStatus.failedDelta(): Int {
-    return if (this == ScriptJobItemStatus.Failed) 1 else 0
-}
-
 private fun ScriptJobItem.toDocument(): Document {
     return Document("_id", "${jobId.value}:${id.value}")
         .append("jobId", jobId.value)
@@ -220,6 +290,8 @@ private fun ScriptJobItem.toDocument(): Document {
         .append("status", status.name)
         .append("results", results.map { it.toDocument() })
         .append("attempts", attempts.map { it.toDocument() })
+        .append("leaseOwner", leaseOwner)
+        .append("leaseUntilMillis", leaseUntilMillis)
         .append("createdAtMillis", createdAtMillis)
         .append("updatedAtMillis", updatedAtMillis)
 }
@@ -232,6 +304,8 @@ private fun Document.toScriptJobItem(): ScriptJobItem {
         status = ScriptJobItemStatus.valueOf(requiredString("status")),
         results = documents("results").map { it.toScriptExecutionResult() },
         attempts = documents("attempts").map { it.toScriptJobItemAttempt() },
+        leaseOwner = nullableString("leaseOwner"),
+        leaseUntilMillis = nullableNumber("leaseUntilMillis"),
         createdAtMillis = number("createdAtMillis"),
         updatedAtMillis = number("updatedAtMillis"),
     )

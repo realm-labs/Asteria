@@ -10,6 +10,8 @@ import io.github.mikai233.asteria.script.job.ScriptJob
 import io.github.mikai233.asteria.script.job.ScriptJobId
 import io.github.mikai233.asteria.script.job.ScriptJobItem
 import io.github.mikai233.asteria.script.job.ScriptJobItemId
+import io.github.mikai233.asteria.script.job.ScriptJobItemPage
+import io.github.mikai233.asteria.script.job.ScriptJobItemQuery
 import io.github.mikai233.asteria.script.job.ScriptJobItemStatus
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
@@ -89,7 +91,9 @@ class GmScriptController(
         servletRequest: HttpServletRequest,
         @PathVariable jobId: String,
         @RequestParam status: ScriptJobItemStatus? = null,
-    ): ResponseEntity<List<ScriptJobItem>> {
+        @RequestParam offset: Int = 0,
+        @RequestParam limit: Int = 100,
+    ): ResponseEntity<ScriptJobItemPage> {
         return endpoints.execute(
             request = servletRequest,
             permission = GmScriptPermissions.Read,
@@ -98,7 +102,7 @@ class GmScriptController(
         ) {
             val id = ScriptJobId(jobId)
             scripts.find(id) ?: return@execute ResponseEntity.notFound().build()
-            ResponseEntity.ok(scripts.listItems(id, status))
+            ResponseEntity.ok(scripts.listItems(id, ScriptJobItemQuery(status = status, offset = offset, limit = limit)))
         }
     }
 

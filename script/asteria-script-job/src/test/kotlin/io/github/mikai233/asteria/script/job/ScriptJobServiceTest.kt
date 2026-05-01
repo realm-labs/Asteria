@@ -41,7 +41,7 @@ class ScriptJobServiceTest {
         try {
             val submitted = service.submit(command("job-1"))
             val job = awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.PartialFailed)
-            val items = repository.listItems(ScriptJobId("job-1"))
+            val items = repository.listItems(ScriptJobId("job-1")).items
 
             assertEquals(2, submitted.totalItems)
             assertEquals(2, job.totalItems)
@@ -54,6 +54,50 @@ class ScriptJobServiceTest {
         } finally {
             scope.cancel()
         }
+    }
+
+    @Test
+    fun repositoryListsItemsWithPagination() = runBlocking {
+        val repository = InMemoryScriptJobRepository()
+        val jobId = ScriptJobId("job-1")
+        repository.create(
+            ScriptJob(jobId, command("job-1")),
+            listOf(
+                ScriptJobItem(ScriptJobItemId("1"), jobId, ScriptTarget.Node(listOf("node-1"))),
+                ScriptJobItem(ScriptJobItemId("2"), jobId, ScriptTarget.Node(listOf("node-2"))),
+                ScriptJobItem(ScriptJobItemId("3"), jobId, ScriptTarget.Node(listOf("node-3"))),
+            ),
+        )
+
+        val page = repository.listItems(jobId, ScriptJobItemQuery(offset = 1, limit = 1))
+
+        assertEquals(3L, page.total)
+        assertEquals(1, page.items.size)
+        assertEquals(ScriptJobItemId("2"), page.items.single().id)
+        assertEquals(2, page.nextOffset)
+    }
+
+    @Test
+    fun repositoryClaimsOnlyAvailablePendingItems() = runBlocking {
+        val repository = InMemoryScriptJobRepository()
+        val jobId = ScriptJobId("job-1")
+        repository.create(
+            ScriptJob(jobId, command("job-1")),
+            listOf(
+                ScriptJobItem(ScriptJobItemId("1"), jobId, ScriptTarget.Node(listOf("node-1"))),
+                ScriptJobItem(ScriptJobItemId("2"), jobId, ScriptTarget.Node(listOf("node-2"))),
+            ),
+        )
+
+        val first = repository.claimPendingItems(jobId, "worker-1", limit = 1, leaseUntilMillis = 2_000, nowMillis = 1_000)
+        val second = repository.claimPendingItems(jobId, "worker-2", limit = 2, leaseUntilMillis = 2_000, nowMillis = 1_000)
+        val expired = repository.claimPendingItems(jobId, "worker-3", limit = 1, leaseUntilMillis = 3_000, nowMillis = 2_001)
+
+        assertEquals(listOf(ScriptJobItemId("1")), first.map { it.id })
+        assertEquals("worker-1", first.single().leaseOwner)
+        assertEquals(listOf(ScriptJobItemId("2")), second.map { it.id })
+        assertEquals(listOf(ScriptJobItemId("1")), expired.map { it.id })
+        assertEquals("worker-3", expired.single().leaseOwner)
     }
 
     @Test

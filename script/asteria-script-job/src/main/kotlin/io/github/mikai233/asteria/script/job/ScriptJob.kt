@@ -64,9 +64,36 @@ data class ScriptJobItem(
     val status: ScriptJobItemStatus = ScriptJobItemStatus.Pending,
     val results: List<ScriptExecutionResult> = emptyList(),
     val attempts: List<ScriptJobItemAttempt> = emptyList(),
+    val leaseOwner: String? = null,
+    val leaseUntilMillis: Long? = null,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = createdAtMillis,
-)
+) {
+    init {
+        leaseOwner?.let { require(it.isNotBlank()) { "script job item lease owner must not be blank" } }
+        leaseUntilMillis?.let { require(it >= 0) { "script job item lease time must not be negative" } }
+    }
+}
+
+data class ScriptJobItemQuery(
+    val status: ScriptJobItemStatus? = null,
+    val offset: Int = 0,
+    val limit: Int = 100,
+) {
+    init {
+        require(offset >= 0) { "script job item query offset must not be negative" }
+        require(limit > 0) { "script job item query limit must be positive" }
+    }
+}
+
+data class ScriptJobItemPage(
+    val items: List<ScriptJobItem>,
+    val offset: Int,
+    val limit: Int,
+    val total: Long,
+) {
+    val nextOffset: Int? = if (offset + items.size < total) offset + items.size else null
+}
 
 data class ScriptJobItemAttempt(
     val attempt: Int,

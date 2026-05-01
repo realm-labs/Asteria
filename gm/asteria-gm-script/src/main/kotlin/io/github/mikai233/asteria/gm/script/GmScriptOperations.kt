@@ -5,7 +5,8 @@ import io.github.mikai233.asteria.script.job.ScriptJob
 import io.github.mikai233.asteria.script.job.ScriptJobId
 import io.github.mikai233.asteria.script.job.ScriptJobItem
 import io.github.mikai233.asteria.script.job.ScriptJobItemId
-import io.github.mikai233.asteria.script.job.ScriptJobItemStatus
+import io.github.mikai233.asteria.script.job.ScriptJobItemPage
+import io.github.mikai233.asteria.script.job.ScriptJobItemQuery
 import io.github.mikai233.asteria.script.job.ScriptJobService
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -20,8 +21,8 @@ interface GmScriptOperations {
 
     suspend fun listItems(
         jobId: ScriptJobId,
-        status: ScriptJobItemStatus? = null,
-    ): List<ScriptJobItem>
+        query: ScriptJobItemQuery = ScriptJobItemQuery(),
+    ): ScriptJobItemPage
 
     suspend fun findItem(
         jobId: ScriptJobId,
@@ -49,8 +50,8 @@ class ScriptJobGmScriptOperations(
         return jobs.find(jobId)
     }
 
-    override suspend fun listItems(jobId: ScriptJobId, status: ScriptJobItemStatus?): List<ScriptJobItem> {
-        return jobs.listItems(jobId, status)
+    override suspend fun listItems(jobId: ScriptJobId, query: ScriptJobItemQuery): ScriptJobItemPage {
+        return jobs.listItems(jobId, query)
     }
 
     override suspend fun findItem(jobId: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem? {
