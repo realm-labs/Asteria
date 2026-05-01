@@ -9,6 +9,7 @@ import io.github.mikai233.asteria.script.ScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptResourceRef
 import io.github.mikai233.asteria.script.ScriptTarget
 import io.github.mikai233.asteria.script.job.ScriptJobExecutionAttributes
+import io.github.mikai233.asteria.script.job.ScriptJobRetryFailedItemsRequest
 import java.util.Base64
 
 /**
@@ -182,6 +183,25 @@ data class GmScriptRetryItemRequest(
 ) {
     init {
         require(timeoutMillis > 0) { "GM script retry timeout must be positive" }
+    }
+}
+
+/**
+ * HTTP request for retrying failed script job items that match an error bucket.
+ */
+data class GmScriptRetryFailedItemsRequest(
+    val error: String? = null,
+    val limit: Int = 100,
+    val timeoutMillis: Long = 3_000,
+) {
+    init {
+        error?.let { require(it.isNotBlank()) { "GM script retry error must not be blank" } }
+        require(limit > 0) { "GM script retry limit must be positive" }
+        require(timeoutMillis > 0) { "GM script retry timeout must be positive" }
+    }
+
+    fun toRetryRequest(): ScriptJobRetryFailedItemsRequest {
+        return ScriptJobRetryFailedItemsRequest(error = error, limit = limit)
     }
 }
 

@@ -124,6 +124,73 @@ class ScriptJobService(
         return repository.findItem(id, itemId)
     }
 
+    suspend fun summarizeResults(id: ScriptJobId): ScriptJobResultSummary {
+        val job = requireNotNull(repository.find(id)) { "script job $id not found" }
+        val items = allItems(id)
+        val errors = items
+            .asSequence()
+            .filter { it.status == ScriptJobItemStatus.Failed }
+            .groupBy { it.errorSummary() }
+            .map { (error, failedItems) ->
+                ScriptJobErrorSummary(
+                    error = error,
+                    count = failedItems.size,
+                    sampleTargets = failedItems.take(5).map { it.target.summary() },
+                )
+            }
+            .sortedByDescending { it.count }
+        return ScriptJobResultSummary(
+            jobId = id,
+            totalItems = job.totalItems,
+            completedItems = job.completedItems,
+            failedItems = job.failedItems,
+            cancelledItems = job.cancelledItems,
+            errorTypes = errors,
+        )
+    }
+
+    suspend fun exportResults(
+        id: ScriptJobId,
+        status: ScriptJobItemStatus? = null,
+    ): ScriptJobResultExport {
+        repository.find(id) ?: error("script job $id not found")
+        val rows = allItems(id, status)
+        val csv = buildString {
+            appendLine("itemId,status,target,error,resultCount")
+            rows.forEach { item ->
+                appendCsvRow(
+                    item.id.value,
+                    item.status.name,
+                    item.target.summary(),
+                    item.errorSummary(),
+                    item.results.size.toString(),
+                )
+            }
+        }
+        return ScriptJobResultExport(
+            fileName = "script-job-${id.value}-results.csv",
+            contentType = "text/csv",
+            content = csv,
+        )
+    }
+
+    suspend fun retryFailedItems(
+        jobId: ScriptJobId,
+        request: ScriptJobRetryFailedItemsRequest = ScriptJobRetryFailedItemsRequest(),
+        timeout: Duration = 3.seconds,
+        requestedBy: String? = null,
+    ): List<ScriptJobItem> {
+        repository.find(jobId) ?: error("script job $jobId not found")
+        val failed = allItems(jobId, ScriptJobItemStatus.Failed)
+            .asSequence()
+            .filter { item -> request.error == null || item.errorSummary() == request.error }
+            .take(request.limit)
+            .toList()
+        return failed.map { item ->
+            retryItem(jobId, item.id, timeout, requestedBy)
+        }
+    }
+
     suspend fun cancelJob(
         id: ScriptJobId,
         cancellation: ScriptJobCancellation = ScriptJobCancellation(),
@@ -514,5 +581,49 @@ class ScriptJobService(
 
     private fun ScriptExecutionMetadata.withAttributes(vararg entries: Pair<String, String>): ScriptExecutionMetadata {
         return copy(attributes = attributes + entries)
+    }
+
+    private suspend fun allItems(
+        id: ScriptJobId,
+        status: ScriptJobItemStatus? = null,
+        pageSize: Int = 1_000,
+    ): List<ScriptJobItem> {
+        val items = mutableListOf<ScriptJobItem>()
+        var offset = 0
+        while (true) {
+            val page = repository.listItems(id, ScriptJobItemQuery(status = status, offset = offset, limit = pageSize))
+            items += page.items
+            offset = page.nextOffset ?: break
+        }
+        return items
+    }
+
+    private fun ScriptJobItem.errorSummary(): String {
+        return attempts.lastOrNull()?.error
+            ?: results.firstOrNull { !it.success }?.error
+            ?: "unknown"
+    }
+
+    private fun ScriptTarget.summary(): String {
+        return when (this) {
+            ScriptTarget.AllNodes -> "all-nodes"
+            is ScriptTarget.ActorPath -> paths.joinToString(",")
+            is ScriptTarget.Entity -> "${kind.value}:${ids.joinToString(",")}"
+            is ScriptTarget.Node -> addresses.joinToString(",")
+            is ScriptTarget.Role -> "role:${role.value}"
+            is ScriptTarget.Singleton -> "singleton:${name.value}"
+        }
+    }
+
+    private fun StringBuilder.appendCsvRow(vararg values: String) {
+        appendLine(values.joinToString(",") { it.csvEscape() })
+    }
+
+    private fun String.csvEscape(): String {
+        return if (any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
+            "\"${replace("\"", "\"\"")}\""
+        } else {
+            this
+        }
     }
 }

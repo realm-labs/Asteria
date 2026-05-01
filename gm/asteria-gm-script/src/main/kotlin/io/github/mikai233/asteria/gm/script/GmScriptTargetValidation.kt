@@ -71,6 +71,14 @@ class CompositeGmScriptTargetValidator(
  * modules can implement this against Redis, an in-memory index, or another fast lookup source.
  */
 interface GmScriptTargetCatalog {
+    suspend fun listRoles(): List<String> = emptyList()
+
+    suspend fun listEntityKinds(): List<String> = emptyList()
+
+    suspend fun listSingletons(): List<String> = emptyList()
+
+    suspend fun listNodeAddresses(): List<String> = emptyList()
+
     suspend fun roleExists(role: RoleKey): Boolean? = null
 
     suspend fun entityKindExists(kind: EntityKind): Boolean? = null
@@ -92,12 +100,24 @@ class ApplicationSpecGmScriptTargetCatalog(
         return role in application.declaredRoles
     }
 
+    override suspend fun listRoles(): List<String> {
+        return application.declaredRoles.map { it.value }.sorted()
+    }
+
     override suspend fun entityKindExists(kind: EntityKind): Boolean {
         return application.entities.any { it.kind == kind }
     }
 
+    override suspend fun listEntityKinds(): List<String> {
+        return application.entities.map { it.kind.value }.sorted()
+    }
+
     override suspend fun singletonExists(name: SingletonName): Boolean {
         return application.singletons.any { it.name == name }
+    }
+
+    override suspend fun listSingletons(): List<String> {
+        return application.singletons.map { it.name.value }.sorted()
     }
 }
 

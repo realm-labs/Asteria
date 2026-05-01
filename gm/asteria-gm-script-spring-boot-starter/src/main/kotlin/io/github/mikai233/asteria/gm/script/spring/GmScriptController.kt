@@ -2,6 +2,8 @@ package io.github.mikai233.asteria.gm.script.spring
 
 import io.github.mikai233.asteria.gm.script.GmScriptOperations
 import io.github.mikai233.asteria.gm.script.GmScriptPermissions
+import io.github.mikai233.asteria.gm.script.GmScriptMetadata
+import io.github.mikai233.asteria.gm.script.GmScriptMetadataProvider
 import io.github.mikai233.asteria.gm.script.GmScriptTargetValidationRequest
 import io.github.mikai233.asteria.gm.script.GmScriptTargetValidationResult
 import io.github.mikai233.asteria.gm.script.GmScriptTargetValidator
@@ -20,6 +22,8 @@ import io.github.mikai233.asteria.script.job.ScriptJobQuery
 import io.github.mikai233.asteria.script.job.ScriptJobStatus
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -41,7 +45,21 @@ class GmScriptController(
     private val scripts: GmScriptOperations,
     private val validator: GmScriptTargetValidator,
     private val endpoints: GmEndpointSupport,
+    private val metadataProvider: GmScriptMetadataProvider,
 ) {
+    @GetMapping("/metadata")
+    suspend fun metadata(
+        servletRequest: HttpServletRequest,
+    ): ResponseEntity<GmScriptMetadata> {
+        return endpoints.execute(
+            request = servletRequest,
+            permission = GmScriptPermissions.Read,
+            action = "gm.script.metadata",
+        ) {
+            ResponseEntity.ok(metadataProvider.metadata())
+        }
+    }
+
     @PostMapping("/jobs")
     @ResponseStatus(HttpStatus.ACCEPTED)
     suspend fun submit(
@@ -112,6 +130,48 @@ class GmScriptController(
             scripts.find(ScriptJobId(jobId))
                 ?.let { ResponseEntity.ok(it) }
                 ?: ResponseEntity.notFound().build()
+        }
+    }
+
+    @GetMapping("/jobs/{jobId}/summary")
+    suspend fun summarizeResults(
+        servletRequest: HttpServletRequest,
+        @PathVariable jobId: String,
+    ): ResponseEntity<Any> {
+        return endpoints.execute(
+            request = servletRequest,
+            permission = GmScriptPermissions.Read,
+            action = "gm.script.results.summary",
+            attributes = mapOf("jobId" to jobId),
+        ) {
+            val id = ScriptJobId(jobId)
+            scripts.find(id) ?: return@execute ResponseEntity.notFound().build()
+            ResponseEntity.ok(scripts.summarizeResults(id))
+        }
+    }
+
+    @GetMapping("/jobs/{jobId}/results.csv")
+    suspend fun exportResults(
+        servletRequest: HttpServletRequest,
+        @PathVariable jobId: String,
+        @RequestParam status: ScriptJobItemStatus? = null,
+    ): ResponseEntity<String> {
+        return endpoints.execute(
+            request = servletRequest,
+            permission = GmScriptPermissions.Read,
+            action = "gm.script.results.export",
+            attributes = buildMap {
+                put("jobId", jobId)
+                status?.let { put("status", it.name) }
+            },
+        ) {
+            val id = ScriptJobId(jobId)
+            scripts.find(id) ?: return@execute ResponseEntity.notFound().build()
+            val export = scripts.exportResults(id, status)
+            ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(export.contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"${export.fileName}\"")
+                .body(export.content)
         }
     }
 
@@ -236,6 +296,35 @@ class GmScriptController(
             scripts.retryItem(
                 jobId = id,
                 itemId = ScriptJobItemId(itemId),
+                timeout = retryRequest.timeoutMillis.milliseconds,
+                requestedBy = operation.principal.id,
+            )
+        }
+    }
+
+    @PostMapping("/jobs/{jobId}/failed-items/retry")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    suspend fun retryFailedItems(
+        servletRequest: HttpServletRequest,
+        @PathVariable jobId: String,
+        @RequestBody(required = false) request: GmScriptRetryFailedItemsRequest?,
+    ): List<ScriptJobItem> {
+        val retryRequest = request ?: GmScriptRetryFailedItemsRequest()
+        return endpoints.execute(
+            request = servletRequest,
+            permission = GmScriptPermissions.Execute,
+            action = "gm.script.failed-items.retry",
+            attributes = buildMap {
+                put("jobId", jobId)
+                retryRequest.error?.let { put("error", it) }
+                put("limit", retryRequest.limit.toString())
+            },
+        ) { operation ->
+            val id = ScriptJobId(jobId)
+            scripts.find(id) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "script job $jobId not found")
+            scripts.retryFailedItems(
+                jobId = id,
+                request = retryRequest.toRetryRequest(),
                 timeout = retryRequest.timeoutMillis.milliseconds,
                 requestedBy = operation.principal.id,
             )

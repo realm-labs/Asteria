@@ -537,6 +537,96 @@ class ScriptJobServiceTest {
     }
 
     @Test
+    fun summarizesAndExportsJobResults() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val repository = InMemoryScriptJobRepository()
+        val service = ScriptJobService(
+            runtime = FakeScriptRuntime(
+                ScriptExecutionBatchResult(
+                    executionId = "job-1.1.1",
+                    results = listOf(ScriptExecutionResult("job-1.1.1", success = false, error = "db-timeout")),
+                ),
+                ScriptExecutionBatchResult(
+                    executionId = "job-1.2.1",
+                    results = listOf(ScriptExecutionResult("job-1.2.1", success = false, error = "db-timeout")),
+                ),
+                ScriptExecutionBatchResult(
+                    executionId = "job-1.3.1",
+                    results = listOf(ScriptExecutionResult("job-1.3.1", success = true)),
+                ),
+            ),
+            repository = repository,
+            scope = scope,
+        )
+
+        try {
+            service.submit(
+                command(
+                    "job-1",
+                    listOf("node-1", "node-2", "node-3"),
+                    attributes = mapOf(ScriptJobExecutionAttributes.MaxConcurrentItems to "1"),
+                ),
+            )
+            val job = awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.PartialFailed)
+            val summary = service.summarizeResults(job.id)
+            val export = service.exportResults(job.id, ScriptJobItemStatus.Failed)
+
+            assertEquals(2, summary.failedItems)
+            assertEquals(listOf("db-timeout" to 2), summary.errorTypes.map { it.error to it.count })
+            assertTrue(export.content.contains("db-timeout"))
+            assertTrue(export.content.lines().size >= 3)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun retriesFailedItemsByErrorBucket() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val repository = InMemoryScriptJobRepository()
+        val service = ScriptJobService(
+            runtime = FakeScriptRuntime(
+                ScriptExecutionBatchResult(
+                    executionId = "job-1.1.1",
+                    results = listOf(ScriptExecutionResult("job-1.1.1", success = false, error = "db-timeout")),
+                ),
+                ScriptExecutionBatchResult(
+                    executionId = "job-1.2.1",
+                    results = listOf(ScriptExecutionResult("job-1.2.1", success = false, error = "bad-state")),
+                ),
+                ScriptExecutionBatchResult(
+                    executionId = "job-1.1.2",
+                    results = listOf(ScriptExecutionResult("job-1.1.2", success = true)),
+                ),
+            ),
+            repository = repository,
+            scope = scope,
+        )
+
+        try {
+            service.submit(
+                command(
+                    "job-1",
+                    listOf("node-1", "node-2"),
+                    attributes = mapOf(ScriptJobExecutionAttributes.MaxConcurrentItems to "1"),
+                ),
+            )
+            awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Failed)
+
+            val retried = service.retryFailedItems(
+                ScriptJobId("job-1"),
+                ScriptJobRetryFailedItemsRequest(error = "db-timeout"),
+            )
+            val item = awaitItem(repository, ScriptJobId("job-1"), retried.single().id, ScriptJobItemStatus.Completed)
+
+            assertEquals(2, item.attempts.size)
+            assertEquals(1, retried.size)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun permitRepositoryExpiresLeases() = runBlocking {
         val repository = InMemoryScriptJobPermitRepository()
         val first = assertNotNull(
