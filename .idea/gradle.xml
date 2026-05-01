@@ -8,30 +8,30 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/asteria-actor" />
-            <option value="$PROJECT_DIR$/asteria-cluster-config" />
             <option value="$PROJECT_DIR$/asteria-cluster-pekko" />
-            <option value="$PROJECT_DIR$/asteria-config" />
-            <option value="$PROJECT_DIR$/asteria-config-center" />
-            <option value="$PROJECT_DIR$/asteria-config-center-zookeeper" />
-            <option value="$PROJECT_DIR$/asteria-config-luban" />
-            <option value="$PROJECT_DIR$/asteria-core" />
             <option value="$PROJECT_DIR$/asteria-gateway-netty" />
-            <option value="$PROJECT_DIR$/asteria-message" />
-            <option value="$PROJECT_DIR$/asteria-observability-core" />
-            <option value="$PROJECT_DIR$/asteria-observability-opentelemetry" />
             <option value="$PROJECT_DIR$/asteria-persistence" />
             <option value="$PROJECT_DIR$/asteria-protocol-protobuf" />
-            <option value="$PROJECT_DIR$/asteria-rpc" />
-            <option value="$PROJECT_DIR$/asteria-rpc-protobuf" />
-            <option value="$PROJECT_DIR$/asteria-rpc-protobuf-generator" />
-            <option value="$PROJECT_DIR$/asteria-script-core" />
-            <option value="$PROJECT_DIR$/asteria-script-job" />
-            <option value="$PROJECT_DIR$/asteria-script-engine-groovy" />
-            <option value="$PROJECT_DIR$/asteria-script-engine-jar" />
-            <option value="$PROJECT_DIR$/asteria-script-pekko" />
-            <option value="$PROJECT_DIR$/asteria-script-protobuf" />
             <option value="$PROJECT_DIR$/asteria-starter" />
+            <option value="$PROJECT_DIR$/config/asteria-cluster-config" />
+            <option value="$PROJECT_DIR$/config/asteria-config" />
+            <option value="$PROJECT_DIR$/config/asteria-config-center" />
+            <option value="$PROJECT_DIR$/config/asteria-config-center-zookeeper" />
+            <option value="$PROJECT_DIR$/config/asteria-config-luban" />
+            <option value="$PROJECT_DIR$/foundation/asteria-actor" />
+            <option value="$PROJECT_DIR$/foundation/asteria-core" />
+            <option value="$PROJECT_DIR$/foundation/asteria-message" />
+            <option value="$PROJECT_DIR$/observability/asteria-observability-core" />
+            <option value="$PROJECT_DIR$/observability/asteria-observability-opentelemetry" />
+            <option value="$PROJECT_DIR$/rpc/asteria-rpc" />
+            <option value="$PROJECT_DIR$/rpc/asteria-rpc-protobuf" />
+            <option value="$PROJECT_DIR$/rpc/asteria-rpc-protobuf-generator" />
+            <option value="$PROJECT_DIR$/script/asteria-script-core" />
+            <option value="$PROJECT_DIR$/script/asteria-script-engine-groovy" />
+            <option value="$PROJECT_DIR$/script/asteria-script-engine-jar" />
+            <option value="$PROJECT_DIR$/script/asteria-script-job" />
+            <option value="$PROJECT_DIR$/script/asteria-script-pekko" />
+            <option value="$PROJECT_DIR$/script/asteria-script-protobuf" />
           </set>
         </option>
         <option name="myGradleHome" value="" />

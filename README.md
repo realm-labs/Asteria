@@ -7,26 +7,44 @@ application-level choices instead of framework requirements.
 
 ## Modules
 
-- `asteria-core`: application lifecycle, module system, role keys, entity specs, singleton specs, service registry.
-- `asteria-actor`: Pekko actor base utilities, actor coroutine dispatcher, timer helpers.
-- `asteria-message`: message contracts, handler dispatch, route registry, handler context.
-- `asteria-observability-core`: optional tracing, metrics, trace context, no-op defaults, and module registration.
-- `asteria-rpc`: RPC target and route registry contracts.
-- `asteria-rpc-protobuf`: protobuf RPC route registry runtime contracts for generated routes.
-- `asteria-rpc-protobuf-generator`: descriptor-set based generator for protobuf RPC route registries.
-- `asteria-script-core`: optional script execution contracts, targets, contexts, engines, and results.
-- `asteria-script-job`: optional async script job orchestration and result storage contracts for GM workflows.
-- `asteria-script-protobuf`: protobuf wire contracts and converters for script commands and results.
-- `asteria-script-pekko`: optional Pekko integration for node, role, actor path, entity, and singleton script targets.
+Foundation modules:
+
+- `foundation/asteria-core`: application lifecycle, module system, role keys, entity specs, singleton specs, service registry.
+- `foundation/asteria-actor`: Pekko actor base utilities, actor coroutine dispatcher, timer helpers.
+- `foundation/asteria-message`: message contracts, handler dispatch, route registry, handler context.
+
+RPC modules:
+
+- `rpc/asteria-rpc`: RPC target and route registry contracts.
+- `rpc/asteria-rpc-protobuf`: protobuf RPC route registry runtime contracts for generated routes.
+- `rpc/asteria-rpc-protobuf-generator`: descriptor-set based generator for protobuf RPC route registries.
+
+Script modules:
+
+- `script/asteria-script-core`: optional script execution contracts, targets, contexts, engines, and results.
+- `script/asteria-script-job`: optional async script job orchestration and result storage contracts for GM workflows.
+- `script/asteria-script-protobuf`: protobuf wire contracts and converters for script commands and results.
+- `script/asteria-script-pekko`: optional Pekko integration for node, role, actor path, entity, and singleton script targets.
+
+Config modules:
+
+- `config/asteria-config`: config table snapshot, reload, validation, and module contracts.
+- `config/asteria-config-luban`: optional Luban Java JSON and binary config loaders with module integration.
+- `config/asteria-config-center`: config center store, watch, typed repository, codec, and in-memory implementation contracts.
+- `config/asteria-config-center-zookeeper`: Zookeeper config center adapter backed by Apache Curator.
+- `config/asteria-cluster-config`: runtime node config, cluster topology, and config-center backed topology provider.
+
+Observability modules:
+
+- `observability/asteria-observability-core`: optional tracing, metrics, trace context, no-op defaults, and module registration.
+- `observability/asteria-observability-opentelemetry`: OpenTelemetry bridge for Asteria observability.
+
+Standalone modules:
+
 - `asteria-cluster-pekko`: Pekko Cluster Sharding and Singleton adapters.
 - `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
 - `asteria-persistence`: entity, mem data, data scope, data manager, persistence provider contracts.
-- `asteria-config`: config table snapshot, reload, validation, and module contracts.
-- `asteria-config-luban`: optional Luban Java JSON and binary config loaders with module integration.
-- `asteria-config-center`: config center store, watch, typed repository, codec, and in-memory implementation contracts.
-- `asteria-config-center-zookeeper`: Zookeeper config center adapter backed by Apache Curator.
-- `asteria-cluster-config`: runtime node config, cluster topology, and config-center backed topology provider.
 - `asteria-starter`: starter DSL helpers for local projects.
 
 ## Minimal Shape
