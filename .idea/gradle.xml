@@ -37,6 +37,13 @@
             <option value="$PROJECT_DIR$/foundation/asteria-actor" />
             <option value="$PROJECT_DIR$/foundation/asteria-core" />
             <option value="$PROJECT_DIR$/foundation/asteria-message" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-cluster" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-pekko" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-spring-boot-starter" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-core" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-script" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-script-spring-boot-starter" />
+            <option value="$PROJECT_DIR$/gm/asteria-gm-spring-boot-starter" />
             <option value="$PROJECT_DIR$/observability/asteria-observability-core" />
             <option value="$PROJECT_DIR$/observability/asteria-observability-opentelemetry" />
             <option value="$PROJECT_DIR$/rpc/asteria-rpc" />
