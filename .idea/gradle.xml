@@ -27,6 +27,9 @@
             <option value="$PROJECT_DIR$/asteria-persistence-mongodb" />
             <option value="$PROJECT_DIR$/asteria-protocol-protobuf" />
             <option value="$PROJECT_DIR$/asteria-starter" />
+            <option value="$PROJECT_DIR$/broadcast/asteria-broadcast" />
+            <option value="$PROJECT_DIR$/broadcast/asteria-broadcast-pekko" />
+            <option value="$PROJECT_DIR$/broadcast/asteria-broadcast-protobuf" />
             <option value="$PROJECT_DIR$/build-logic" />
             <option value="$PROJECT_DIR$/config/asteria-cluster-config" />
             <option value="$PROJECT_DIR$/config/asteria-config" />
@@ -38,6 +41,7 @@
             <option value="$PROJECT_DIR$/foundation/asteria-actor" />
             <option value="$PROJECT_DIR$/foundation/asteria-core" />
             <option value="$PROJECT_DIR$/foundation/asteria-message" />
+            <option value="$PROJECT_DIR$/foundation/asteria-protobuf" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-pekko" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-pekko-management" />

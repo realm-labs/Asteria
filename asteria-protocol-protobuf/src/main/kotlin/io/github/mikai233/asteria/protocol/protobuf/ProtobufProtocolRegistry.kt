@@ -2,46 +2,40 @@ package io.github.mikai233.asteria.protocol.protobuf
 
 import com.google.protobuf.GeneratedMessage
 import com.google.protobuf.Parser
+import io.github.mikai233.asteria.protobuf.ProtobufMessageRegistry
 import kotlin.reflect.KClass
 
 class ProtobufProtocolRegistry(
     mappings: Iterable<ProtoMapping<out GeneratedMessage>> = emptyList(),
 ) {
-    private val idByType: MutableMap<Class<out GeneratedMessage>, Int> = linkedMapOf()
-    private val parserById: MutableMap<Int, Parser<out GeneratedMessage>> = linkedMapOf()
+    private val messages = ProtobufMessageRegistry<Int>()
 
     init {
         mappings.forEach(::register)
     }
 
     fun register(mapping: ProtoMapping<out GeneratedMessage>) {
-        check(mapping.id !in parserById) { "duplicate protobuf id ${mapping.id}" }
-        check(mapping.messageClass.java !in idByType) {
-            "duplicate protobuf message ${mapping.messageClass.qualifiedName}"
-        }
-        idByType[mapping.messageClass.java] = mapping.id
-        parserById[mapping.id] = mapping.parser
+        messages.register(mapping.id, mapping.messageClass, mapping.parser)
     }
 
-    fun idFor(message: GeneratedMessage): Int = idFor(message.javaClass)
+    fun idFor(message: GeneratedMessage): Int = messages.keyFor(message)
 
     fun idFor(messageClass: Class<out GeneratedMessage>): Int {
-        return requireNotNull(idByType[messageClass]) {
-            "protobuf id for ${messageClass.name} not found"
-        }
+        return messages.keyFor(messageClass)
     }
 
     fun parserFor(id: Int): Parser<out GeneratedMessage> {
-        return requireNotNull(parserById[id]) { "protobuf parser for id $id not found" }
+        return messages.parserFor(id)
     }
 
     fun encode(message: GeneratedMessage): ProtoFrame {
-        return ProtoFrame(idFor(message), message.toByteArray())
+        val encoded = messages.encode(message)
+        return ProtoFrame(encoded.key, encoded.payload)
     }
 
     fun decode(frame: ProtoFrame): ClientProtoEnvelope {
-        val message = parserFor(frame.id).parseFrom(frame.payload) as GeneratedMessage
-        return ClientProtoEnvelope(frame.id, message)
+        val decoded = messages.decode(frame.id, frame.payload)
+        return ClientProtoEnvelope(decoded.key, decoded.message)
     }
 }
 

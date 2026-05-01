@@ -3,7 +3,6 @@ plugins {
 }
 
 dependencies {
-    api(project(":asteria-message"))
+    api(project(":asteria-broadcast"))
     api(project(":asteria-protobuf"))
-    api(libs.protobuf.kotlin)
 }

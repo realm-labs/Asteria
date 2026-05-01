@@ -7,7 +7,7 @@ plugins {
 
 dependencies {
     api(project(":asteria-rpc"))
-    api(libs.protobuf.kotlin)
+    api(project(":asteria-protobuf"))
 }
 
 protobuf {
