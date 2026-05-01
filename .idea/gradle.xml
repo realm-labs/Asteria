@@ -42,6 +42,7 @@
             <option value="$PROJECT_DIR$/foundation/asteria-core" />
             <option value="$PROJECT_DIR$/foundation/asteria-message" />
             <option value="$PROJECT_DIR$/foundation/asteria-protobuf" />
+            <option value="$PROJECT_DIR$/gateway/asteria-gateway-core" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-pekko" />
             <option value="$PROJECT_DIR$/gm/asteria-gm-cluster-pekko-management" />

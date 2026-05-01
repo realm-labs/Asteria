@@ -1,40 +1,33 @@
 package io.github.mikai233.asteria.gateway.netty
 
-import io.github.mikai233.asteria.protocol.protobuf.ProtoFrame
+import io.github.mikai233.asteria.gateway.BinaryGatewayPacket
+import io.github.mikai233.asteria.gateway.GatewayFrame
+import io.github.mikai233.asteria.gateway.IndexedBinaryGatewayPacketCodec
 import io.netty.buffer.ByteBuf
+import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.MessageToMessageCodec
 
-class PacketCodec : MessageToMessageCodec<ByteBuf, ProtoFrame>() {
-    private var sendPacketIndex = 0
-    private var receivePacketIndex = 0
+/**
+ * Stateful Netty packet codec for the default integer-message-id binary packet.
+ *
+ * TCP/WebSocket/KCP transports can still use different Netty handlers for their frame boundaries. This codec only owns
+ * the application packet header used by the default protobuf adapter: packet index, message id, payload length, payload.
+ */
+class PacketCodec : MessageToMessageCodec<ByteBuf, BinaryGatewayPacket>() {
+    private val packets = IndexedBinaryGatewayPacketCodec()
 
-    override fun encode(ctx: ChannelHandlerContext, msg: ProtoFrame, out: MutableList<Any>) {
-        val payload = msg.payload
-        val buffer = ctx.alloc().buffer(Int.SIZE_BYTES * 3 + payload.size)
-        buffer.writeInt(sendPacketIndex)
-        buffer.writeInt(msg.id)
-        buffer.writeInt(payload.size)
-        buffer.writeBytes(payload)
-        out.add(buffer)
-        sendPacketIndex = (sendPacketIndex + 1) % MAX_PACKET_INDEX
+    override fun encode(ctx: ChannelHandlerContext, msg: BinaryGatewayPacket, out: MutableList<Any>) {
+        out.add(Unpooled.wrappedBuffer(packets.encode(msg).bytes))
     }
 
     override fun decode(ctx: ChannelHandlerContext, msg: ByteBuf, out: MutableList<Any>) {
-        val packetIndex = msg.readInt()
-        if (packetIndex != receivePacketIndex) {
+        val bytes = ByteArray(msg.readableBytes())
+        msg.readBytes(bytes)
+        val packet = runCatching { packets.decode(GatewayFrame(bytes)) }.getOrElse {
             ctx.close()
             return
         }
-        val id = msg.readInt()
-        val length = msg.readInt()
-        val payload = ByteArray(length)
-        msg.readBytes(payload)
-        out.add(ProtoFrame(id, payload))
-        receivePacketIndex = (receivePacketIndex + 1) % MAX_PACKET_INDEX
-    }
-
-    private companion object {
-        const val MAX_PACKET_INDEX = 65_536
+        out.add(packet)
     }
 }
