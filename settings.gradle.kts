@@ -19,6 +19,8 @@ include(
     "asteria-script-engine-jar",
     "asteria-script-engine-groovy",
     "asteria-cluster-pekko",
+    "asteria-cluster-pekko-management",
+    "asteria-cluster-pekko-kubernetes",
     "asteria-protocol-protobuf",
     "asteria-gateway-netty",
     "asteria-persistence",

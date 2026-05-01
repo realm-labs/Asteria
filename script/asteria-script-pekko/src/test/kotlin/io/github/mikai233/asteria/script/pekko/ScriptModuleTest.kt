@@ -1,5 +1,6 @@
 package io.github.mikai233.asteria.script.pekko
 
+import io.github.mikai233.asteria.cluster.pekko.LocalPekkoClusterStartup
 import io.github.mikai233.asteria.cluster.pekko.PekkoRuntimeModule
 import io.github.mikai233.asteria.core.gameApplication
 import io.github.mikai233.asteria.script.CompiledScript
@@ -27,7 +28,7 @@ class ScriptModuleTest {
         val app = gameApplication {
             name = "asteria-script-test-${System.nanoTime()}"
             role("script-test")
-            install(PekkoRuntimeModule.local())
+            install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
             install(
                 ScriptModule {
                     allowNodeScripts = true
@@ -60,7 +61,7 @@ class ScriptModuleTest {
         val app = gameApplication {
             name = "asteria-script-batch-test-${System.nanoTime()}"
             role("script-test")
-            install(PekkoRuntimeModule.local())
+            install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
             install(
                 ScriptModule {
                     allowNodeScripts = true
@@ -95,7 +96,7 @@ class ScriptModuleTest {
         val app = gameApplication {
             name = "asteria-script-idempotent-test-${System.nanoTime()}"
             role("script-test")
-            install(PekkoRuntimeModule.local())
+            install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
             install(
                 ScriptModule {
                     allowNodeScripts = true
@@ -139,7 +140,7 @@ class ScriptModuleTest {
         val app = gameApplication {
             name = "asteria-script-denied-test-${System.nanoTime()}"
             role("script-test")
-            install(PekkoRuntimeModule.local())
+            install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
             install(
                 ScriptModule {
                     engine(EchoScriptEngine)

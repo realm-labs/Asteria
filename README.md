@@ -44,6 +44,8 @@ Observability modules:
 Standalone modules:
 
 - `asteria-cluster-pekko`: Pekko Cluster Sharding and Singleton adapters.
+- `asteria-cluster-pekko-management`: optional Pekko Management / Cluster Bootstrap startup strategy.
+- `asteria-cluster-pekko-kubernetes`: optional Kubernetes API discovery startup strategy.
 - `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
 - `asteria-persistence`: entity, mem data, data scope, data manager, persistence provider contracts.
@@ -196,8 +198,13 @@ depending on Zookeeper, Nacos, Etcd, or any other config center directly.
 Nacos does not expose a native tree API, so the Nacos adapter maintains child indexes by convention when configs are
 written through Asteria.
 
-Pekko cluster runtime can now be started from that topology. Each process selects its node config by `nodeId`; Asteria
-generates the Pekko host, port, roles, and seed node config from `RuntimeNodeConfig`.
+Pekko cluster runtime is driven by a startup strategy. `TopologyPekkoClusterStartup` selects the current node by
+`nodeId`; Asteria generates the Pekko host, port, roles, and seed node config from `RuntimeNodeConfig`.
+`LocalPekkoClusterStartup` self-joins a single local node. The core `asteria-cluster-pekko` module does not depend on
+Pekko Management or Kubernetes Discovery. For dynamic environments, add `asteria-cluster-pekko-management` to use
+`BootstrapPekkoClusterStartup`, or add `asteria-cluster-pekko-kubernetes` to use `KubernetesApiPekkoClusterStartup`.
+Applications still provide deployment-specific network values such as canonical host and port through config or
+`application.conf`.
 
 ```kotlin
 val app = clusterGameApplication(nodeId = System.getenv("ASTERIA_NODE_ID")) {
@@ -233,8 +240,22 @@ val app = gameApplication {
     install(ClusterConfigModule {
         provider(TypesafeClusterTopologyProvider(ConfigFactory.load()))
     })
-    install(PekkoRuntimeModule.cluster(System.getenv("ASTERIA_NODE_ID")))
+    install(PekkoRuntimeModule(TopologyPekkoClusterStartup(System.getenv("ASTERIA_NODE_ID"))))
 }
+```
+
+```kotlin
+install(
+    PekkoRuntimeModule(
+        KubernetesApiPekkoClusterStartup(
+            roles = setOf(RoleKey("player")),
+            serviceName = "asteria-player",
+            namespace = "games",
+            podLabelSelector = "app=asteria-player",
+            requiredContactPointNr = 3,
+        ),
+    ),
+)
 ```
 
 Script execution is an opt-in extension:

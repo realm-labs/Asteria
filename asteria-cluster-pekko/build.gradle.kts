@@ -7,4 +7,5 @@ dependencies {
     api(libs.pekko.cluster.sharding)
     api(libs.pekko.cluster.tools)
     api(libs.typesafe.config)
+    implementation(libs.kotlinx.coroutines.jdk8)
 }

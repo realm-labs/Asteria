@@ -6,7 +6,9 @@ import io.github.mikai233.asteria.cluster.config.ClusterConfigLayout
 import io.github.mikai233.asteria.cluster.config.ClusterConfigModule
 import io.github.mikai233.asteria.cluster.config.ClusterTopology
 import io.github.mikai233.asteria.cluster.config.StaticClusterTopologyProvider
+import io.github.mikai233.asteria.cluster.pekko.LocalPekkoClusterStartup
 import io.github.mikai233.asteria.cluster.pekko.PekkoRuntimeModule
+import io.github.mikai233.asteria.cluster.pekko.TopologyPekkoClusterStartup
 import io.github.mikai233.asteria.core.AsteriaApplication
 import io.github.mikai233.asteria.core.AsteriaApplicationBuilder
 import io.github.mikai233.asteria.core.AsteriaModule
@@ -32,7 +34,7 @@ fun AsteriaApplicationBuilder.routes(configure: RouteRegistryBuilder.() -> Unit)
 
 fun localGameApplication(configure: AsteriaApplicationBuilder.() -> Unit): AsteriaApplication {
     return gameApplication {
-        install(PekkoRuntimeModule.local())
+        install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
         install(RpcModule.autoDiscover())
         configure()
     }
@@ -53,7 +55,7 @@ fun clusterGameApplication(
                 this.layout = layout ?: ClusterConfigLayout.default(applicationName)
             },
         )
-        install(PekkoRuntimeModule.cluster(nodeId, pekkoConfig))
+        install(PekkoRuntimeModule(TopologyPekkoClusterStartup(nodeId, config = pekkoConfig)))
     }
 }
 
@@ -71,6 +73,14 @@ fun clusterGameApplication(
                 provider(StaticClusterTopologyProvider(topology))
             },
         )
-        install(PekkoRuntimeModule.cluster(nodeId, pekkoConfig))
+        install(
+            PekkoRuntimeModule(
+                TopologyPekkoClusterStartup(
+                    nodeId = nodeId,
+                    topologyProvider = StaticClusterTopologyProvider(topology),
+                    config = pekkoConfig,
+                ),
+            ),
+        )
     }
 }

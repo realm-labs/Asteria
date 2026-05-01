@@ -1,47 +1,63 @@
 package io.github.mikai233.asteria.cluster.pekko
 
-import com.typesafe.config.Config
-import com.typesafe.config.ConfigFactory
 import io.github.mikai233.asteria.cluster.config.ClusterTopology
-import io.github.mikai233.asteria.cluster.config.ClusterTopologyProvider
 import io.github.mikai233.asteria.cluster.config.RuntimeNodeConfig
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.EntitySpec
 import io.github.mikai233.asteria.core.ModuleContext
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.SingletonSpec
-import org.apache.pekko.actor.ActorRef
 import kotlinx.coroutines.future.await
+import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.cluster.Cluster
 import org.apache.pekko.cluster.sharding.ShardCoordinator
 import org.apache.pekko.cluster.sharding.ShardRegion
 import scala.jdk.javaapi.FutureConverters
 
-class PekkoRuntimeModule private constructor(
-    private val startupFactory: suspend (ModuleContext) -> PekkoRuntimeStartup,
+class PekkoRuntimeModule(
+    private val startup: PekkoClusterStartup,
 ) : AsteriaModule {
     override val name: String = "pekko-runtime"
 
     private var runtime: PekkoRuntime? = null
 
     override suspend fun install(context: ModuleContext) {
-        val startup = startupFactory(context)
-        val system = ActorSystem.create(context.name, startup.config)
-        val nodeRoles = startup.node?.roleKeys ?: system.configuredRoleKeys()
-        context.application.setNodeRoles(nodeRoles)
-        if (startup.selfJoin) {
-            val cluster = Cluster.get(system)
-            cluster.join(cluster.selfAddress())
+        val plan = startup.resolve(context)
+        val system = ActorSystem.create(context.name, plan.config)
+        try {
+            context.application.setNodeRoles(plan.roles)
+            startup.afterActorSystemCreated(context, system, plan)
+            applyJoin(plan.join, system)
+            val pekkoRuntime = PekkoRuntime(system, plan.node, plan.topology)
+            runtime = pekkoRuntime
+            context.services.register(PekkoRuntime::class, pekkoRuntime)
+            context.services.register(ActorSystem::class, system)
+            plan.node?.let { context.services.register(RuntimeNodeConfig::class, it) }
+            plan.topology?.let { context.services.register(ClusterTopology::class, it) }
+            context.services.register(EntityShardRegistry::class, EntityShardRegistry())
+            context.services.register(SingletonActorRegistry::class, SingletonActorRegistry())
+        } catch (failure: Throwable) {
+            FutureConverters.asJava(system.terminate()).await()
+            throw failure
         }
-        val pekkoRuntime = PekkoRuntime(system, startup.node, startup.topology)
-        runtime = pekkoRuntime
-        context.services.register(PekkoRuntime::class, pekkoRuntime)
-        context.services.register(ActorSystem::class, system)
-        startup.node?.let { context.services.register(RuntimeNodeConfig::class, it) }
-        startup.topology?.let { context.services.register(ClusterTopology::class, it) }
-        context.services.register(EntityShardRegistry::class, EntityShardRegistry())
-        context.services.register(SingletonActorRegistry::class, SingletonActorRegistry())
+    }
+
+    private fun applyJoin(
+        join: PekkoClusterJoin,
+        system: ActorSystem,
+    ) {
+        when (join) {
+            PekkoClusterJoin.Self -> {
+                val cluster = Cluster.get(system)
+                cluster.join(cluster.selfAddress())
+            }
+
+            PekkoClusterJoin.SeedNodes,
+            PekkoClusterJoin.Bootstrap,
+            PekkoClusterJoin.External,
+            -> Unit
+        }
     }
 
     override suspend fun start(context: ModuleContext) {
@@ -156,136 +172,5 @@ class PekkoRuntimeModule private constructor(
         spec: SingletonSpec,
     ): ActorRef {
         return system.startAsteriaSingletonProxy(spec.name.value, spec.role)
-    }
-
-    companion object {
-        fun local(config: Config = ConfigFactory.empty()): PekkoRuntimeModule {
-            return PekkoRuntimeModule(
-                startupFactory = { context ->
-                    val runtimeConfig = mapOf(
-                        "pekko.actor.provider" to "cluster",
-                        "pekko.remote.artery.canonical.hostname" to "127.0.0.1",
-                        "pekko.remote.artery.canonical.port" to 0,
-                        "pekko.cluster.roles" to context.declaredRoles.map { it.value },
-                        "pekko.cluster.jmx.multi-mbeans-in-same-jvm" to "on",
-                    )
-                    PekkoRuntimeStartup(
-                        config = ConfigFactory.parseMap(runtimeConfig)
-                        .withFallback(config)
-                            .withFallback(ConfigFactory.load()),
-                        selfJoin = true,
-                    )
-                },
-            )
-        }
-
-        fun fromConfig(configFactory: (ModuleContext) -> Config): PekkoRuntimeModule {
-            return PekkoRuntimeModule { context ->
-                PekkoRuntimeStartup(configFactory(context), selfJoin = false)
-            }
-        }
-
-        fun cluster(
-            nodeId: String,
-            config: Config = ConfigFactory.empty(),
-        ): PekkoRuntimeModule {
-            return clusterFromProvider(
-                nodeId = nodeId,
-                topologyProvider = null,
-                config = config,
-            )
-        }
-
-        fun cluster(
-            nodeId: String,
-            topologyProvider: ClusterTopologyProvider,
-            config: Config = ConfigFactory.empty(),
-        ): PekkoRuntimeModule {
-            return clusterFromProvider(
-                nodeId = nodeId,
-                topologyProvider = topologyProvider,
-                config = config,
-            )
-        }
-
-        private fun clusterFromProvider(
-            nodeId: String,
-            topologyProvider: ClusterTopologyProvider?,
-            config: Config,
-        ): PekkoRuntimeModule {
-            require(nodeId.isNotBlank()) { "nodeId must not be blank" }
-            return PekkoRuntimeModule { context ->
-                val provider = topologyProvider ?: context.services.get(ClusterTopologyProvider::class)
-                val topology = provider.current()
-                validateDeclaredRoles(context.declaredRoles, topology)
-                val node = topology.requireNode(nodeId)
-                PekkoRuntimeStartup(
-                    config = PekkoClusterConfig.build(context.name, node, topology, config),
-                    selfJoin = false,
-                    node = node,
-                    topology = topology,
-                )
-            }
-        }
-    }
-}
-
-private data class PekkoRuntimeStartup(
-    val config: Config,
-    val selfJoin: Boolean,
-    val node: RuntimeNodeConfig? = null,
-    val topology: ClusterTopology? = null,
-)
-
-private fun validateDeclaredRoles(
-    declaredRoles: Set<RoleKey>,
-    topology: ClusterTopology,
-) {
-    val topologyRoles = topology.nodes.flatMapTo(linkedSetOf()) { node -> node.roles.map(::RoleKey) }
-    val missingRoles = declaredRoles - topologyRoles
-    require(missingRoles.isEmpty()) {
-        "cluster topology does not cover declared roles: ${missingRoles.joinToString()}"
-    }
-}
-
-internal object PekkoClusterConfig {
-    fun build(
-        systemName: String,
-        node: RuntimeNodeConfig,
-        topology: ClusterTopology,
-        fallback: Config = ConfigFactory.empty(),
-    ): Config {
-        require(topology.nodes.any { it.nodeId == node.nodeId }) {
-            "cluster topology does not contain node ${node.nodeId}"
-        }
-        val seedNodes = topology.seedNodes
-        require(seedNodes.isNotEmpty()) { "cluster topology must contain at least one seed node" }
-        val runtimeConfig = mapOf(
-            "pekko.actor.provider" to "cluster",
-            "pekko.remote.artery.canonical.hostname" to node.host,
-            "pekko.remote.artery.canonical.port" to node.port,
-            "pekko.cluster.roles" to node.roles.sorted(),
-            "pekko.cluster.seed-nodes" to seedNodes.map { it.toPekkoAddress(systemName) },
-            "pekko.cluster.jmx.multi-mbeans-in-same-jvm" to "on",
-        )
-        return ConfigFactory.parseMap(runtimeConfig)
-            .withFallback(fallback)
-            .withFallback(ConfigFactory.load())
-    }
-}
-
-private val RuntimeNodeConfig.roleKeys: Set<RoleKey>
-    get() = roles.map(::RoleKey).toSet()
-
-private fun RuntimeNodeConfig.toPekkoAddress(systemName: String): String {
-    return "pekko://$systemName@$host:$port"
-}
-
-private fun ActorSystem.configuredRoleKeys(): Set<RoleKey> {
-    val config = settings().config()
-    return if (config.hasPath("pekko.cluster.roles")) {
-        config.getStringList("pekko.cluster.roles").map(::RoleKey).toSet()
-    } else {
-        emptySet()
     }
 }

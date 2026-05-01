@@ -49,7 +49,11 @@ class PekkoRuntimeModuleClusterTest {
         val app = gameApplication {
             name = "asteria-cluster-test-${System.nanoTime()}"
             role("player")
-            install(PekkoRuntimeModule.cluster("seed-1", StaticClusterTopologyProvider(topology)))
+            install(
+                PekkoRuntimeModule(
+                    TopologyPekkoClusterStartup("seed-1", StaticClusterTopologyProvider(topology)),
+                ),
+            )
         }
 
         app.launch()
@@ -77,7 +81,11 @@ class PekkoRuntimeModuleClusterTest {
                 role("player")
                 shardStartup(PekkoShardStartup.Proxy)
             }
-            install(PekkoRuntimeModule.cluster("player-1", StaticClusterTopologyProvider(topology)))
+            install(
+                PekkoRuntimeModule(
+                    TopologyPekkoClusterStartup("player-1", StaticClusterTopologyProvider(topology)),
+                ),
+            )
         }
 
         app.launch()
@@ -101,7 +109,11 @@ class PekkoRuntimeModuleClusterTest {
                 role("world")
                 singletonStartup(PekkoSingletonStartup.Proxy)
             }
-            install(PekkoRuntimeModule.cluster("world-1", StaticClusterTopologyProvider(topology)))
+            install(
+                PekkoRuntimeModule(
+                    TopologyPekkoClusterStartup("world-1", StaticClusterTopologyProvider(topology)),
+                ),
+            )
         }
 
         app.launch()
@@ -122,7 +134,11 @@ class PekkoRuntimeModuleClusterTest {
         val app = gameApplication {
             name = "asteria-cluster-missing-role-test-${System.nanoTime()}"
             role("player")
-            install(PekkoRuntimeModule.cluster("seed-1", StaticClusterTopologyProvider(topology)))
+            install(
+                PekkoRuntimeModule(
+                    TopologyPekkoClusterStartup("seed-1", StaticClusterTopologyProvider(topology)),
+                ),
+            )
         }
 
         val failure = assertFailsWith<IllegalArgumentException> {
