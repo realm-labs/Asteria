@@ -55,6 +55,7 @@
             <option value="$PROJECT_DIR$/script/asteria-script-job" />
             <option value="$PROJECT_DIR$/script/asteria-script-job-mongodb" />
             <option value="$PROJECT_DIR$/script/asteria-script-job-mongodb-spring-boot-starter" />
+            <option value="$PROJECT_DIR$/script/asteria-script-job-spring-boot-starter" />
             <option value="$PROJECT_DIR$/script/asteria-script-pekko" />
             <option value="$PROJECT_DIR$/script/asteria-script-protobuf" />
           </set>

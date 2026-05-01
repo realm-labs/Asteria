@@ -11,6 +11,7 @@ import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import io.github.mikai233.asteria.gm.spring.GmSpringAutoConfiguration
 import io.github.mikai233.asteria.script.ScriptEngineRegistry
 import io.github.mikai233.asteria.script.job.ScriptJobService
+import io.github.mikai233.asteria.script.job.spring.ScriptJobSpringAutoConfiguration
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -21,7 +22,7 @@ import org.springframework.context.annotation.Bean
 /**
  * Auto-configuration for script GM HTTP APIs.
  */
-@AutoConfiguration(after = [GmSpringAutoConfiguration::class])
+@AutoConfiguration(after = [GmSpringAutoConfiguration::class, ScriptJobSpringAutoConfiguration::class])
 @ConditionalOnProperty(
     prefix = "asteria.gm.script.web",
     name = ["enabled"],
