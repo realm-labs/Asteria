@@ -95,7 +95,7 @@ class AsteriaApplicationBuilder {
         configure: EntitySpecBuilder<ID>.() -> Unit = {},
     ) {
         val builder = EntitySpecBuilder(EntityKind(kind), idType).apply(configure)
-        roles.add(builder.role)
+        builder.role?.let(roles::add)
         entities.add(builder.build())
     }
 
@@ -124,7 +124,7 @@ class EntitySpecBuilder<ID : Any> internal constructor(
     private val kind: EntityKind,
     private val idType: KClass<ID>,
 ) {
-    var role: RoleKey = RoleKey(kind.value)
+    var role: RoleKey? = null
     var shardCount: Int = 100
     var handoffMessage: Any? = null
     private val attributes: MutableMap<String, Any> = linkedMapOf()

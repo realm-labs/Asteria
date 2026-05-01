@@ -5,7 +5,7 @@ import kotlin.reflect.KClass
 data class EntitySpec<ID : Any>(
     val kind: EntityKind,
     val idType: KClass<ID>,
-    val role: RoleKey,
+    val role: RoleKey? = null,
     val shardCount: Int = 100,
     val handoffMessage: Any? = null,
     val attributes: Map<String, Any> = emptyMap(),

@@ -26,7 +26,7 @@ fun ActorSystem.startAsteriaSharding(
     strategy: ShardCoordinator.ShardAllocationStrategy =
         ShardCoordinator.LeastShardAllocationStrategy(1, 10),
 ): ActorRef {
-    val settings = ClusterShardingSettings.create(this).withRole(spec.role.value)
+    val settings = ClusterShardingSettings.create(this).withOptionalRole(spec.role)
     return ClusterSharding.get(this).start(
         spec.kind.value,
         props,
@@ -39,10 +39,10 @@ fun ActorSystem.startAsteriaSharding(
 
 fun ActorSystem.startAsteriaShardingProxy(
     kind: String,
-    role: RoleKey,
+    role: RoleKey?,
     extractor: ShardRegion.MessageExtractor,
 ): ActorRef {
-    return ClusterSharding.get(this).startProxy(kind, Optional.of(role.value), extractor)
+    return ClusterSharding.get(this).startProxy(kind, role.toOptionalRole(), extractor)
 }
 
 fun ActorSystem.startAsteriaSingleton(
@@ -62,4 +62,12 @@ fun ActorSystem.startAsteriaSingletonProxy(
 ): ActorRef {
     val settings = ClusterSingletonProxySettings.create(this).withRole(role.value)
     return actorOf(ClusterSingletonProxy.props("/user/$name", settings), "${name}Proxy")
+}
+
+private fun ClusterShardingSettings.withOptionalRole(role: RoleKey?): ClusterShardingSettings {
+    return role?.let { withRole(it.value) } ?: this
+}
+
+private fun RoleKey?.toOptionalRole(): Optional<String> {
+    return this?.let { Optional.of(it.value) } ?: Optional.empty()
 }
