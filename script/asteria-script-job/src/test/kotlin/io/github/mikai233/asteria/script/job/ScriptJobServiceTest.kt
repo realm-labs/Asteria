@@ -132,6 +132,70 @@ class ScriptJobServiceTest {
         }
     }
 
+    @Test
+    fun resumeIncompleteJobsRunsPendingItems() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val repository = InMemoryScriptJobRepository()
+        val runtime = FakeScriptRuntime(
+            ScriptExecutionBatchResult(
+                executionId = "job-1.1.1",
+                results = listOf(ScriptExecutionResult("job-1.1.1", success = true, nodeAddress = "node-1")),
+            ),
+        )
+        val service = ScriptJobService(runtime, repository, scope)
+        val jobId = ScriptJobId("job-1")
+        repository.create(
+            ScriptJob(jobId, command("job-1", listOf("node-1"))),
+            listOf(ScriptJobItem(ScriptJobItemId("1"), jobId, ScriptTarget.Node(listOf("node-1")))),
+        )
+
+        try {
+            val resumed = service.resumeIncompleteJobs()
+            val item = awaitItem(repository, jobId, ScriptJobItemId("1"), ScriptJobItemStatus.Completed)
+
+            assertEquals(listOf(jobId), resumed.map { it.id })
+            assertEquals(ScriptJobItemStatus.Completed, item.status)
+            assertEquals(1, item.attempts.size)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun repositoryExpiresLeasedRunningItems() = runBlocking {
+        val repository = InMemoryScriptJobRepository()
+        val jobId = ScriptJobId("job-1")
+        val itemId = ScriptJobItemId("1")
+        repository.create(
+            ScriptJob(jobId, command("job-1", listOf("node-1"))),
+            listOf(ScriptJobItem(itemId, jobId, ScriptTarget.Node(listOf("node-1")))),
+        )
+        val now = System.currentTimeMillis()
+        val claimed = repository.claimPendingItems(
+            jobId,
+            "worker-1",
+            limit = 1,
+            leaseUntilMillis = now + 1_000,
+            nowMillis = now,
+        )
+        repository.markItemRunning(
+            jobId = jobId,
+            itemId = claimed.single().id,
+            attempt = 1,
+            command = command("job-1.1.1", listOf("node-1")),
+            leaseOwner = "worker-1",
+            leaseUntilMillis = now + 1_000,
+        )
+
+        val expired = repository.expireLeasedRunningItems(jobId, nowMillis = now + 1_001)
+        val job = assertNotNull(repository.find(jobId))
+
+        assertEquals(listOf(itemId), expired.map { it.id })
+        assertEquals(ScriptJobItemStatus.Failed, expired.single().status)
+        assertEquals("script job item lease expired", expired.single().attempts.single().error)
+        assertEquals(ScriptJobStatus.Failed, job.status)
+    }
+
     private suspend fun awaitJob(
         repository: ScriptJobRepository,
         id: ScriptJobId,

@@ -7,6 +7,7 @@ import com.mongodb.client.model.Filters.or
 import com.mongodb.client.model.IndexOptions
 import com.mongodb.client.model.Indexes
 import com.mongodb.client.model.Sorts
+import com.mongodb.client.model.Filters.`in` as inFilter
 import com.mongodb.client.model.Updates.combine
 import com.mongodb.client.model.Updates.set
 import com.mongodb.kotlin.client.coroutine.MongoCollection
@@ -126,8 +127,11 @@ class MongoScriptJobRepository(
         itemId: ScriptJobItemId,
         attempt: Int,
         command: ScriptExecutionCommand,
+        leaseOwner: String,
+        leaseUntilMillis: Long,
     ) {
         require(attempt > 0) { "script job item attempt must be greater than 0" }
+        require(leaseOwner.isNotBlank()) { "script job item lease owner must not be blank" }
         val item = requireNotNull(findItem(jobId, itemId)) { "script job item $itemId not found" }
         require(attempt == item.attempts.size + 1) {
             "script job item $itemId expected attempt ${item.attempts.size + 1}, got $attempt"
@@ -136,6 +140,7 @@ class MongoScriptJobRepository(
             "script job item $itemId cannot start from status ${item.status}"
         }
         val now = System.currentTimeMillis()
+        require(leaseUntilMillis > now) { "script job item lease must be in the future" }
         val updated = item.copy(
             status = ScriptJobItemStatus.Running,
             attempts = item.attempts + ScriptJobItemAttempt(
@@ -144,6 +149,8 @@ class MongoScriptJobRepository(
                 status = ScriptJobItemStatus.Running,
                 startedAtMillis = now,
             ),
+            leaseOwner = leaseOwner,
+            leaseUntilMillis = leaseUntilMillis,
             updatedAtMillis = now,
         )
         replaceItem(updated)
@@ -185,8 +192,68 @@ class MongoScriptJobRepository(
         refreshJob(jobId, now)
     }
 
+    override suspend fun expireLeasedRunningItems(
+        id: ScriptJobId,
+        nowMillis: Long,
+        error: String,
+    ): List<ScriptJobItem> {
+        require(error.isNotBlank()) { "script job item expiration error must not be blank" }
+        val candidates = items.find(
+            and(
+                eq("jobId", id.value),
+                eq("status", ScriptJobItemStatus.Running.name),
+                lte("leaseUntilMillis", nowMillis),
+            ),
+        ).toList().map { it.toScriptJobItem() }
+        val expired = mutableListOf<ScriptJobItem>()
+        candidates.forEach { item ->
+            val attempt = item.attempts.lastOrNull()
+            val attempts = if (attempt == null) {
+                item.attempts
+            } else {
+                item.attempts.dropLast(1) + attempt.copy(
+                    status = ScriptJobItemStatus.Failed,
+                    error = error,
+                    finishedAtMillis = nowMillis,
+                )
+            }
+            val updated = item.copy(
+                status = ScriptJobItemStatus.Failed,
+                attempts = attempts,
+                leaseOwner = null,
+                leaseUntilMillis = null,
+                updatedAtMillis = nowMillis,
+            )
+            val result = items.replaceOne(
+                and(
+                    eq("jobId", id.value),
+                    eq("itemId", item.id.value),
+                    eq("status", ScriptJobItemStatus.Running.name),
+                    lte("leaseUntilMillis", nowMillis),
+                ),
+                updated.toDocument(),
+            )
+            if (result.modifiedCount == 1L) {
+                expired += updated
+            }
+        }
+        if (expired.isNotEmpty()) {
+            refreshJob(id, nowMillis)
+        }
+        return expired
+    }
+
     override suspend fun find(id: ScriptJobId): ScriptJob? {
         return jobs.find(eq("_id", id.value)).firstOrNull()?.toScriptJob()
+    }
+
+    override suspend fun listRecoverableJobs(limit: Int): List<ScriptJob> {
+        require(limit > 0) { "script job recoverable job limit must be positive" }
+        return jobs.find(inFilter("status", listOf(ScriptJobStatus.Pending.name, ScriptJobStatus.Running.name)))
+            .sort(Sorts.ascending("createdAtMillis"))
+            .limit(limit)
+            .toList()
+            .map { it.toScriptJob() }
     }
 
     override suspend fun listItems(id: ScriptJobId, query: ScriptJobItemQuery): ScriptJobItemPage {

@@ -11,6 +11,9 @@ import io.github.mikai233.asteria.script.ScriptRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 class ScriptJobModule private constructor(
     private val options: ScriptJobModuleOptions,
@@ -36,6 +39,14 @@ class ScriptJobModule private constructor(
         )
         scope = jobScope
         context.services.register(ScriptJobService::class, service)
+        if (options.recoverOnStart) {
+            jobScope.launch {
+                service.resumeIncompleteJobs(
+                    timeout = options.recoveryTimeout,
+                    limit = options.recoveryLimit,
+                )
+            }
+        }
     }
 
     override suspend fun stop(context: ModuleContext) {
@@ -52,17 +63,42 @@ class ScriptJobModule private constructor(
 
 data class ScriptJobModuleOptions(
     val repository: ScriptJobRepository?,
+    val recoverOnStart: Boolean,
+    val recoveryLimit: Int,
+    val recoveryTimeout: Duration,
 )
 
 @AsteriaDsl
 class ScriptJobModuleBuilder {
     private var repository: ScriptJobRepository? = null
+    private var recoverOnStart: Boolean = true
+    private var recoveryLimit: Int = 100
+    private var recoveryTimeout: Duration = 3.seconds
 
     fun repository(repository: ScriptJobRepository) {
         this.repository = repository
     }
 
+    fun recoverOnStart(enabled: Boolean) {
+        this.recoverOnStart = enabled
+    }
+
+    fun recoveryLimit(limit: Int) {
+        this.recoveryLimit = limit
+    }
+
+    fun recoveryTimeout(timeout: Duration) {
+        this.recoveryTimeout = timeout
+    }
+
     internal fun build(): ScriptJobModuleOptions {
-        return ScriptJobModuleOptions(repository)
+        require(recoveryLimit > 0) { "script job recovery limit must be positive" }
+        require(recoveryTimeout > Duration.ZERO) { "script job recovery timeout must be positive" }
+        return ScriptJobModuleOptions(
+            repository = repository,
+            recoverOnStart = recoverOnStart,
+            recoveryLimit = recoveryLimit,
+            recoveryTimeout = recoveryTimeout,
+        )
     }
 }

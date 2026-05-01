@@ -63,7 +63,14 @@ class ScriptJobService(
         val command = item.command(job, attempt)
         return tracer.span("script.job.item.retry", jobTraceAttributes(job.id, command)) {
             metrics.counter("asteria.script.job.item.retry.total", command.metricTags()).increment()
-            repository.markItemRunning(job.id, item.id, attempt, command)
+            repository.markItemRunning(
+                jobId = job.id,
+                itemId = item.id,
+                attempt = attempt,
+                command = command,
+                leaseOwner = workerId,
+                leaseUntilMillis = leaseUntilMillis(timeout),
+            )
             scope.launch {
                 runItem(job.id, item.id, attempt, command, timeout)
             }
@@ -83,6 +90,25 @@ class ScriptJobService(
         return repository.findItem(id, itemId)
     }
 
+    suspend fun resumeIncompleteJobs(
+        timeout: Duration = 3.seconds,
+        limit: Int = 100,
+    ): List<ScriptJob> {
+        require(limit > 0) { "script job resume limit must be positive" }
+        val jobs = repository.listRecoverableJobs(limit)
+        jobs.forEach { job ->
+            scope.launch {
+                resumeJob(job.id, timeout)
+            }
+        }
+        return jobs
+    }
+
+    private suspend fun resumeJob(jobId: ScriptJobId, timeout: Duration) {
+        repository.expireLeasedRunningItems(jobId)
+        runClaimedItems(jobId, timeout)
+    }
+
     private suspend fun runClaimedItems(jobId: ScriptJobId, timeout: Duration) {
         while (true) {
             val job = repository.find(jobId) ?: return
@@ -90,7 +116,7 @@ class ScriptJobService(
                 id = jobId,
                 workerId = workerId,
                 limit = claimBatchSize,
-                leaseUntilMillis = leaseUntilMillis(),
+                leaseUntilMillis = leaseUntilMillis(timeout),
             )
             if (claimed.isEmpty()) {
                 return
@@ -99,14 +125,21 @@ class ScriptJobService(
                 val current = repository.findItem(jobId, item.id) ?: item
                 val attempt = current.attempts.size + 1
                 val command = current.command(job, attempt)
-                repository.markItemRunning(job.id, current.id, attempt, command)
+                repository.markItemRunning(
+                    jobId = job.id,
+                    itemId = current.id,
+                    attempt = attempt,
+                    command = command,
+                    leaseOwner = workerId,
+                    leaseUntilMillis = current.leaseUntilMillis ?: leaseUntilMillis(timeout),
+                )
                 runItem(job.id, current.id, attempt, command, timeout)
             }
         }
     }
 
-    private fun leaseUntilMillis(): Long {
-        return System.currentTimeMillis() + leaseDuration.inWholeMilliseconds
+    private fun leaseUntilMillis(timeout: Duration): Long {
+        return System.currentTimeMillis() + maxOf(leaseDuration, timeout + 5.seconds).inWholeMilliseconds
     }
 
     private suspend fun runItem(

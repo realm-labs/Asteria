@@ -34,6 +34,8 @@ interface ScriptJobRepository {
         itemId: ScriptJobItemId,
         attempt: Int,
         command: ScriptExecutionCommand,
+        leaseOwner: String,
+        leaseUntilMillis: Long,
     )
 
     suspend fun markItemFinished(
@@ -45,7 +47,15 @@ interface ScriptJobRepository {
         error: String? = null,
     )
 
+    suspend fun expireLeasedRunningItems(
+        id: ScriptJobId,
+        nowMillis: Long = System.currentTimeMillis(),
+        error: String = "script job item lease expired",
+    ): List<ScriptJobItem>
+
     suspend fun find(id: ScriptJobId): ScriptJob?
+
+    suspend fun listRecoverableJobs(limit: Int = 100): List<ScriptJob>
 
     suspend fun listItems(id: ScriptJobId, query: ScriptJobItemQuery = ScriptJobItemQuery()): ScriptJobItemPage
 
@@ -114,8 +124,11 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
         itemId: ScriptJobItemId,
         attempt: Int,
         command: ScriptExecutionCommand,
+        leaseOwner: String,
+        leaseUntilMillis: Long,
     ) {
         require(attempt > 0) { "script job item attempt must be greater than 0" }
+        require(leaseOwner.isNotBlank()) { "script job item lease owner must not be blank" }
         update(jobId) { stored, now ->
             val item = stored.item(itemId)
             require(attempt == item.attempts.size + 1) {
@@ -124,6 +137,7 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
             require(item.status == ScriptJobItemStatus.Pending || item.status == ScriptJobItemStatus.Failed) {
                 "script job item $itemId cannot start from status ${item.status}"
             }
+            require(leaseUntilMillis > now) { "script job item lease must be in the future" }
             stored.items[itemId] = item.copy(
                 status = ScriptJobItemStatus.Running,
                 attempts = item.attempts + ScriptJobItemAttempt(
@@ -132,6 +146,8 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
                     status = ScriptJobItemStatus.Running,
                     startedAtMillis = now,
                 ),
+                leaseOwner = leaseOwner,
+                leaseUntilMillis = leaseUntilMillis,
                 updatedAtMillis = now,
             )
             stored.refresh(now)
@@ -173,8 +189,59 @@ class InMemoryScriptJobRepository : ScriptJobRepository {
         }
     }
 
+    override suspend fun expireLeasedRunningItems(
+        id: ScriptJobId,
+        nowMillis: Long,
+        error: String,
+    ): List<ScriptJobItem> {
+        require(error.isNotBlank()) { "script job item expiration error must not be blank" }
+        return mutex.withLock {
+            val stored = jobs[id] ?: return@withLock emptyList()
+            val expired = stored.items.values
+                .filter { it.status == ScriptJobItemStatus.Running }
+                .filter { it.leaseUntilMillis != null && it.leaseUntilMillis <= nowMillis }
+                .map { item ->
+                    val attempt = item.attempts.lastOrNull()
+                    val attempts = if (attempt == null) {
+                        item.attempts
+                    } else {
+                        item.attempts.dropLast(1) + attempt.copy(
+                            status = ScriptJobItemStatus.Failed,
+                            error = error,
+                            finishedAtMillis = nowMillis,
+                        )
+                    }
+                    val updated = item.copy(
+                        status = ScriptJobItemStatus.Failed,
+                        attempts = attempts,
+                        leaseOwner = null,
+                        leaseUntilMillis = null,
+                        updatedAtMillis = nowMillis,
+                    )
+                    stored.items[item.id] = updated
+                    updated
+                }
+            if (expired.isNotEmpty()) {
+                stored.refresh(nowMillis)
+            }
+            expired
+        }
+    }
+
     override suspend fun find(id: ScriptJobId): ScriptJob? {
         return mutex.withLock { jobs[id]?.job }
+    }
+
+    override suspend fun listRecoverableJobs(limit: Int): List<ScriptJob> {
+        require(limit > 0) { "script job recoverable job limit must be positive" }
+        return mutex.withLock {
+            jobs.values
+                .asSequence()
+                .map { it.job }
+                .filter { it.status == ScriptJobStatus.Pending || it.status == ScriptJobStatus.Running }
+                .take(limit)
+                .toList()
+        }
     }
 
     override suspend fun listItems(id: ScriptJobId, query: ScriptJobItemQuery): ScriptJobItemPage {
