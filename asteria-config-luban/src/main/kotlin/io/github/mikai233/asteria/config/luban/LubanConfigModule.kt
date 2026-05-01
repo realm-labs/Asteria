@@ -30,6 +30,7 @@ class LubanConfigModule private constructor(
                 objectMapper = options.objectMapper,
                 charset = options.charset,
                 fileResolver = options.fileResolver,
+                preloadOptions = options.preloadOptions,
                 includeTableComponents = options.includeTableComponents,
                 revisionFactory = { report -> options.revisionFactory(report) },
             )
@@ -37,6 +38,7 @@ class LubanConfigModule private constructor(
                 tablesType = tablesType,
                 dataDir = dataDir,
                 fileResolver = options.fileResolver,
+                preloadOptions = options.preloadOptions,
                 includeTableComponents = options.includeTableComponents,
                 revisionFactory = { report -> options.revisionFactory(report) },
             )
@@ -67,6 +69,7 @@ data class LubanConfigModuleOptions(
     val objectMapper: ObjectMapper,
     val charset: Charset,
     val fileResolver: (String) -> Path,
+    val preloadOptions: LubanPreloadOptions,
     val includeTableComponents: Boolean,
     val revisionFactory: (LubanLoadReport) -> ConfigRevision,
     val validators: List<ConfigValidator>,
@@ -83,6 +86,8 @@ class LubanConfigModuleBuilder {
     var format: LubanConfigFormat = LubanConfigFormat.Json
     var charset: Charset = StandardCharsets.UTF_8
     var objectMapper: ObjectMapper = ObjectMapper()
+    var preload: Boolean = true
+    var preloadConcurrency: Int = 4
     var includeTableComponents: Boolean = true
     var loadOnStart: Boolean = true
 
@@ -118,6 +123,14 @@ class LubanConfigModuleBuilder {
         fileResolver = resolve
     }
 
+    fun preload(
+        enabled: Boolean = true,
+        maxConcurrency: Int = 4,
+    ) {
+        preload = enabled
+        preloadConcurrency = maxConcurrency
+    }
+
     fun revision(factory: (LubanLoadReport) -> ConfigRevision) {
         revisionFactory = factory
     }
@@ -142,6 +155,10 @@ class LubanConfigModuleBuilder {
                 val dir = dataDir ?: error("Luban data dir must be configured")
                 fileResolver?.invoke(dir, file) ?: dir.resolve(fileName(file))
             },
+            preloadOptions = LubanPreloadOptions(
+                enabled = preload,
+                maxConcurrency = preloadConcurrency,
+            ),
             includeTableComponents = includeTableComponents,
             revisionFactory = revisionFactory,
             validators = validators.toList(),

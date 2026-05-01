@@ -4,7 +4,6 @@ import io.github.mikai233.asteria.config.ConfigLoader
 import io.github.mikai233.asteria.config.ConfigRevision
 import io.github.mikai233.asteria.config.ConfigSnapshot
 import io.github.mikai233.asteria.config.DefaultConfigSnapshot
-import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.reflect.KClass
 
@@ -12,17 +11,18 @@ class LubanBinaryConfigLoader(
     private val tablesType: KClass<out Any>,
     private val dataDir: Path,
     private val fileResolver: (String) -> Path = { dataDir.resolve("$it.bytes") },
+    private val preloadOptions: LubanPreloadOptions = LubanPreloadOptions(),
     private val includeTableComponents: Boolean = true,
     private val revisionFactory: (LubanBinaryLoadReport) -> ConfigRevision = { report ->
         ConfigRevision(version = report.checksum, checksum = report.checksum)
     },
 ) : ConfigLoader {
     override suspend fun load(): ConfigSnapshot {
+        val preloadedFiles = preloadDataFiles(dataDir, ".bytes", preloadOptions)
         val loadedFiles = linkedMapOf<Path, ByteArray>()
         val tables = instantiateLubanTables(tablesType, "AsteriaLubanBinaryLoader") { file, returnType ->
             val path = fileResolver(file)
-            val bytes = Files.readAllBytes(path)
-            loadedFiles[path.normalize()] = bytes
+            val bytes = readDataFile(path, preloadedFiles, loadedFiles)
             returnType.newByteBuf(bytes)
         }
 

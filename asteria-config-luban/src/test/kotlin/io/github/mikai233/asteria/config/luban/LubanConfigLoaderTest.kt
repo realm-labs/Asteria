@@ -103,6 +103,7 @@ class LubanConfigLoaderTest {
             install(
                 LubanConfigModule {
                     binary()
+                    preload(maxConcurrency = 2)
                     tables<FakeBinaryTables>()
                     dataDir(dataDir)
                 },

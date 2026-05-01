@@ -5,10 +5,26 @@ import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import java.lang.reflect.Proxy
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlin.io.path.name
 import kotlin.reflect.KClass
+
+data class LubanPreloadOptions(
+    val enabled: Boolean = true,
+    val maxConcurrency: Int = 4,
+) {
+    init {
+        require(maxConcurrency in 1..64) { "Luban preload max concurrency must be in 1..64" }
+    }
+}
 
 interface LubanLoadReport {
     val dataDir: Path
@@ -69,6 +85,49 @@ internal fun checksum(files: Map<Path, ByteArray>): String {
         digest.update(0)
     }
     return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+internal suspend fun preloadDataFiles(
+    dataDir: Path,
+    extension: String,
+    options: LubanPreloadOptions,
+): Map<Path, ByteArray> {
+    if (!options.enabled) {
+        return emptyMap()
+    }
+
+    val files = Files.list(dataDir).use { stream ->
+        stream
+            .filter { path -> Files.isRegularFile(path) && path.name.endsWith(extension) }
+            .sorted()
+            .toList()
+    }
+    val semaphore = Semaphore(options.maxConcurrency)
+
+    return coroutineScope {
+        files.map { path ->
+            async(Dispatchers.IO) {
+                semaphore.withPermit {
+                    path.cacheKey() to Files.readAllBytes(path)
+                }
+            }
+        }.awaitAll().toMap(linkedMapOf())
+    }
+}
+
+internal fun readDataFile(
+    path: Path,
+    preloadedFiles: Map<Path, ByteArray>,
+    loadedFiles: MutableMap<Path, ByteArray>,
+): ByteArray {
+    val key = path.cacheKey()
+    val bytes = preloadedFiles[key] ?: Files.readAllBytes(path)
+    loadedFiles[key] = bytes
+    return bytes
+}
+
+private fun Path.cacheKey(): Path {
+    return toAbsolutePath().normalize()
 }
 
 private fun Method.isLoadMethod(): Boolean {

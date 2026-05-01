@@ -7,7 +7,6 @@ import io.github.mikai233.asteria.config.ConfigSnapshot
 import io.github.mikai233.asteria.config.DefaultConfigSnapshot
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
-import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.reflect.KClass
 
@@ -17,17 +16,18 @@ class LubanJsonConfigLoader(
     private val objectMapper: ObjectMapper = ObjectMapper(),
     private val charset: Charset = StandardCharsets.UTF_8,
     private val fileResolver: (String) -> Path = { dataDir.resolve("$it.json") },
+    private val preloadOptions: LubanPreloadOptions = LubanPreloadOptions(),
     private val includeTableComponents: Boolean = true,
     private val revisionFactory: (LubanJsonLoadReport) -> ConfigRevision = { report ->
         ConfigRevision(version = report.checksum, checksum = report.checksum)
     },
 ) : ConfigLoader {
     override suspend fun load(): ConfigSnapshot {
+        val preloadedFiles = preloadDataFiles(dataDir, ".json", preloadOptions)
         val loadedFiles = linkedMapOf<Path, ByteArray>()
         val tables = instantiateLubanTables(tablesType, "AsteriaLubanJsonLoader") { file, returnType ->
             val path = fileResolver(file)
-            val bytes = Files.readAllBytes(path)
-            loadedFiles[path.normalize()] = bytes
+            val bytes = readDataFile(path, preloadedFiles, loadedFiles)
             objectMapper.readTree(bytes.toString(charset)).also { json ->
                 require(returnType.isInstance(json)) {
                     "Luban json loader return type ${returnType.name} is not compatible with ${json.javaClass.name}"

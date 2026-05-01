@@ -127,6 +127,7 @@ install(LubanConfigModule {
 
 install(LubanConfigModule {
     binary()
+    preload(maxConcurrency = 4)
     tables<cfg.Tables>()
     dataDir(Path.of("generated/bytes"))
 })
@@ -136,6 +137,9 @@ val tables = app.services.get<ConfigService>()
     .requireComponent<cfg.Tables>()
 val item = tables.tbItem.get(1001)
 ```
+
+Luban loaders preload matching data files with bounded concurrency before constructing `cfg.Tables`; the generated
+`Tables` object still controls table construction order and cross-table initialization.
 
 Script execution is an opt-in extension:
 
