@@ -15,7 +15,7 @@ class ModuleContext internal constructor(
     val services: ServiceRegistry,
 ) {
     val name: String get() = application.name
-    val roles: Set<RoleKey> get() = application.roles
+    val declaredRoles: Set<RoleKey> get() = application.declaredRoles
     val entities: List<EntitySpec<*>> get() = application.entities
     val singletons: List<SingletonSpec> get() = application.singletons
 }

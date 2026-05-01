@@ -13,10 +13,11 @@ class EntitySpecTest {
 
         assertNull(app.entities.single().role)
         assertEquals(emptySet(), app.roles)
+        assertEquals(emptySet(), app.declaredRoles)
     }
 
     @Test
-    fun explicitEntityRoleIsAddedToApplicationRoles() {
+    fun explicitEntityRoleIsAddedToDeclaredRoles() {
         val app = gameApplication {
             entity<Long>("player") {
                 role("gameplay")
@@ -25,5 +26,6 @@ class EntitySpecTest {
 
         assertEquals(RoleKey("gameplay"), app.entities.single().role)
         assertEquals(setOf(RoleKey("gameplay")), app.roles)
+        assertEquals(setOf(RoleKey("gameplay")), app.declaredRoles)
     }
 }

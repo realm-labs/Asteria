@@ -9,6 +9,9 @@ annotation class AsteriaDsl
 
 interface NodeRuntime {
     val name: String
+    /**
+     * Roles owned by this running node. Runtime modules should set this from the concrete node config.
+     */
     val roles: Set<RoleKey>
     val state: NodeState
     val services: ServiceRegistry
@@ -16,12 +19,22 @@ interface NodeRuntime {
 
 class AsteriaApplication internal constructor(
     override val name: String,
-    override val roles: Set<RoleKey>,
+    /**
+     * Roles declared by application specs. This is metadata for validating/building runtime config,
+     * not necessarily the role set of the current process.
+     */
+    val declaredRoles: Set<RoleKey>,
     val entities: List<EntitySpec<*>>,
     val singletons: List<SingletonSpec>,
     private val modules: List<AsteriaModule>,
 ) : NodeRuntime {
     override val services: ServiceRegistry = ServiceRegistry()
+
+    @Volatile
+    private var currentRoles: Set<RoleKey> = declaredRoles
+
+    override val roles: Set<RoleKey>
+        get() = currentRoles
 
     @Volatile
     override var state: NodeState = NodeState.Unstarted
@@ -32,6 +45,13 @@ class AsteriaApplication internal constructor(
 
     fun onState(state: NodeState, listener: suspend () -> Unit) {
         stateListeners.getOrPut(state) { mutableListOf() }.add(listener)
+    }
+
+    /**
+     * Updates the roles for this concrete process after the runtime module resolves node config.
+     */
+    fun setNodeRoles(roles: Set<RoleKey>) {
+        currentRoles = roles.toSet()
     }
 
     suspend fun launch() {
@@ -69,7 +89,7 @@ class AsteriaApplication internal constructor(
 class AsteriaApplicationBuilder {
     var name: String = "asteria"
 
-    private val roles: MutableSet<RoleKey> = linkedSetOf()
+    private val declaredRoles: MutableSet<RoleKey> = linkedSetOf()
     private val modules: MutableList<AsteriaModule> = mutableListOf()
     private val entities: MutableList<EntitySpec<*>> = mutableListOf()
     private val singletons: MutableList<SingletonSpec> = mutableListOf()
@@ -79,7 +99,7 @@ class AsteriaApplicationBuilder {
     }
 
     fun role(value: String): RoleKey {
-        return RoleKey(value).also { roles.add(it) }
+        return RoleKey(value).also { declaredRoles.add(it) }
     }
 
     inline fun <reified ID : Any> entity(
@@ -95,7 +115,7 @@ class AsteriaApplicationBuilder {
         configure: EntitySpecBuilder<ID>.() -> Unit = {},
     ) {
         val builder = EntitySpecBuilder(EntityKind(kind), idType).apply(configure)
-        builder.role?.let(roles::add)
+        builder.role?.let(declaredRoles::add)
         entities.add(builder.build())
     }
 
@@ -104,14 +124,14 @@ class AsteriaApplicationBuilder {
         configure: SingletonSpecBuilder.() -> Unit,
     ) {
         val builder = SingletonSpecBuilder(SingletonName(name)).apply(configure)
-        roles.add(builder.role)
+        declaredRoles.add(builder.role)
         singletons.add(builder.build())
     }
 
     fun build(): AsteriaApplication {
         return AsteriaApplication(
             name = name,
-            roles = roles.toSet(),
+            declaredRoles = declaredRoles.toSet(),
             entities = entities.toList(),
             singletons = singletons.toList(),
             modules = modules.toList(),

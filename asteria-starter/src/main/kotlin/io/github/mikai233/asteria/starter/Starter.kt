@@ -1,5 +1,11 @@
 package io.github.mikai233.asteria.starter
 
+import com.typesafe.config.Config
+import com.typesafe.config.ConfigFactory
+import io.github.mikai233.asteria.cluster.config.ClusterConfigLayout
+import io.github.mikai233.asteria.cluster.config.ClusterConfigModule
+import io.github.mikai233.asteria.cluster.config.ClusterTopology
+import io.github.mikai233.asteria.cluster.config.StaticClusterTopologyProvider
 import io.github.mikai233.asteria.cluster.pekko.PekkoRuntimeModule
 import io.github.mikai233.asteria.core.AsteriaApplication
 import io.github.mikai233.asteria.core.AsteriaApplicationBuilder
@@ -29,5 +35,42 @@ fun localGameApplication(configure: AsteriaApplicationBuilder.() -> Unit): Aster
         install(PekkoRuntimeModule.local())
         install(RpcModule.autoDiscover())
         configure()
+    }
+}
+
+fun clusterGameApplication(
+    nodeId: String,
+    layout: ClusterConfigLayout? = null,
+    pekkoConfig: Config = ConfigFactory.empty(),
+    configure: AsteriaApplicationBuilder.() -> Unit,
+): AsteriaApplication {
+    return gameApplication {
+        install(RpcModule.autoDiscover())
+        configure()
+        val applicationName = name
+        install(
+            ClusterConfigModule {
+                this.layout = layout ?: ClusterConfigLayout.default(applicationName)
+            },
+        )
+        install(PekkoRuntimeModule.cluster(nodeId, pekkoConfig))
+    }
+}
+
+fun clusterGameApplication(
+    nodeId: String,
+    topology: ClusterTopology,
+    pekkoConfig: Config = ConfigFactory.empty(),
+    configure: AsteriaApplicationBuilder.() -> Unit,
+): AsteriaApplication {
+    return gameApplication {
+        install(RpcModule.autoDiscover())
+        configure()
+        install(
+            ClusterConfigModule {
+                provider(StaticClusterTopologyProvider(topology))
+            },
+        )
+        install(PekkoRuntimeModule.cluster(nodeId, pekkoConfig))
     }
 }

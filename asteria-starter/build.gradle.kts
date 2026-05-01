@@ -12,6 +12,7 @@ dependencies {
     api(project(":asteria-script-engine-jar"))
     api(project(":asteria-script-engine-groovy"))
     api(project(":asteria-cluster-pekko"))
+    api(project(":asteria-cluster-config"))
     api(project(":asteria-protocol-protobuf"))
     api(project(":asteria-gateway-netty"))
     api(project(":asteria-persistence"))

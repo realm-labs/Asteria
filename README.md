@@ -196,6 +196,47 @@ depending on Zookeeper, Nacos, Etcd, or any other config center directly.
 Nacos does not expose a native tree API, so the Nacos adapter maintains child indexes by convention when configs are
 written through Asteria.
 
+Pekko cluster runtime can now be started from that topology. Each process selects its node config by `nodeId`; Asteria
+generates the Pekko host, port, roles, and seed node config from `RuntimeNodeConfig`.
+
+```kotlin
+val app = clusterGameApplication(nodeId = System.getenv("ASTERIA_NODE_ID")) {
+    name = "demo-game"
+
+    install(NacosConfigCenterModule {
+        serverAddr = "127.0.0.1:8848"
+        dataIdPrefix = "asteria"
+    })
+
+    entity<Long>("player") {
+        role("player")
+        handoffMessage = PlayerHandoff
+        actor { runtime, _ -> PlayerActor.props(runtime) }
+    }
+}
+
+app.launch()
+```
+
+For local files, use a static Typesafe config topology provider:
+
+```hocon
+asteria.cluster.nodes = [
+  { node-id = "seed-1", host = "127.0.0.1", port = 2551, roles = ["seed"], seed = true },
+  { node-id = "player-1", host = "127.0.0.1", port = 2552, roles = ["player"] }
+]
+```
+
+```kotlin
+val app = gameApplication {
+    name = "demo-game"
+    install(ClusterConfigModule {
+        provider(TypesafeClusterTopologyProvider(ConfigFactory.load()))
+    })
+    install(PekkoRuntimeModule.cluster(System.getenv("ASTERIA_NODE_ID")))
+}
+```
+
 Script execution is an opt-in extension:
 
 ```kotlin

@@ -1,5 +1,6 @@
 package io.github.mikai233.asteria.cluster.config
 
+import com.typesafe.config.ConfigFactory
 import io.github.mikai233.asteria.config.center.ConfigCenterModule
 import io.github.mikai233.asteria.config.center.ConfigCodec
 import io.github.mikai233.asteria.config.center.InMemoryConfigStore
@@ -70,6 +71,37 @@ class ClusterConfigTest {
         assertNotNull(app.services.get<ClusterTopologyProvider>())
 
         app.stop()
+    }
+
+    @Test
+    fun `typesafe provider resolves static local topology`() = runBlocking {
+        val config = ConfigFactory.parseString(
+            """
+            asteria.cluster.nodes = [
+              {
+                node-id = "seed-1"
+                host = "127.0.0.1"
+                port = 2551
+                roles = ["seed", "player"]
+                seed = true
+                attributes.zone = "local-a"
+              },
+              {
+                node-id = "match-1"
+                host = "127.0.0.2"
+                port = 2552
+                roles = ["match"]
+              }
+            ]
+            """.trimIndent(),
+        )
+
+        val topology = TypesafeClusterTopologyProvider(config).current()
+
+        assertEquals(listOf("match-1", "seed-1"), topology.nodes.map { it.nodeId })
+        assertEquals(listOf("seed-1"), topology.seedNodes.map { it.nodeId })
+        assertEquals(setOf("seed", "player"), topology.requireNode("seed-1").roles)
+        assertEquals("local-a", topology.requireNode("seed-1").attributes["zone"])
     }
 
     object NodeCodec : ConfigCodec {
