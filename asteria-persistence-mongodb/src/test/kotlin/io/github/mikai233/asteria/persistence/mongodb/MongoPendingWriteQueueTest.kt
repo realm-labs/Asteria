@@ -24,18 +24,91 @@ class MongoPendingWriteQueueTest {
     }
 
     @Test
+    fun `ancestor unset removes child operations`() {
+        val queue = MongoPendingWriteQueue()
+        val root = MongoPath("player", 1001L, "profile")
+
+        queue.enqueue(MongoChangeOp.Set(root.child("name"), "alice"))
+        queue.enqueue(MongoChangeOp.Inc(root.child("version"), 1))
+        queue.enqueue(MongoChangeOp.Unset(root))
+        queue.enqueue(MongoChangeOp.Set(root.child("level"), 2))
+
+        val write = queue.drain().single()
+
+        assertTrue(write.sets.isEmpty())
+        assertEquals(setOf("profile"), write.unsets)
+        assertTrue(write.incs.isEmpty())
+    }
+
+    @Test
+    fun `set after unset on same path cancels unset`() {
+        val queue = MongoPendingWriteQueue()
+        val path = MongoPath("player", 1001L, "nickname")
+
+        queue.enqueue(MongoChangeOp.Unset(path))
+        queue.enqueue(MongoChangeOp.Set(path, "alice"))
+
+        val write = queue.drain().single()
+
+        assertEquals(mapOf("nickname" to "alice"), write.sets)
+        assertTrue(write.unsets.isEmpty())
+    }
+
+    @Test
+    fun `inc is ignored when path is already set`() {
+        val queue = MongoPendingWriteQueue()
+        val path = MongoPath("player", 1001L, "level")
+
+        queue.enqueue(MongoChangeOp.Set(path, 10))
+        queue.enqueue(MongoChangeOp.Inc(path, 1))
+
+        val write = queue.drain().single()
+
+        assertEquals(mapOf("level" to 10), write.sets)
+        assertTrue(write.incs.isEmpty())
+    }
+
+    @Test
     fun `queue encodes map keys and merges increments`() {
         val queue = MongoPendingWriteQueue()
         val path = MongoPath("player", 1001L, "counters")
 
         queue.enqueue(MongoChangeOp.Set(path.child("a.b"), 1))
+        queue.enqueue(MongoChangeOp.Set(path.child("a\$b"), 2))
+        queue.enqueue(MongoChangeOp.Set(path.child("a%b"), 3))
         queue.enqueue(MongoChangeOp.Inc(path.child("login"), 1))
         queue.enqueue(MongoChangeOp.Inc(path.child("login"), 2L))
 
         val write = queue.drain().single()
 
         assertEquals(1, write.sets["counters.a%2Eb"])
+        assertEquals(2, write.sets["counters.a%24b"])
+        assertEquals(3, write.sets["counters.a%25b"])
         assertEquals(3L, write.incs["counters.login"])
+    }
+
+    @Test
+    fun `snapshot does not clear queue but drain does`() {
+        val queue = MongoPendingWriteQueue()
+        queue.enqueue(MongoChangeOp.Set(MongoPath("player", 1001L, "level"), 2))
+
+        assertEquals(1, queue.snapshot().size)
+        assertEquals(1, queue.snapshot().size)
+        assertEquals(1, queue.drain().size)
+        assertTrue(queue.drain().isEmpty())
+    }
+
+    @Test
+    fun `queue keeps writes for different documents separate`() {
+        val queue = MongoPendingWriteQueue()
+
+        queue.enqueue(MongoChangeOp.Set(MongoPath("player", 1001L, "level"), 2))
+        queue.enqueue(MongoChangeOp.Set(MongoPath("player", 1002L, "level"), 3))
+
+        val writes = queue.drain().associateBy { it.key.documentId }
+
+        assertEquals(2, writes.getValue(1001L).sets["level"])
+        assertEquals(3, writes.getValue(1002L).sets["level"])
     }
 
     @Test

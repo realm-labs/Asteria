@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -76,6 +77,71 @@ class KeyedDataTableTest {
     }
 
     @Test
+    fun `idle unload only unloads expired rows`() = runBlocking {
+        val clock = MutableTableClock()
+        val table = TestTable(
+            rows = listOf(TestRow(1, "alice"), TestRow(2, "bob")),
+            clock = clock,
+        )
+
+        table.use(1) { it.rename("alice-1") }
+        clock.advanceSeconds(5)
+        table.use(2) { it.rename("bob-1") }
+        clock.advanceSeconds(5)
+        table.unloadIdle()
+
+        assertEquals(setOf(2), table.loadedKeys())
+        assertEquals(listOf(1), table.flushed)
+        assertEquals("alice-1", table.source.getValue(1).name)
+        assertEquals("bob", table.source.getValue(2).name)
+    }
+
+    @Test
+    fun `use refreshes last access time`() = runBlocking {
+        val clock = MutableTableClock()
+        val table = TestTable(rows = listOf(TestRow(1, "alice")), clock = clock)
+
+        table.use(1) { it.rename("bob") }
+        clock.advanceSeconds(9)
+        table.use(1) { it.rename("carol") }
+        clock.advanceSeconds(9)
+        table.unloadIdle()
+
+        assertEquals(1, table.loadedCount())
+        assertTrue(table.flushed.isEmpty())
+
+        clock.advanceSeconds(1)
+        table.unloadIdle()
+
+        assertEquals(0, table.loadedCount())
+        assertEquals(listOf(1), table.flushed)
+    }
+
+    @Test
+    fun `unloaded row is loaded again as a fresh object`() = runBlocking {
+        val clock = MutableTableClock()
+        val table = TestTable(rows = listOf(TestRow(1, "alice")), clock = clock)
+        var first: TestRow? = null
+        var second: TestRow? = null
+
+        table.use(1) { row ->
+            row.rename("bob")
+            first = row
+        }
+        clock.advanceSeconds(10)
+        table.unloadIdle()
+        table.use(1) { row ->
+            second = row
+        }
+
+        assertNotSame(first, second)
+        assertEquals("bob", second?.name)
+        assertFailsWith<IllegalStateException> {
+            first?.rename("stale")
+        }
+    }
+
+    @Test
     fun `loadAllIntoMemory loads all rows explicitly`() = runBlocking {
         val table = TestTable(rows = listOf(TestRow(1, "alice"), TestRow(2, "bob")))
 
@@ -83,6 +149,34 @@ class KeyedDataTableTest {
 
         assertEquals(2, loaded)
         assertEquals(setOf(1, 2), table.loadedKeys())
+    }
+
+    @Test
+    fun `loadAllIntoMemory does not overwrite already loaded rows`() = runBlocking {
+        val table = TestTable(rows = listOf(TestRow(1, "alice"), TestRow(2, "bob")))
+
+        table.use(1) { it.rename("alice-local") }
+        val loaded = table.loadAllIntoMemory()
+        assertTrue(table.flush())
+
+        assertEquals(1, loaded)
+        assertEquals(setOf(1, 2), table.loadedKeys())
+        assertEquals("alice-local", table.source.getValue(1).name)
+    }
+
+    @Test
+    fun `flush writes loaded rows without unloading`() = runBlocking {
+        val table = TestTable(rows = listOf(TestRow(1, "alice"), TestRow(2, "bob")))
+
+        table.use(1) { it.rename("alice-1") }
+        table.use(2) { it.rename("bob-1") }
+
+        assertTrue(table.flush())
+
+        assertEquals(setOf(1, 2), table.loadedKeys())
+        assertEquals(listOf(1, 2), table.flushed)
+        assertEquals("alice-1", table.source.getValue(1).name)
+        assertEquals("bob-1", table.source.getValue(2).name)
     }
 
     @Test
@@ -120,8 +214,10 @@ private class TestTable(
 ) {
     val source: MutableMap<Int, TestRow> = rows.associateBy { it.id }.toMutableMap()
     val flushed: MutableList<Int> = mutableListOf()
+    val loaded: MutableList<Int> = mutableListOf()
 
     override suspend fun loadRow(key: Int): TestRow? {
+        loaded += key
         return source[key]?.copy()
     }
 

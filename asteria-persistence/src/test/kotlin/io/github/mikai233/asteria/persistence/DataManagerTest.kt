@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -115,6 +116,93 @@ class DataManagerTest {
     }
 
     @Test
+    fun `use refreshes unloadable data last access time`() = runBlocking {
+        val clock = MutableClock()
+        val data = GuardedData()
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { data },
+            ),
+            clock = clock,
+        )
+
+        manager.use<GuardedData, Unit> { it.touch() }
+        clock.advanceSeconds(9)
+        manager.use<GuardedData, Unit> { it.touch() }
+        clock.advanceSeconds(9)
+        manager.tick()
+
+        data.touch()
+        assertEquals(0, data.flushes)
+
+        clock.advanceSeconds(1)
+        manager.tick()
+
+        assertEquals(1, data.flushes)
+        assertFailsWith<IllegalStateException> {
+            data.touch()
+        }
+    }
+
+    @Test
+    fun `idle unload only unloads expired modules`() = runBlocking {
+        val clock = MutableClock()
+        val expired = GuardedData()
+        val active = OtherGuardedData()
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { expired },
+                dataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { active },
+            ),
+            clock = clock,
+        )
+
+        manager.use<GuardedData, Unit> { it.touch() }
+        clock.advanceSeconds(5)
+        manager.use<OtherGuardedData, Unit> { it.touch() }
+        clock.advanceSeconds(5)
+        manager.tick()
+
+        assertEquals(1, expired.flushes)
+        assertEquals(0, active.flushes)
+        active.touch()
+        assertFailsWith<IllegalStateException> {
+            expired.touch()
+        }
+    }
+
+    @Test
+    fun `unloaded data is loaded again as a fresh instance`() = runBlocking {
+        val clock = MutableClock()
+        val created = mutableListOf<GuardedData>()
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) {
+                    GuardedData().also { created += it }
+                },
+            ),
+            clock = clock,
+        )
+        lateinit var first: GuardedData
+        lateinit var second: GuardedData
+
+        manager.use<GuardedData, Unit> { first = it }
+        clock.advanceSeconds(10)
+        manager.tick()
+        manager.use<GuardedData, Unit> { second = it }
+
+        assertEquals(2, created.size)
+        assertNotSame(first, second)
+        second.touch()
+        assertFailsWith<IllegalStateException> {
+            first.touch()
+        }
+    }
+
+    @Test
     fun `loadEager cannot be called twice`() = runBlocking {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
@@ -176,6 +264,26 @@ private class GuardedData(
     override suspend fun flush(): Boolean {
         flushes += 1
         return flushResult
+    }
+}
+
+private class OtherGuardedData : LeaseGuardedMemData(), AutoFlushMemData {
+    var loaded: Boolean = false
+    var flushes: Int = 0
+
+    override suspend fun load() {
+        loaded = true
+    }
+
+    fun touch() {
+        ensureActive()
+    }
+
+    override suspend fun tick() = Unit
+
+    override suspend fun flush(): Boolean {
+        flushes += 1
+        return true
     }
 }
 

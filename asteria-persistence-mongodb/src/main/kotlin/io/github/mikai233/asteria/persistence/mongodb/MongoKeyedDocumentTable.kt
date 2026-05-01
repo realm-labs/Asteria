@@ -35,8 +35,7 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
     private val database: MongoDatabase = database
     private val runtimes: MutableMap<T, MongoTrackedDocumentRuntime> = IdentityHashMap()
     private val rowsById: MutableMap<ID, T> = linkedMapOf()
-    private val dirtyRows: ArrayDeque<ID> = ArrayDeque()
-    private val dirtyRowSet: MutableSet<ID> = linkedSetOf()
+    private val dirtyRows: DirtyRowQueue<ID> = DirtyRowQueue()
 
     override suspend fun loadRow(key: ID): T? {
         return collection.find(eq("_id", key)).firstOrNull()?.let(::attach)
@@ -51,7 +50,7 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
     override suspend fun flushRow(row: T): Boolean {
         val flushed = runtime(row).flushSafely()
         if (flushed) {
-            dirtyRowSet.remove(row.id)
+            dirtyRows.markClean(row.id)
         }
         return flushed
     }
@@ -66,8 +65,7 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
     override fun afterUnload(row: T) {
         runtimes.remove(row)
         rowsById.remove(row.id)
-        dirtyRowSet.remove(row.id)
-        dirtyRows.removeAll { it == row.id }
+        dirtyRows.remove(row.id)
     }
 
     suspend fun flushSome(budget: MongoFlushBudget): MongoFlushProgress {
@@ -76,10 +74,10 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
         var flushedRows = 0
         var failedRows = 0
         while (attemptedRows < budget.maxRows && start.elapsedNow() < budget.maxDuration) {
-            val id = nextDirtyRowId() ?: break
+            val id = dirtyRows.next() ?: break
             val row = rowsById[id]
             if (row == null) {
-                dirtyRowSet.remove(id)
+                dirtyRows.markClean(id)
                 continue
             }
 
@@ -88,7 +86,7 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
                 flushedRows += 1
             } else {
                 failedRows += 1
-                markDirty(id)
+                dirtyRows.markDirty(id)
             }
         }
         return MongoFlushProgress(attemptedRows, flushedRows, failedRows)
@@ -110,28 +108,11 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
 
     private fun attach(entity: E): T {
         val runtime = MongoTrackedDocumentRuntime(collectionName, entity.id, database) {
-            markDirty(entity.id)
+            dirtyRows.markDirty(entity.id)
         }
         val row = wrap(runtime.context(), entity)
         runtimes[row] = runtime
         rowsById[entity.id] = row
         return row
-    }
-
-    private fun markDirty(id: ID) {
-        if (dirtyRowSet.add(id)) {
-            dirtyRows.addLast(id)
-        }
-    }
-
-    private fun nextDirtyRowId(): ID? {
-        while (dirtyRows.isNotEmpty()) {
-            val id = dirtyRows.removeFirst()
-            if (id in dirtyRowSet) {
-                dirtyRowSet.remove(id)
-                return id
-            }
-        }
-        return null
     }
 }
