@@ -12,6 +12,9 @@ Foundation modules:
 - `:foundation:foundation-core`: application lifecycle, module system, role keys, entity specs, singleton specs, service registry.
 - `:foundation:foundation-actor`: Pekko actor base utilities, actor coroutine dispatcher, timer helpers.
 - `:foundation:foundation-id`: worker id leases and Snowflake-style ID generation contracts.
+- `:foundation:foundation-id-etcd`: Etcd-backed worker id lease repository.
+- `:foundation:foundation-id-mongodb`: MongoDB-backed worker id lease repository.
+- `:foundation:foundation-id-zookeeper`: ZooKeeper-backed worker id lease repository.
 - `:foundation:foundation-message`: message contracts, handler dispatch, route registry, handler context.
 
 RPC modules:
