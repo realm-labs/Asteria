@@ -14,6 +14,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlin.io.path.name
 import kotlin.reflect.KClass
 
@@ -64,15 +65,19 @@ class DirectoryLubanDataSource(
     private val fileResolver: (String) -> Path = { file -> dataDir.resolve(file) },
 ) : LubanDataSource {
     override suspend fun list(extension: String): Map<String, ByteArray> {
-        val files = Files.list(dataDir).use { stream ->
-            stream
-                .filter { path -> Files.isRegularFile(path) && path.name.endsWith(extension) }
-                .sorted()
-                .toList()
+        val files = withContext(Dispatchers.IO) {
+            Files.list(dataDir).use { stream ->
+                stream
+                    .filter { path -> Files.isRegularFile(path) && path.name.endsWith(extension) }
+                    .sorted()
+                    .toList()
+            }
         }
         if (!preloadOptions.enabled) {
-            return files.associate { path ->
-                path.name to Files.readAllBytes(fileResolver(path.name))
+            return withContext(Dispatchers.IO) {
+                files.associate { path ->
+                    path.name to Files.readAllBytes(fileResolver(path.name))
+                }
             }
         }
         val semaphore = Semaphore(preloadOptions.maxConcurrency)

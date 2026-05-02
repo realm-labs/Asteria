@@ -2,6 +2,8 @@ package io.github.mikai233.asteria.config.publisher
 
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
@@ -52,19 +54,21 @@ class DirectoryConfigArtifactSource(
     private val include: (Path) -> Boolean = { true },
 ) : ConfigArtifactSource {
     override suspend fun artifacts(): List<ConfigPublicationArtifact> {
-        require(Files.isDirectory(root)) { "config artifact root must be a directory: $root" }
-        return Files.walk(root).use { stream ->
-            stream.asSequence()
-                .filter { it.isRegularFile() }
-                .filter(include)
-                .sortedBy { it.toString() }
-                .map { path ->
-                    ConfigPublicationArtifact(
-                        relativePath = path.relativeTo(root).normalize().toString().replace(path.fileSystem.separator, "/"),
-                        bytes = Files.readAllBytes(path),
-                    )
-                }
-                .toList()
+        return withContext(Dispatchers.IO) {
+            require(Files.isDirectory(root)) { "config artifact root must be a directory: $root" }
+            Files.walk(root).use { stream ->
+                stream.asSequence()
+                    .filter { it.isRegularFile() }
+                    .filter(include)
+                    .sortedBy { it.toString() }
+                    .map { path ->
+                        ConfigPublicationArtifact(
+                            relativePath = path.relativeTo(root).normalize().toString().replace(path.fileSystem.separator, "/"),
+                            bytes = Files.readAllBytes(path),
+                        )
+                    }
+                    .toList()
+            }
         }
     }
 }
