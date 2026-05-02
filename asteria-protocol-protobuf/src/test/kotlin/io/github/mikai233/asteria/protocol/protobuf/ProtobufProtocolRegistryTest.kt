@@ -106,6 +106,21 @@ class ProtobufProtocolRegistryTest {
     }
 
     @Test
+    fun `gateway protocol supports contributors`() = runBlocking {
+        val contributor = ProtobufGatewayProtocolContributor { builder ->
+            builder.clientMessage(1001, StringValue::class, StringValue.parser(), RouteTarget.GatewayLocal)
+        }
+        val protocol = protobufGatewayProtocol {
+            include(contributor)
+        }
+        val envelope = protocol.protocolRegistry.decode(ProtoFrame(1001, StringValue.of("ping").toByteArray()))
+
+        val route = protocol.routeResolver.resolve(testContext(), envelope)
+
+        assertEquals(RouteTarget.GatewayLocal, route.target)
+    }
+
+    @Test
     fun `gateway route resolver sees dynamic route replacement`() = runBlocking {
         val protocolRegistry = ProtobufProtocolRegistry(
             listOf(

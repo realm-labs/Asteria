@@ -18,10 +18,14 @@ import kotlin.reflect.KClass
  */
 class ProtobufGatewayProtocol(
     val protocolRegistry: ProtobufProtocolRegistry,
-    val routeRegistry: ProtocolRouteRegistry,
+    routeRegistry: ProtocolRouteRegistry,
 ) {
     val routeResolver: GatewayRouteResolver<ClientProtoEnvelope> =
         ProtobufGatewayRouteResolver(protocolRegistry, routeRegistry)
+}
+
+fun interface ProtobufGatewayProtocolContributor {
+    fun contribute(builder: ProtobufGatewayProtocolBuilder)
 }
 
 /**
@@ -49,6 +53,10 @@ class ProtobufGatewayRouteResolver(
 class ProtobufGatewayProtocolBuilder {
     private val protocolMappings: MutableList<ProtoMapping<out GeneratedMessage>> = mutableListOf()
     private val routes = RouteRegistryBuilder()
+
+    fun include(contributor: ProtobufGatewayProtocolContributor) {
+        contributor.contribute(this)
+    }
 
     inline fun <reified M : GeneratedMessage> clientMessage(
         id: Int,

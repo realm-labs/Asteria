@@ -7,12 +7,12 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.TypeSpec
-import io.github.mikai233.asteria.rpc.RpcEntityIdRegistryProvider
+import io.github.mikai233.asteria.rpc.RpcProtocolProvider
 import io.github.mikai233.asteria.rpc.protobuf.AsteriaRpcOptionsProto
-import io.github.mikai233.asteria.rpc.protobuf.GeneratedProtobufRpcEntityIds
-import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcEntityIdRegistry
+import io.github.mikai233.asteria.rpc.protobuf.GeneratedProtobufRpcProtocol
+import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcProtocolContributor
+import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcProtocolBuilder
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.Path
@@ -85,34 +85,30 @@ object ProtobufRpcEntityIdGenerator {
         config: GeneratorConfig,
         entityIds: List<MessageEntityId>,
     ): FileSpec {
-        val registryFunction = FunSpec.builder("registry")
-            .addModifiers(KModifier.OVERRIDE, KModifier.PROTECTED)
-            .returns(ProtobufRpcEntityIdRegistry::class)
-            .addCode(buildRegistryCode(entityIds))
+        val contributeFunction = FunSpec.builder("contribute")
+            .addModifiers(KModifier.OVERRIDE)
+            .addParameter("builder", ProtobufRpcProtocolBuilder::class)
+            .addCode(buildContributorCode(entityIds))
             .build()
         val entityIdType = TypeSpec.objectBuilder(config.className)
-            .superclass(GeneratedProtobufRpcEntityIds::class)
-            .addFunction(registryFunction)
+            .superclass(GeneratedProtobufRpcProtocol::class)
+            .addFunction(contributeFunction)
             .build()
         return FileSpec.builder(config.packageName, config.className)
             .addType(entityIdType)
             .build()
     }
 
-    private fun buildRegistryCode(entityIds: List<MessageEntityId>): CodeBlock {
+    private fun buildContributorCode(entityIds: List<MessageEntityId>): CodeBlock {
         val builder = CodeBlock.builder()
-        builder.add("return %M {\n", MemberName(PROTOBUF_RPC_PACKAGE, "protobufRpcEntityIdRegistry"))
-        builder.indent()
         entityIds.forEach { entityId ->
             validateField(entityId)
-            builder.add("entityId<%T> { message ->\n", entityId.messageClass)
+            builder.add("builder.entityId<%T> { message ->\n", entityId.messageClass)
             builder.indent()
             builder.add("message.%L.toString()\n", entityId.fieldName.protoFieldNameToKotlinProperty())
             builder.unindent()
             builder.add("}\n")
         }
-        builder.unindent()
-        builder.add("}\n")
         return builder.build()
     }
 
@@ -131,7 +127,10 @@ object ProtobufRpcEntityIdGenerator {
             .resolve("services")
             .also(Path::createDirectories)
         serviceDir
-            .resolve(RpcEntityIdRegistryProvider::class.qualifiedName!!)
+            .resolve(RpcProtocolProvider::class.qualifiedName!!)
+            .writeText("${config.packageName}.${config.className}\n")
+        serviceDir
+            .resolve(ProtobufRpcProtocolContributor::class.qualifiedName!!)
             .writeText("${config.packageName}.${config.className}\n")
     }
 
@@ -166,7 +165,6 @@ object ProtobufRpcEntityIdGenerator {
         }.joinToString("")
     }
 
-    private const val PROTOBUF_RPC_PACKAGE = "io.github.mikai233.asteria.rpc.protobuf"
 }
 
 data class GeneratorConfig(

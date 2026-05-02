@@ -1,8 +1,9 @@
 package io.github.mikai233.asteria.rpc.protobuf.generator
 
 import com.google.protobuf.DescriptorProtos
-import io.github.mikai233.asteria.rpc.RpcEntityIdRegistryProvider
+import io.github.mikai233.asteria.rpc.RpcProtocolProvider
 import io.github.mikai233.asteria.rpc.protobuf.AsteriaRpcOptionsProto
+import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcProtocolContributor
 import kotlin.io.path.Path
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
@@ -36,15 +37,22 @@ class ProtobufRpcEntityIdGeneratorTest {
         assertTrue(generatedFile.exists())
         val generatedCode = generatedFile.readText()
         assertContains(generatedCode, "object GeneratedEntityIds")
+        assertContains(generatedCode, "override fun contribute")
         assertContains(generatedCode, "entityId<ProtoLogin.LoginReq>")
         assertContains(generatedCode, "message.playerId.toString()")
 
         val serviceFile = resourcesOutput
             .resolve("META-INF")
             .resolve("services")
-            .resolve(RpcEntityIdRegistryProvider::class.qualifiedName!!)
+            .resolve(RpcProtocolProvider::class.qualifiedName!!)
         assertTrue(serviceFile.exists())
         assertContains(serviceFile.readText(), "com.example.generated.GeneratedEntityIds")
+        val protobufServiceFile = resourcesOutput
+            .resolve("META-INF")
+            .resolve("services")
+            .resolve(ProtobufRpcProtocolContributor::class.qualifiedName!!)
+        assertTrue(protobufServiceFile.exists())
+        assertContains(protobufServiceFile.readText(), "com.example.generated.GeneratedEntityIds")
     }
 
     private fun testDescriptorSet(): DescriptorProtos.FileDescriptorSet {
