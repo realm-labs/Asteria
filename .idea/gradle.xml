@@ -43,6 +43,7 @@
             <option value="$PROJECT_DIR$/foundation" />
             <option value="$PROJECT_DIR$/foundation/foundation-actor" />
             <option value="$PROJECT_DIR$/foundation/foundation-core" />
+            <option value="$PROJECT_DIR$/foundation/foundation-id" />
             <option value="$PROJECT_DIR$/foundation/foundation-message" />
             <option value="$PROJECT_DIR$/foundation/foundation-protobuf" />
             <option value="$PROJECT_DIR$/gateway" />

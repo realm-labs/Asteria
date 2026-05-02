@@ -14,6 +14,7 @@ rootProject.name = "Asteria"
 include(
     "foundation:foundation-core",
     "foundation:foundation-actor",
+    "foundation:foundation-id",
     "foundation:foundation-message",
     "foundation:foundation-protobuf",
     "observability:observability-core",
