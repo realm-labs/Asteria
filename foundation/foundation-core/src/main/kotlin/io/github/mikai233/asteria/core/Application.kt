@@ -1,8 +1,5 @@
 package io.github.mikai233.asteria.core
 
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 
 /**
@@ -44,8 +41,6 @@ class AsteriaApplication internal constructor(
     val singletons: List<SingletonSpec>,
     private val modules: List<AsteriaModule>,
 ) : NodeRuntime {
-    private val logger = LoggerFactory.getLogger(AsteriaApplication::class.java)
-
     override val services: ServiceRegistry = ServiceRegistry()
 
     @Volatile
@@ -54,18 +49,26 @@ class AsteriaApplication internal constructor(
     override val roles: Set<RoleKey>
         get() = currentRoles
 
-    @Volatile
-    override var state: NodeState = NodeState.Unstarted
-        private set
+    val topology: RuntimeTopology = RuntimeTopology(
+        declaredRoles = declaredRoles,
+        entities = entities,
+        singletons = singletons,
+    )
 
-    private val stateListeners: MutableMap<NodeState, MutableList<suspend () -> Unit>> = linkedMapOf()
-    private val lifecycleLock = Mutex()
+    private val lifecycle = AsteriaModuleLifecycle(
+        runtime = this,
+        topology = topology,
+        modules = modules,
+    )
+
+    override val state: NodeState
+        get() = lifecycle.state
 
     /**
      * Registers a listener that runs whenever the application enters [state].
      */
     fun onState(state: NodeState, listener: suspend () -> Unit) {
-        stateListeners.getOrPut(state) { mutableListOf() }.add(listener)
+        lifecycle.onState(state, listener)
     }
 
     /**
@@ -81,78 +84,31 @@ class AsteriaApplication internal constructor(
      * A stopped application can be launched again, but concurrent launch/stop calls are serialized.
      */
     suspend fun launch() {
-        lifecycleLock.withLock {
-            check(state == NodeState.Unstarted || state == NodeState.Stopped) {
-                "application $name cannot launch from state $state"
-            }
-            val startedAt = System.nanoTime()
-            logger.info(
-                "launching application {} modules={} roles={} entities={} singletons={}",
-                name,
-                modules.size,
-                declaredRoles.size,
-                entities.size,
-                singletons.size,
-            )
-            changeState(NodeState.Starting)
-            try {
-                val context = moduleContext()
-                modules.forEach { it.install(context) }
-                modules.forEach { it.start(context) }
-                changeState(NodeState.Started)
-                logger.info(
-                    "application {} launched in {} ms",
-                    name,
-                    (System.nanoTime() - startedAt) / 1_000_000,
-                )
-            } catch (error: Throwable) {
-                logger.error("application {} failed to launch", name, error)
-                throw error
-            }
-        }
+        lifecycle.launch()
     }
 
     /**
      * Stops all modules in reverse order.
      */
     suspend fun stop() {
-        lifecycleLock.withLock {
-            if (state == NodeState.Stopped || state == NodeState.Unstarted) {
-                return
-            }
-            val startedAt = System.nanoTime()
-            logger.info("stopping application {}", name)
-            changeState(NodeState.Stopping)
-            try {
-                val context = moduleContext()
-                modules.asReversed().forEach { it.stop(context) }
-                changeState(NodeState.Stopped)
-                logger.info(
-                    "application {} stopped in {} ms",
-                    name,
-                    (System.nanoTime() - startedAt) / 1_000_000,
-                )
-            } catch (error: Throwable) {
-                logger.error("application {} failed to stop", name, error)
-                throw error
-            }
-        }
+        lifecycle.stop()
     }
 
-    private suspend fun changeState(newState: NodeState) {
-        state = newState
-        stateListeners[newState].orEmpty().forEach { it() }
-    }
-
-    private fun moduleContext(): ModuleContext {
-        return ModuleContext(
-            runtime = this,
-            services = services,
-            topology = RuntimeTopology(
-                declaredRoles = declaredRoles,
-                entities = entities,
-                singletons = singletons,
-            ),
+    /**
+     * Binds this application definition to an external runtime.
+     *
+     * Use this when the business process owns a strong node type and should still reuse Asteria module lifecycle. If the
+     * node stores its own [NodeRuntime.state], pass [stateWriter] to keep that property aligned with lifecycle state.
+     */
+    fun bind(
+        runtime: NodeRuntime,
+        stateWriter: ((NodeState) -> Unit)? = null,
+    ): AsteriaModuleLifecycle {
+        return AsteriaModuleLifecycle(
+            runtime = runtime,
+            topology = topology,
+            modules = modules,
+            stateWriter = stateWriter,
         )
     }
 }
