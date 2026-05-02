@@ -90,14 +90,10 @@ class AsteriaProtobufProtocolCodegenPluginTest {
         protocolDir.resolve("rpc.json").writeText(
             """
             {
-              "methods": [
+              "messages": [
                 {
                   "id": 2001,
-                  "name": "player.query",
-                  "mode": "TELL",
-                  "requestType": "com.example.protocol.QueryPlayerReq",
-                  "target": { "type": "ENTITY", "name": "player" },
-                  "entityIdProperty": "playerId"
+                  "type": "com.example.protocol.QueryPlayerReq"
                 }
               ]
             }

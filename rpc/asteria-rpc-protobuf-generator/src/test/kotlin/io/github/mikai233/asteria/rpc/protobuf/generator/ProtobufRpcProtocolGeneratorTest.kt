@@ -25,38 +25,14 @@ class ProtobufRpcProtocolGeneratorTest {
                 {
                   "id": 9001,
                   "type": "com.example.protocol.PushNotice"
-                }
-              ],
-              "entityIds": [
-                {
-                  "type": "com.example.protocol.SharedPlayerReq",
-                  "property": "playerId"
-                }
-              ],
-              "methods": [
-                {
-                  "id": 1001,
-                  "name": "player.query",
-                  "mode": "ASK",
-                  "requestType": "com.example.protocol.QueryPlayerReq",
-                  "responseId": 1002,
-                  "responseType": "com.example.protocol.QueryPlayerResp",
-                  "target": { "type": "ENTITY", "name": "player" },
-                  "entityIdProperty": "playerId"
                 },
                 {
-                  "id": 2001,
-                  "name": "world.reload",
-                  "mode": "TELL",
-                  "requestType": "com.example.protocol.ReloadWorldReq",
-                  "target": { "type": "SINGLETON", "name": "world" }
+                  "id": 9002,
+                  "type": "com.example.protocol.KickPlayerReq"
                 },
                 {
-                  "id": 3001,
-                  "name": "mail.deliver",
-                  "mode": "TELL",
-                  "requestType": "com.example.protocol.DeliverMailReq",
-                  "target": { "type": "SERVICE", "role": "mail", "path": "/user/mail" }
+                  "id": 9003,
+                  "type": "com.example.protocol.KickPlayerResp"
                 }
               ]
             }
@@ -79,16 +55,10 @@ class ProtobufRpcProtocolGeneratorTest {
         assertContains(generatedCode, "class GeneratedRpcProtocol : GeneratedProtobufRpcProtocol()")
         assertContains(generatedCode, "builder.message(id = 9_001")
         assertContains(generatedCode, "messageClass = PushNotice::class")
-        assertContains(generatedCode, "builder.entityId(SharedPlayerReq::class.java)")
-        assertContains(generatedCode, "message.playerId.toString()")
-        assertContains(generatedCode, "builder.call(")
-        assertContains(generatedCode, "requestClass = QueryPlayerReq::class")
-        assertContains(generatedCode, "responseClass = QueryPlayerResp::class")
-        assertContains(generatedCode, "target = RpcTarget.Entity(EntityKind(\"player\"))")
-        assertContains(generatedCode, "entityIdResolver = { message -> message.playerId.toString() }")
-        assertContains(generatedCode, "builder.tell(")
-        assertContains(generatedCode, "target = RpcTarget.Singleton(SingletonName(\"world\"))")
-        assertContains(generatedCode, "target = RpcTarget.Service(RoleKey(\"mail\"), \"/user/mail\")")
+        assertContains(generatedCode, "builder.message(id = 9_002")
+        assertContains(generatedCode, "messageClass = KickPlayerReq::class")
+        assertContains(generatedCode, "builder.message(id = 9_003")
+        assertContains(generatedCode, "messageClass = KickPlayerResp::class")
 
         val providerFile = resourcesOutput
             .resolve("META-INF")

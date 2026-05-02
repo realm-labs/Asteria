@@ -144,24 +144,23 @@ message LoginReq {
 
 The protobuf entity id generator reads a descriptor set with `asteria.rpc.rpc_entity_id_field` options and emits a
 `GeneratedProtobufRpcEntityIds` implementation plus the `ServiceLoader` metadata used by `RpcModule.autoDiscover()`.
-Actor targets are selected by application code through the shard or singleton `ActorRef`; RPC metadata only describes how
-cluster sharding extracts the entity id.
+Actor targets are selected by application code through the shard or singleton `ActorRef`; RPC entity id metadata only
+describes how cluster sharding extracts the entity id.
 
-Full RPC protocol metadata can also be generated from a compact JSON file when a project wants message ids, method names,
-targets, request/response types, and entity-id extraction to use the same generated registration path:
+RPC protocol metadata is intentionally limited to centralized protobuf message id allocation. It does not describe
+targets, method names, or request/response modes, because internal RPC callers already choose the destination actor or
+service explicitly.
 
 ```json
 {
-  "methods": [
+  "messages": [
     {
       "id": 1001,
-      "name": "player.query",
-      "mode": "ASK",
-      "requestType": "com.example.protocol.QueryPlayerReq",
-      "responseId": 1002,
-      "responseType": "com.example.protocol.QueryPlayerResp",
-      "target": { "type": "ENTITY", "name": "player" },
-      "entityIdProperty": "playerId"
+      "type": "com.example.protocol.QueryPlayerReq"
+    },
+    {
+      "id": 1002,
+      "type": "com.example.protocol.QueryPlayerResp"
     }
   ]
 }
