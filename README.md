@@ -95,6 +95,7 @@ Standalone modules:
 - `asteria-cluster-pekko-kubernetes`: optional Kubernetes API discovery startup strategy.
 - `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
 - `asteria-protocol-protobuf-generator`: metadata-based generator for protobuf gateway protocol contributors.
+- `asteria-protocol-protobuf-gradle-plugin`: Gradle plugin that wires protobuf gateway/RPC metadata code generation.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
 - `asteria-persistence`: entity, mem data, data scope, data manager, persistence provider contracts.
 - `asteria-starter`: starter DSL helpers for local projects.
@@ -184,6 +185,34 @@ Gateway protobuf protocols can also be generated from metadata:
 
 The generator emits a `GeneratedProtobufGatewayProtocol` implementation that registers message ids, parsers, directions,
 and gateway routes without baking in business packet framing or login semantics.
+
+Game projects usually consume the generator through the Gradle plugin:
+
+```kotlin
+plugins {
+    id("io.github.mikai233.asteria.protobuf-protocol-codegen")
+}
+
+asteriaProtobufProtocol {
+    packageName.set("com.example.generated.protocol")
+
+    gateway {
+        enabled.set(true)
+        metadataFile.set(layout.projectDirectory.file("protocol/gateway-protocol.json"))
+        descriptorSetFile.set(layout.buildDirectory.file("generated/descriptors/main.desc"))
+        clientMetadataEnabled.set(true)
+        clientMetadataFile.set(layout.buildDirectory.file("generated/protocol/client-gateway.json"))
+    }
+
+    rpc {
+        enabled.set(true)
+        metadataFile.set(layout.projectDirectory.file("protocol/rpc-protocol.json"))
+    }
+}
+```
+
+The gateway client metadata output keeps only ids, message types, directions, and optional request/response names. Server
+route targets and entity-id fields stay server-side.
 
 Observability is optional and defaults to no-op tracing and metrics:
 

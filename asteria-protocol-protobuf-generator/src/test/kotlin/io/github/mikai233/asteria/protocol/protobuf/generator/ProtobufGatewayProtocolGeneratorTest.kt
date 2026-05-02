@@ -1,11 +1,13 @@
 package io.github.mikai233.asteria.protocol.protobuf.generator
 
+import com.google.protobuf.DescriptorProtos
 import io.github.mikai233.asteria.protocol.protobuf.ProtobufGatewayProtocolContributor
 import io.github.mikai233.asteria.protocol.protobuf.ProtobufGatewayProtocolProvider
 import kotlin.io.path.Path
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlin.io.path.readText
+import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -16,6 +18,7 @@ class ProtobufGatewayProtocolGeneratorTest {
     fun `generates gateway protobuf contributor from metadata`() {
         val workDir = createTempDirectory("asteria-gateway-protocol-generator")
         val metadata = workDir.resolve("gateway-protocol.json")
+        val descriptorSet = workDir.resolve("gateway-protocol.pb")
         val kotlinOutput = workDir.resolve("kotlin")
         val resourcesOutput = workDir.resolve("resources")
         metadata.writeText(
@@ -25,14 +28,14 @@ class ProtobufGatewayProtocolGeneratorTest {
                 {
                   "id": 1001,
                   "type": "com.example.protocol.LoginReq",
-                  "direction": "CLIENT",
-                  "target": { "type": "ENTITY", "name": "player" },
-                  "idProperty": "playerId"
+                  "direction": "C2S",
+                  "name": "login"
                 },
                 {
                   "id": 1002,
                   "type": "com.example.protocol.LoginResp",
-                  "direction": "SERVER"
+                  "direction": "S2C",
+                  "responseTo": "login"
                 },
                 {
                   "id": 1003,
@@ -40,10 +43,18 @@ class ProtobufGatewayProtocolGeneratorTest {
                   "direction": "BIDIRECTIONAL",
                   "target": { "type": "GATEWAY_LOCAL" }
                 }
+              ],
+              "routes": [
+                {
+                  "message": "com.example.protocol.LoginReq",
+                  "target": { "type": "ENTITY", "name": "player" },
+                  "idProperty": "playerId"
+                }
               ]
             }
             """.trimIndent(),
         )
+        descriptorSet.writeBytes(testDescriptorSet().toByteArray())
 
         ProtobufGatewayProtocolGenerator.generate(
             ProtobufGatewayGeneratorConfig(
@@ -52,6 +63,7 @@ class ProtobufGatewayProtocolGeneratorTest {
                 resourcesOutput = resourcesOutput,
                 packageName = "com.example.generated",
                 className = "GeneratedGatewayProtocol",
+                descriptorSet = descriptorSet,
             ),
         )
 
@@ -80,5 +92,34 @@ class ProtobufGatewayProtocolGeneratorTest {
             .resolve(ProtobufGatewayProtocolContributor::class.qualifiedName!!)
         assertTrue(contributorFile.exists())
         assertContains(contributorFile.readText(), "com.example.generated.GeneratedGatewayProtocol")
+    }
+
+    private fun testDescriptorSet(): DescriptorProtos.FileDescriptorSet {
+        val loginReq = DescriptorProtos.DescriptorProto.newBuilder()
+            .setName("LoginReq")
+            .addField(
+                DescriptorProtos.FieldDescriptorProto.newBuilder()
+                    .setName("player_id")
+                    .setNumber(1)
+                    .setType(DescriptorProtos.FieldDescriptorProto.Type.TYPE_INT64),
+            )
+        val loginResp = DescriptorProtos.DescriptorProto.newBuilder()
+            .setName("LoginResp")
+        val ping = DescriptorProtos.DescriptorProto.newBuilder()
+            .setName("Ping")
+        val file = DescriptorProtos.FileDescriptorProto.newBuilder()
+            .setName("game_protocol.proto")
+            .setPackage("com.example.protocol")
+            .setOptions(
+                DescriptorProtos.FileOptions.newBuilder()
+                    .setJavaPackage("com.example.protocol")
+                    .setJavaMultipleFiles(true),
+            )
+            .addMessageType(loginReq)
+            .addMessageType(loginResp)
+            .addMessageType(ping)
+        return DescriptorProtos.FileDescriptorSet.newBuilder()
+            .addFile(file)
+            .build()
     }
 }

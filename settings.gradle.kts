@@ -51,6 +51,7 @@ include(
     "asteria-gateway-pekko",
     "asteria-protocol-protobuf",
     "asteria-protocol-protobuf-generator",
+    "asteria-protocol-protobuf-gradle-plugin",
     "asteria-gateway-netty",
     "asteria-persistence",
     "asteria-persistence-mongodb",
@@ -114,6 +115,7 @@ mapOf(
     "asteria-gateway-core" to "gateway/asteria-gateway-core",
     "asteria-gateway-pekko" to "gateway/asteria-gateway-pekko",
     "asteria-protocol-protobuf-generator" to "asteria-protocol-protobuf-generator",
+    "asteria-protocol-protobuf-gradle-plugin" to "asteria-protocol-protobuf-gradle-plugin",
     "asteria-game-utils" to "utils/asteria-game-utils",
 ).forEach { (name, path) ->
     project(":$name").projectDir = file(path)

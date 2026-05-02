@@ -27,6 +27,7 @@
             <option value="$PROJECT_DIR$/asteria-persistence-mongodb" />
             <option value="$PROJECT_DIR$/asteria-protocol-protobuf" />
             <option value="$PROJECT_DIR$/asteria-protocol-protobuf-generator" />
+            <option value="$PROJECT_DIR$/asteria-protocol-protobuf-gradle-plugin" />
             <option value="$PROJECT_DIR$/asteria-starter" />
             <option value="$PROJECT_DIR$/broadcast/asteria-broadcast" />
             <option value="$PROJECT_DIR$/broadcast/asteria-broadcast-pekko" />
