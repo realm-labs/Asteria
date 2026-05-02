@@ -4,32 +4,37 @@ import io.github.mikai233.asteria.core.NodeRuntime
 import io.github.mikai233.asteria.core.NodeState
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.ServiceRegistry
+import io.github.mikai233.asteria.patch.PatchApplyResult
 import io.github.mikai233.asteria.patch.PatchArtifact
 import io.github.mikai233.asteria.patch.PatchCompatibility
 import io.github.mikai233.asteria.patch.PatchEnvironment
 import io.github.mikai233.asteria.patch.PatchId
+import io.github.mikai233.asteria.patch.PatchInstallContext
 import io.github.mikai233.asteria.patch.PatchRuntime
 import io.github.mikai233.asteria.patch.RuntimePatch
 import io.github.mikai233.asteria.patch.RuntimePatchPlugin
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.assertIs
 
 class MessageDispatcherTest {
     @Test
     fun dispatcherUsesCurrentRegistryHandle() = runBlocking {
         val events = mutableListOf<String>()
-        val registry = PatchableMessageHandlerRegistry(GameMessage::class, listOf(LoginHandler(events, "base")))
+        val registry = PatchableMessageHandlerRegistry<GameMessage>()
+        registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
         val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
 
         dispatcher.dispatch(context(), LoginReq("p1"))
-        runtime.apply(
-            patch("login-fix"),
-            plugin {
-                replaceHandler(registry, LoginHandler(events, "patched"))
-            },
+        assertIs<PatchApplyResult.Applied>(
+            runtime.apply(
+                patch("login-fix"),
+                plugin {
+                    replaceHandler(registry, LoginHandler(events, "patched"))
+                },
+            ),
         )
         dispatcher.dispatch(context(), LoginReq("p2"))
 
@@ -39,19 +44,18 @@ class MessageDispatcherTest {
     @Test
     fun removingPatchRestoresPreviousHandlerLayer() = runBlocking {
         val events = mutableListOf<String>()
-        val registry = PatchableMessageHandlerRegistry(GameMessage::class, listOf(LoginHandler(events, "base")))
+        val registry = PatchableMessageHandlerRegistry<GameMessage>()
+        registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
         val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
         val first = patch("first", sequence = 1)
         val second = patch("second", sequence = 2)
 
-        assertTrue(
-            runtime.apply(first, plugin { replaceHandler(registry, LoginHandler(events, "first")) })
-                is io.github.mikai233.asteria.patch.PatchApplyResult.Applied,
+        assertIs<PatchApplyResult.Applied>(
+            runtime.apply(first, plugin { replaceHandler(registry, LoginHandler(events, "first")) }),
         )
-        assertTrue(
-            runtime.apply(second, plugin { replaceHandler(registry, LoginHandler(events, "second")) })
-                is io.github.mikai233.asteria.patch.PatchApplyResult.Applied,
+        assertIs<PatchApplyResult.Applied>(
+            runtime.apply(second, plugin { replaceHandler(registry, LoginHandler(events, "second")) }),
         )
         dispatcher.dispatch(context(), LoginReq("p1"))
 
@@ -81,9 +85,9 @@ class MessageDispatcherTest {
         )
     }
 
-    private fun plugin(block: io.github.mikai233.asteria.patch.PatchInstallContext.() -> Unit): RuntimePatchPlugin {
+    private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {
         return object : RuntimePatchPlugin {
-            override suspend fun install(context: io.github.mikai233.asteria.patch.PatchInstallContext) {
+            override suspend fun install(context: PatchInstallContext) {
                 context.block()
             }
         }
@@ -105,10 +109,9 @@ class MessageDispatcherTest {
     private class LoginHandler(
         private val events: MutableList<String>,
         private val name: String,
-    ) : MessageHandler {
-        @Handle
-        fun login(context: HandlerContext, req: LoginReq) {
-            events += "$name:${req.playerId}"
+    ) : MessageHandler<LoginReq> {
+        override fun handle(context: HandlerContext, message: LoginReq) {
+            events += "$name:${message.playerId}"
         }
     }
 }

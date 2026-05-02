@@ -5,5 +5,4 @@ plugins {
 dependencies {
     api(project(":foundation:foundation-core"))
     api(project(":patch:patch-core"))
-    api(libs.kotlin.reflect)
 }
