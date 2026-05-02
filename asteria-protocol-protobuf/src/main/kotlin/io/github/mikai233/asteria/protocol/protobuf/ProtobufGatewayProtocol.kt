@@ -5,7 +5,7 @@ import com.google.protobuf.Parser
 import io.github.mikai233.asteria.gateway.GatewayRoute
 import io.github.mikai233.asteria.gateway.GatewayRouteResolver
 import io.github.mikai233.asteria.gateway.GatewaySessionContext
-import io.github.mikai233.asteria.message.RouteRegistry
+import io.github.mikai233.asteria.message.ProtocolRouteRegistry
 import io.github.mikai233.asteria.message.RouteRegistryBuilder
 import io.github.mikai233.asteria.message.RouteTarget
 import kotlin.reflect.KClass
@@ -18,7 +18,7 @@ import kotlin.reflect.KClass
  */
 class ProtobufGatewayProtocol(
     val protocolRegistry: ProtobufProtocolRegistry,
-    val routeRegistry: RouteRegistry,
+    val routeRegistry: ProtocolRouteRegistry,
 ) {
     val routeResolver: GatewayRouteResolver<ClientProtoEnvelope> =
         ProtobufGatewayRouteResolver(protocolRegistry, routeRegistry)
@@ -29,7 +29,7 @@ class ProtobufGatewayProtocol(
  */
 class ProtobufGatewayRouteResolver(
     private val protocolRegistry: ProtobufProtocolRegistry,
-    private val routeRegistry: RouteRegistry,
+    private val routeRegistry: ProtocolRouteRegistry,
 ) : GatewayRouteResolver<ClientProtoEnvelope> {
     override suspend fun resolve(context: GatewaySessionContext, packet: ClientProtoEnvelope): GatewayRoute {
         val direction = protocolRegistry.directionFor(packet.id)
@@ -114,7 +114,7 @@ class ProtobufGatewayProtocolBuilder {
 
     private fun validateInboundRoutes(
         protocolRegistry: ProtobufProtocolRegistry,
-        routeRegistry: RouteRegistry,
+        routeRegistry: ProtocolRouteRegistry,
     ) {
         routeRegistry.all().forEach { route ->
             val messageClass = route.messageType.java.asSubclass(GeneratedMessage::class.java)

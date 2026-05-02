@@ -11,6 +11,8 @@ import io.github.mikai233.asteria.gateway.GatewaySession
 import io.github.mikai233.asteria.gateway.GatewaySessionContext
 import io.github.mikai233.asteria.gateway.GatewaySessionId
 import io.github.mikai233.asteria.gateway.GatewayTransportKind
+import io.github.mikai233.asteria.message.DynamicRouteRegistry
+import io.github.mikai233.asteria.message.ProtocolRoute
 import io.github.mikai233.asteria.message.RouteTarget
 import kotlinx.coroutines.runBlocking
 import java.net.SocketAddress
@@ -101,6 +103,30 @@ class ProtobufProtocolRegistryTest {
         assertEquals(1001, frame.id)
         assertEquals(message, envelope.message)
         assertEquals(RouteTarget.GatewayLocal, route.target)
+    }
+
+    @Test
+    fun `gateway route resolver sees dynamic route replacement`() = runBlocking {
+        val protocolRegistry = ProtobufProtocolRegistry(
+            listOf(
+                ProtoMapping(1001, ProtoDirection.CLIENT_TO_SERVER, StringValue::class, StringValue.parser()),
+            ),
+        )
+        val routes = DynamicRouteRegistry(
+            listOf(
+                ProtocolRoute(StringValue::class, RouteTarget.GatewayLocal),
+            ),
+        )
+        val resolver = ProtobufGatewayRouteResolver(protocolRegistry, routes)
+        val envelope = protocolRegistry.decode(ProtoFrame(1001, StringValue.of("p1").toByteArray()))
+
+        val before = resolver.resolve(testContext(), envelope)
+        routes.replace(ProtocolRoute(StringValue::class, RouteTarget.Entity(EntityKind("player"))) { it.value })
+        val after = resolver.resolve(testContext(), envelope)
+
+        assertEquals(RouteTarget.GatewayLocal, before.target)
+        assertEquals(RouteTarget.Entity(EntityKind("player")), after.target)
+        assertEquals("p1", after.entityId)
     }
 }
 

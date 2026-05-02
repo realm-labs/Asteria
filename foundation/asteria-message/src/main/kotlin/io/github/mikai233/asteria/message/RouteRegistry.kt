@@ -3,6 +3,7 @@ package io.github.mikai233.asteria.message
 import io.github.mikai233.asteria.core.EntityKind
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.SingletonName
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.reflect.KClass
 
 sealed interface RouteTarget {
@@ -29,19 +30,72 @@ data class ProtocolRoute<M : Any>(
 
 class RouteRegistry(
     routes: Iterable<ProtocolRoute<*>> = emptyList(),
-) {
-    private val routesByMessageType: Map<KClass<*>, ProtocolRoute<*>> = buildMap {
-        routes.forEach { route ->
-            val previous = put(route.messageType, route)
-            check(previous == null) {
-                "duplicate protocol route for ${route.messageType.qualifiedName}"
+) : ProtocolRouteRegistry {
+    private val routesByMessageType: Map<KClass<*>, ProtocolRoute<*>> = protocolRoutesByMessageType(routes)
+
+    override fun routeFor(messageType: KClass<*>): ProtocolRoute<*>? = routesByMessageType[messageType]
+
+    override fun all(): Collection<ProtocolRoute<*>> = routesByMessageType.values
+}
+
+interface ProtocolRouteRegistry {
+    fun routeFor(messageType: KClass<*>): ProtocolRoute<*>?
+
+    fun all(): Collection<ProtocolRoute<*>>
+}
+
+/**
+ * Runtime-mutable route registry.
+ *
+ * Use this when a GM command or script needs to temporarily redirect a protocol message, for example from a world singleton
+ * to player shard entities. Updates replace the complete route for one message type atomically, so each inbound packet sees
+ * either the old route or the new route.
+ */
+class DynamicRouteRegistry(
+    routes: Iterable<ProtocolRoute<*>> = emptyList(),
+) : ProtocolRouteRegistry {
+    private val routesByMessageType = AtomicReference(protocolRoutesByMessageType(routes))
+
+    override fun routeFor(messageType: KClass<*>): ProtocolRoute<*>? {
+        return routesByMessageType.get()[messageType]
+    }
+
+    override fun all(): Collection<ProtocolRoute<*>> {
+        return routesByMessageType.get().values
+    }
+
+    fun replace(route: ProtocolRoute<*>): ProtocolRoute<*>? {
+        while (true) {
+            val current = routesByMessageType.get()
+            val previous = current[route.messageType]
+            val updated = current + (route.messageType to route)
+            if (routesByMessageType.compareAndSet(current, updated)) {
+                return previous
             }
         }
     }
 
-    fun routeFor(messageType: KClass<*>): ProtocolRoute<*>? = routesByMessageType[messageType]
+    inline fun <reified M : Any> replace(
+        target: RouteTarget,
+        noinline idResolver: ((M) -> Any?)? = null,
+    ): ProtocolRoute<*>? {
+        return replace(ProtocolRoute(M::class, target, idResolver))
+    }
 
-    fun all(): Collection<ProtocolRoute<*>> = routesByMessageType.values
+    fun remove(messageType: KClass<*>): ProtocolRoute<*>? {
+        while (true) {
+            val current = routesByMessageType.get()
+            val previous = current[messageType] ?: return null
+            val updated = current - messageType
+            if (routesByMessageType.compareAndSet(current, updated)) {
+                return previous
+            }
+        }
+    }
+
+    inline fun <reified M : Any> remove(): ProtocolRoute<*>? = remove(M::class)
+
+    fun snapshot(): RouteRegistry = RouteRegistry(all())
 }
 
 class RouteRegistryBuilder {
@@ -63,4 +117,15 @@ class RouteRegistryBuilder {
     }
 
     fun build(): RouteRegistry = RouteRegistry(routes)
+}
+
+private fun protocolRoutesByMessageType(
+    routes: Iterable<ProtocolRoute<*>>,
+): Map<KClass<*>, ProtocolRoute<*>> = buildMap {
+    routes.forEach { route ->
+        val previous = put(route.messageType, route)
+        check(previous == null) {
+            "duplicate protocol route for ${route.messageType.qualifiedName}"
+        }
+    }
 }
