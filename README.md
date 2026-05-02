@@ -105,6 +105,19 @@ snapshot, rebuilds runtime components, runs validators, uploads raw artifacts, w
 only then advances the `current` pointer in the config center. Consumers should watch the current pointer instead of
 guessing which revision directory is newest.
 
+Runtime nodes load the current publication through the consumer. The consumer reads the current pointer, loads the
+manifest it references, validates every artifact size and checksum, and can hand the raw files to Luban without creating
+temporary files:
+
+```kotlin
+install(ConfigModule {
+    loader(configPublicationLubanBinaryLoader<GameTables>(configStore))
+    hotReload {
+        trigger(configPublicationReloadTrigger(configStore))
+    }
+})
+```
+
 Observability modules:
 
 - `:observability:observability-core`: optional tracing, metrics, trace context, no-op defaults, and module registration.

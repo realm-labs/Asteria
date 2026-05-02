@@ -114,7 +114,7 @@ private fun List<ConfigPublicationArtifact>.distinctArtifacts(): List<ConfigPubl
     }
 }
 
-private fun sha256(bytes: ByteArray): String {
+internal fun sha256(bytes: ByteArray): String {
     return MessageDigest.getInstance("SHA-256")
         .digest(bytes)
         .joinToString("") { "%02x".format(it) }

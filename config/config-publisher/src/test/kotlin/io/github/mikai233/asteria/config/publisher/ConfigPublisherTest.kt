@@ -3,18 +3,24 @@ package io.github.mikai233.asteria.config.publisher
 import io.github.mikai233.asteria.config.ConfigRevision
 import io.github.mikai233.asteria.config.ConfigValidationException
 import io.github.mikai233.asteria.config.DefaultConfigSnapshot
+import io.github.mikai233.asteria.config.requireComponent
 import io.github.mikai233.asteria.config.configComponentBuilder
 import io.github.mikai233.asteria.config.configValidator
 import io.github.mikai233.asteria.config.center.InMemoryConfigStore
 import io.github.mikai233.asteria.config.center.JacksonConfigCodec
 import io.github.mikai233.asteria.config.center.RuntimeConfigRepository
 import io.github.mikai233.asteria.config.center.configPath
+import io.github.mikai233.asteria.config.luban.LubanBinaryConfigLoader
 import io.github.mikai233.asteria.config.mapConfigTable
 import java.nio.file.Files
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -74,6 +80,157 @@ class ConfigPublisherTest {
     }
 
     @Test
+    fun `consumer loads current publication as luban memory source`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val layout = ConfigPublicationLayout(configPath("/game/config"))
+        val revision = ConfigRevision("2026.05.02", "checksum-1")
+        ConfigPublisher(
+            loader = {
+                DefaultConfigSnapshot(
+                    revision = revision,
+                    tables = listOf(mapConfigTable("items", mapOf(1 to ItemConfig(1)))),
+                )
+            },
+            artifactSource = ConfigArtifactSource {
+                listOf(ConfigPublicationArtifact("item_tbitem.bytes", "1:Sword\n2:Potion".toByteArray()))
+            },
+            store = store,
+            layout = layout,
+        ).publish()
+
+        val bundle = ConfigPublicationConsumer(store, layout).loadCurrent()
+        val snapshot = LubanBinaryConfigLoader(
+            tablesType = FakeBinaryTables::class,
+            dataSource = bundle.lubanDataSource(),
+        ).load()
+
+        assertEquals(revision, bundle.manifest.revision)
+        assertEquals("Sword", snapshot.requireComponent<FakeBinaryTbItem>().get(1).name)
+        assertEquals("Potion", snapshot.requireComponent<FakeBinaryTbItem>().get(2).name)
+    }
+
+    @Test
+    fun `publication luban loader uses published revision`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val layout = ConfigPublicationLayout(configPath("/game/config"))
+        val revision = ConfigRevision("2026.05.02", "published-revision")
+        ConfigPublisher(
+            loader = {
+                DefaultConfigSnapshot(
+                    revision = revision,
+                    tables = listOf(mapConfigTable("items", mapOf(1 to ItemConfig(1)))),
+                )
+            },
+            artifactSource = ConfigArtifactSource {
+                listOf(ConfigPublicationArtifact("item_tbitem.bytes", "1:Sword".toByteArray()))
+            },
+            store = store,
+            layout = layout,
+        ).publish()
+
+        val snapshot = configPublicationLubanBinaryLoader<FakeBinaryTables>(store, layout).load()
+
+        assertEquals(revision, snapshot.revision)
+        assertEquals("Sword", snapshot.requireComponent<FakeBinaryTbItem>().get(1).name)
+    }
+
+    @Test
+    fun `publication reload trigger emits after current pointer moves`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val layout = ConfigPublicationLayout(configPath("/game/config"))
+        val revision = ConfigRevision("2026.05.02", "checksum-1")
+        val signal = async {
+            withTimeout(1_000) {
+                configPublicationReloadTrigger(store, layout).events().first()
+            }
+        }
+        yield()
+
+        ConfigPublisher(
+            loader = { DefaultConfigSnapshot(revision = revision) },
+            artifactSource = ConfigArtifactSource {
+                listOf(ConfigPublicationArtifact("items.bytes", "items".toByteArray()))
+            },
+            store = store,
+            layout = layout,
+        ).publish()
+
+        val emitted = signal.await()
+        assertEquals("config_center_upserted", emitted.reason)
+        assertEquals(layout.currentPath.value, emitted.source)
+    }
+
+    @Test
+    fun `consumer rejects corrupted artifact checksum`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val layout = ConfigPublicationLayout(configPath("/game/config"))
+        val revision = ConfigRevision("2026.05.02", "checksum-1")
+        ConfigPublisher(
+            loader = { DefaultConfigSnapshot(revision = revision) },
+            artifactSource = ConfigArtifactSource {
+                listOf(ConfigPublicationArtifact("items.bytes", "items".toByteArray()))
+            },
+            store = store,
+            layout = layout,
+        ).publish()
+        store.put(layout.artifactPath(revision, "items.bytes"), "corrupted".toByteArray())
+
+        assertFailsWith<ConfigPublicationValidationException> {
+            ConfigPublicationConsumer(store, layout).loadCurrent()
+        }
+    }
+
+    @Test
+    fun `consumer rejects missing artifact`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val layout = ConfigPublicationLayout(configPath("/game/config"))
+        val revision = ConfigRevision("2026.05.02", "checksum-1")
+        ConfigPublisher(
+            loader = { DefaultConfigSnapshot(revision = revision) },
+            artifactSource = ConfigArtifactSource {
+                listOf(ConfigPublicationArtifact("items.bytes", "items".toByteArray()))
+            },
+            store = store,
+            layout = layout,
+        ).publish()
+        store.delete(layout.artifactPath(revision, "items.bytes"))
+
+        assertFailsWith<ConfigPublicationNotFoundException> {
+            ConfigPublicationConsumer(store, layout).loadCurrent()
+        }
+    }
+
+    @Test
+    fun `consumer rejects current pointer with different manifest revision`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val layout = ConfigPublicationLayout(configPath("/game/config"))
+        val revision = ConfigRevision("2026.05.02", "checksum-1")
+        val other = ConfigRevision("2026.05.03", "checksum-2")
+        val repository = RuntimeConfigRepository(store, JacksonConfigCodec())
+        repository.put(
+            layout.manifestPath(revision),
+            ConfigPublicationManifest(
+                revision = revision,
+                generatedAt = Instant.parse("2026-05-02T00:00:00Z"),
+                tables = emptyList(),
+                artifacts = emptyList(),
+            ),
+        )
+        repository.put(
+            layout.currentPath,
+            CurrentConfigPublication(
+                revision = other,
+                manifestPath = layout.manifestPath(revision).value,
+                publishedAt = Instant.parse("2026-05-02T00:00:00Z"),
+            ),
+        )
+
+        assertFailsWith<ConfigPublicationValidationException> {
+            ConfigPublicationConsumer(store, layout).loadCurrent()
+        }
+    }
+
+    @Test
     fun `does not publish when validation fails`() = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
@@ -103,4 +260,39 @@ class ConfigPublisherTest {
 
 private data class ItemConfig(
     val id: Int,
+)
+
+class FakeBinaryTables(loader: IByteBufLoader) {
+    private val tbItem = FakeBinaryTbItem(loader.load("item_tbitem"))
+
+    fun getTbItem(): FakeBinaryTbItem = tbItem
+
+    fun interface IByteBufLoader {
+        fun load(file: String): FakeByteBuf
+    }
+}
+
+class FakeByteBuf(
+    val bytes: ByteArray,
+)
+
+class FakeBinaryTbItem(byteBuf: FakeByteBuf) {
+    private val rows: Map<Int, FakeBinaryItemConfig> = byteBuf.bytes
+        .decodeToString()
+        .lineSequence()
+        .filter { it.isNotBlank() }
+        .associate { line ->
+            val parts = line.split(":", limit = 2)
+            val item = FakeBinaryItemConfig(parts[0].toInt(), parts[1])
+            item.id to item
+        }
+
+    fun get(id: Int): FakeBinaryItemConfig {
+        return rows.getValue(id)
+    }
+}
+
+data class FakeBinaryItemConfig(
+    val id: Int,
+    val name: String,
 )
