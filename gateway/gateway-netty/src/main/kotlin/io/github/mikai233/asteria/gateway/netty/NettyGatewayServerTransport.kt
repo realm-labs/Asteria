@@ -4,6 +4,9 @@ import io.github.mikai233.asteria.gateway.GatewayFrame
 import io.github.mikai233.asteria.gateway.GatewayServerTransport
 import io.github.mikai233.asteria.gateway.GatewayTransportHandler
 import io.github.mikai233.asteria.gateway.GatewayTransportKind
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import io.netty.bootstrap.ServerBootstrap
 import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
@@ -29,6 +32,7 @@ import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import org.slf4j.LoggerFactory
 
 data class NettyGatewayServerOptions(
     val host: String = "0.0.0.0",
@@ -85,33 +89,77 @@ abstract class NettyGatewayServerTransport(
     final override val kind: GatewayTransportKind,
     protected val options: NettyGatewayServerOptions,
     protected val scope: CoroutineScope = CoroutineScope(Dispatchers.Default),
+    protected val metrics: Metrics = NoopMetrics,
 ) : GatewayServerTransport {
+    private val logger = LoggerFactory.getLogger(NettyGatewayServerTransport::class.java)
     private var bossGroup: EventLoopGroup? = null
     private var workerGroup: EventLoopGroup? = null
     private var channel: Channel? = null
 
     final override suspend fun start(handler: GatewayTransportHandler) {
         check(channel == null) { "gateway transport $kind is already started" }
+        val startedAt = System.nanoTime()
         val eventLoop = NettyEventLoopResources.create(options)
-        bossGroup = eventLoop.bossGroup
-        workerGroup = eventLoop.workerGroup
-        channel = ServerBootstrap()
-            .group(eventLoop.bossGroup, eventLoop.workerGroup)
-            .channel(eventLoop.serverChannelType)
-            .applyOptions(options)
-            .childHandler(initializer(handler))
-            .bind(options.host, options.port)
-            .syncUninterruptibly()
-            .channel()
+        val tags = metricTags(eventLoop.backend)
+        metrics.counter("asteria.gateway.netty.start.total", tags).increment()
+        try {
+            bossGroup = eventLoop.bossGroup
+            workerGroup = eventLoop.workerGroup
+            channel = ServerBootstrap()
+                .group(eventLoop.bossGroup, eventLoop.workerGroup)
+                .channel(eventLoop.serverChannelType)
+                .applyOptions(options)
+                .childHandler(initializer(handler))
+                .bind(options.host, options.port)
+                .syncUninterruptibly()
+                .channel()
+            metrics.counter("asteria.gateway.netty.start.succeeded.total", tags).increment()
+            logger.info(
+                "Netty gateway transport started kind={} host={} port={} backend={}",
+                kind.name,
+                options.host,
+                options.port,
+                eventLoop.backend.name,
+            )
+        } catch (error: Throwable) {
+            metrics.counter("asteria.gateway.netty.start.failed.total", tags).increment()
+            logger.error(
+                "Netty gateway transport failed to start kind={} host={} port={} backend={}",
+                kind.name,
+                options.host,
+                options.port,
+                eventLoop.backend.name,
+                error,
+            )
+            stop()
+            throw error
+        } finally {
+            metrics.timer("asteria.gateway.netty.start.duration", tags)
+                .record((System.nanoTime() - startedAt) / 1_000_000)
+        }
     }
 
     final override suspend fun stop() {
-        channel?.close()?.syncUninterruptibly()
-        channel = null
-        workerGroup?.shutdownGracefully()?.syncUninterruptibly()
-        bossGroup?.shutdownGracefully()?.syncUninterruptibly()
-        workerGroup = null
-        bossGroup = null
+        val startedAt = System.nanoTime()
+        val tags = metricTags()
+        metrics.counter("asteria.gateway.netty.stop.total", tags).increment()
+        try {
+            channel?.close()?.syncUninterruptibly()
+            channel = null
+            workerGroup?.shutdownGracefully()?.syncUninterruptibly()
+            bossGroup?.shutdownGracefully()?.syncUninterruptibly()
+            workerGroup = null
+            bossGroup = null
+            metrics.counter("asteria.gateway.netty.stop.succeeded.total", tags).increment()
+            logger.info("Netty gateway transport stopped kind={} host={} port={}", kind.name, options.host, options.port)
+        } catch (error: Throwable) {
+            metrics.counter("asteria.gateway.netty.stop.failed.total", tags).increment()
+            logger.error("Netty gateway transport failed to stop kind={} host={} port={}", kind.name, options.host, options.port, error)
+            throw error
+        } finally {
+            metrics.timer("asteria.gateway.netty.stop.duration", tags)
+                .record((System.nanoTime() - startedAt) / 1_000_000)
+        }
     }
 
     final override fun close() {
@@ -121,6 +169,13 @@ abstract class NettyGatewayServerTransport(
     }
 
     protected abstract fun initializer(handler: GatewayTransportHandler): ChannelInitializer<SocketChannel>
+
+    protected fun metricTags(backend: NettyEventLoopBackend? = null): MetricTags {
+        return MetricTags.of(
+            "transport" to kind.name,
+            "backend" to (backend?.name ?: options.eventLoopBackend.name),
+        )
+    }
 }
 
 private fun ServerBootstrap.applyOptions(options: NettyGatewayServerOptions): ServerBootstrap {
@@ -158,6 +213,7 @@ private data class NettyEventLoopResources(
     val bossGroup: EventLoopGroup,
     val workerGroup: EventLoopGroup,
     val serverChannelType: Class<out ServerChannel>,
+    val backend: NettyEventLoopBackend,
 ) {
     companion object {
         fun create(options: NettyGatewayServerOptions): NettyEventLoopResources {
@@ -166,18 +222,21 @@ private data class NettyEventLoopResources(
                     bossGroup = MultiThreadIoEventLoopGroup(options.bossThreads, NioIoHandler.newFactory()),
                     workerGroup = MultiThreadIoEventLoopGroup(options.workerThreads, NioIoHandler.newFactory()),
                     serverChannelType = NioServerSocketChannel::class.java,
+                    backend = backend,
                 )
 
                 NettyEventLoopBackend.EPOLL -> NettyEventLoopResources(
                     bossGroup = MultiThreadIoEventLoopGroup(options.bossThreads, EpollIoHandler.newFactory()),
                     workerGroup = MultiThreadIoEventLoopGroup(options.workerThreads, EpollIoHandler.newFactory()),
                     serverChannelType = EpollServerSocketChannel::class.java,
+                    backend = backend,
                 )
 
                 NettyEventLoopBackend.KQUEUE -> NettyEventLoopResources(
                     bossGroup = MultiThreadIoEventLoopGroup(options.bossThreads, KQueueIoHandler.newFactory()),
                     workerGroup = MultiThreadIoEventLoopGroup(options.workerThreads, KQueueIoHandler.newFactory()),
                     serverChannelType = KQueueServerSocketChannel::class.java,
+                    backend = backend,
                 )
 
                 NettyEventLoopBackend.AUTO -> error("unresolved Netty event loop backend $backend")
@@ -211,7 +270,8 @@ private data class NettyEventLoopResources(
 class NettyTcpGatewayServerTransport(
     options: NettyGatewayServerOptions,
     scope: CoroutineScope = CoroutineScope(Dispatchers.Default),
-) : NettyGatewayServerTransport(GatewayTransportKind.TCP, options, scope) {
+    metrics: Metrics = NoopMetrics,
+) : NettyGatewayServerTransport(GatewayTransportKind.TCP, options, scope, metrics) {
     override fun initializer(handler: GatewayTransportHandler): ChannelInitializer<SocketChannel> {
         return object : ChannelInitializer<SocketChannel>() {
             override fun initChannel(ch: SocketChannel) {
@@ -223,6 +283,7 @@ class NettyTcpGatewayServerTransport(
                             transport = GatewayTransportKind.TCP,
                             scope = scope,
                             handler = handler,
+                            metrics = metrics,
                             writer = ::writeByteBuf,
                         ),
                     )
@@ -234,7 +295,8 @@ class NettyTcpGatewayServerTransport(
 class NettyWebSocketGatewayServerTransport(
     options: NettyGatewayServerOptions,
     scope: CoroutineScope = CoroutineScope(Dispatchers.Default),
-) : NettyGatewayServerTransport(GatewayTransportKind.WEBSOCKET, options, scope) {
+    metrics: Metrics = NoopMetrics,
+) : NettyGatewayServerTransport(GatewayTransportKind.WEBSOCKET, options, scope, metrics) {
     override fun initializer(handler: GatewayTransportHandler): ChannelInitializer<SocketChannel> {
         return object : ChannelInitializer<SocketChannel>() {
             override fun initChannel(ch: SocketChannel) {
@@ -248,6 +310,7 @@ class NettyWebSocketGatewayServerTransport(
                             transport = GatewayTransportKind.WEBSOCKET,
                             scope = scope,
                             handler = handler,
+                            metrics = metrics,
                             writer = ::writeWebSocketFrame,
                         ),
                     )

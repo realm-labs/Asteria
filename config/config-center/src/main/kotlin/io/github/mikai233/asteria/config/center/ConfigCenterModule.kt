@@ -3,6 +3,7 @@ package io.github.mikai233.asteria.config.center
 import io.github.mikai233.asteria.core.AsteriaDsl
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
+import io.github.mikai233.asteria.observability.metricsOrNoop
 
 class ConfigCenterModule private constructor(
     private val options: ConfigCenterModuleOptions,
@@ -15,7 +16,7 @@ class ConfigCenterModule private constructor(
 
         val codec = options.codec
         context.services.register(ConfigCodec::class, codec)
-        context.services.register(RuntimeConfigRepository::class, RuntimeConfigRepository(store, codec))
+        context.services.register(RuntimeConfigRepository::class, RuntimeConfigRepository(store, codec, context.metricsOrNoop()))
     }
 
     companion object {

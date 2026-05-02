@@ -13,6 +13,9 @@ import com.mongodb.client.model.Updates.set
 import com.mongodb.kotlin.client.coroutine.MongoCollection
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.mikai233.asteria.core.RoleKey
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import io.github.mikai233.asteria.patch.PatchArtifact
 import io.github.mikai233.asteria.patch.PatchCompatibility
 import io.github.mikai233.asteria.patch.PatchId
@@ -25,64 +28,95 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.toList
 import org.bson.Document
 import org.bson.conversions.Bson
+import org.slf4j.LoggerFactory
 
 class MongoRuntimePatchRepository(
     database: MongoDatabase,
     patchesCollectionName: String = "runtime_patches",
     countersCollectionName: String = "runtime_patch_counters",
+    private val metrics: Metrics = NoopMetrics,
 ) : RuntimePatchRepository {
+    private val logger = LoggerFactory.getLogger(MongoRuntimePatchRepository::class.java)
     private val patches: MongoCollection<Document> = database.getCollection(patchesCollectionName)
     private val counters: MongoCollection<Document> = database.getCollection(countersCollectionName)
 
     suspend fun ensureIndexes() {
-        patches.createIndex(Indexes.ascending("status"))
-        patches.createIndex(Indexes.compoundIndex(Indexes.ascending("compatibility.appName"), Indexes.ascending("status")))
-        patches.createIndex(
-            Indexes.compoundIndex(
-                Indexes.ascending("priority"),
-                Indexes.ascending("sequence"),
-                Indexes.ascending("_id"),
-            ),
-        )
-        counters.createIndex(Indexes.ascending("_id"), IndexOptions().unique(true))
+        measured("ensure_indexes") {
+            patches.createIndex(Indexes.ascending("status"))
+            patches.createIndex(Indexes.compoundIndex(Indexes.ascending("compatibility.appName"), Indexes.ascending("status")))
+            patches.createIndex(
+                Indexes.compoundIndex(
+                    Indexes.ascending("priority"),
+                    Indexes.ascending("sequence"),
+                    Indexes.ascending("_id"),
+                ),
+            )
+            counters.createIndex(Indexes.ascending("_id"), IndexOptions().unique(true))
+        }
     }
 
     override suspend fun nextSequence(): Long {
-        val updated = counters.findOneAndUpdate(
-            eq("_id", SEQUENCE_COUNTER_ID),
-            inc("value", 1),
-            FindOneAndUpdateOptions()
-                .upsert(true)
-                .returnDocument(ReturnDocument.AFTER),
-        )
-        return requireNotNull(updated).requiredNumber("value").toLong()
+        return measured("next_sequence") {
+            val updated = counters.findOneAndUpdate(
+                eq("_id", SEQUENCE_COUNTER_ID),
+                inc("value", 1),
+                FindOneAndUpdateOptions()
+                    .upsert(true)
+                    .returnDocument(ReturnDocument.AFTER),
+            )
+            requireNotNull(updated).requiredNumber("value").toLong()
+        }
     }
 
     override suspend fun save(patch: RuntimePatch) {
-        patches.replaceOne(
-            eq("_id", patch.id.value),
-            patch.toDocument(),
-            ReplaceOptions().upsert(true),
-        )
+        measured("save") {
+            patches.replaceOne(
+                eq("_id", patch.id.value),
+                patch.toDocument(),
+                ReplaceOptions().upsert(true),
+            )
+        }
     }
 
     override suspend fun find(id: PatchId): RuntimePatch? {
-        return patches.find(eq("_id", id.value)).firstOrNull()?.toRuntimePatch()
+        return measured("find") {
+            patches.find(eq("_id", id.value)).firstOrNull()?.toRuntimePatch()
+        }
     }
 
     override suspend fun list(query: RuntimePatchQuery): List<RuntimePatch> {
-        return patches.find(query.toFilter())
-            .sort(Sorts.ascending("priority", "sequence", "_id"))
-            .toList()
-            .map { it.toRuntimePatch() }
+        return measured("list") {
+            patches.find(query.toFilter())
+                .sort(Sorts.ascending("priority", "sequence", "_id"))
+                .toList()
+                .map { it.toRuntimePatch() }
+        }
     }
 
     override suspend fun updateStatus(id: PatchId, status: PatchStatus): RuntimePatch? {
-        return patches.findOneAndUpdate(
-            eq("_id", id.value),
-            set("status", status.name),
-            FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER),
-        )?.toRuntimePatch()
+        return measured("update_status") {
+            patches.findOneAndUpdate(
+                eq("_id", id.value),
+                set("status", status.name),
+                FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER),
+            )?.toRuntimePatch()
+        }
+    }
+
+    private suspend fun <T> measured(operation: String, block: suspend () -> T): T {
+        val tags = MetricTags.of("operation" to operation)
+        val startedAt = System.nanoTime()
+        metrics.counter("asteria.patch.mongodb.repository.operation.total", tags).increment()
+        try {
+            return block()
+        } catch (error: Throwable) {
+            metrics.counter("asteria.patch.mongodb.repository.operation.failed.total", tags).increment()
+            logger.error("Mongo patch repository operation failed operation={}", operation, error)
+            throw error
+        } finally {
+            metrics.timer("asteria.patch.mongodb.repository.operation.duration", tags)
+                .record((System.nanoTime() - startedAt) / 1_000_000)
+        }
     }
 
     private fun RuntimePatchQuery.toFilter(): Bson {

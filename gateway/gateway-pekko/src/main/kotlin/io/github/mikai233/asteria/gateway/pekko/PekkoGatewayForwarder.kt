@@ -6,9 +6,13 @@ import io.github.mikai233.asteria.gateway.GatewayForwarder
 import io.github.mikai233.asteria.gateway.GatewayRoute
 import io.github.mikai233.asteria.gateway.GatewaySessionContext
 import io.github.mikai233.asteria.message.RouteTarget
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSelection
 import org.apache.pekko.actor.ActorSystem
+import org.slf4j.LoggerFactory
 
 /**
  * Converts an inbound gateway packet into actor messages.
@@ -60,34 +64,60 @@ class PekkoGatewayForwarder<P : Any>(
     private val messageFactory: PekkoGatewayMessageFactory<P> = DirectPekkoGatewayMessageFactory(),
     private val localHandler: PekkoGatewayLocalHandler<P>? = null,
     private val sender: ActorRef? = null,
+    private val metrics: Metrics = NoopMetrics,
 ) : GatewayForwarder<P> {
+    private val logger = LoggerFactory.getLogger(PekkoGatewayForwarder::class.java)
+
     override suspend fun forward(context: GatewaySessionContext, route: GatewayRoute, packet: P) {
-        when (val target = route.target) {
-            is RouteTarget.Entity -> {
-                val ref = shards[target.kind]
-                ref.tell(messageFactory.entityMessage(context, route, packet), sender)
-            }
-
-            is RouteTarget.Singleton -> {
-                val ref = singletons[target.name]
-                ref.tell(messageFactory.singletonMessage(context, route, packet), sender)
-            }
-
-            is RouteTarget.Service -> {
-                val selection = serviceSelection(target)
-                selection.tell(messageFactory.serviceMessage(context, route, packet), sender)
-            }
-
-            RouteTarget.GatewayLocal -> {
-                val handler = requireNotNull(localHandler) {
-                    "gateway local handler is required for ${RouteTarget.GatewayLocal}"
+        val tags = route.target.metricTags()
+        val startedAt = System.nanoTime()
+        metrics.counter("asteria.gateway.pekko.forward.total", tags).increment()
+        try {
+            when (val target = route.target) {
+                is RouteTarget.Entity -> {
+                    val ref = shards[target.kind]
+                    ref.tell(messageFactory.entityMessage(context, route, packet), sender)
                 }
-                handler.handle(context, route, packet)
+
+                is RouteTarget.Singleton -> {
+                    val ref = singletons[target.name]
+                    ref.tell(messageFactory.singletonMessage(context, route, packet), sender)
+                }
+
+                is RouteTarget.Service -> {
+                    val selection = serviceSelection(target)
+                    selection.tell(messageFactory.serviceMessage(context, route, packet), sender)
+                }
+
+                RouteTarget.GatewayLocal -> {
+                    val handler = requireNotNull(localHandler) {
+                        "gateway local handler is required for ${RouteTarget.GatewayLocal}"
+                    }
+                    handler.handle(context, route, packet)
+                }
             }
+            metrics.counter("asteria.gateway.pekko.forward.succeeded.total", tags).increment()
+        } catch (error: Throwable) {
+            metrics.counter("asteria.gateway.pekko.forward.failed.total", tags).increment()
+            logger.error("Pekko gateway forward failed target={}", tags.asMap()["target"], error)
+            throw error
+        } finally {
+            metrics.timer("asteria.gateway.pekko.forward.duration", tags)
+                .record((System.nanoTime() - startedAt) / 1_000_000)
         }
     }
 
     private fun serviceSelection(target: RouteTarget.Service): ActorSelection {
         return system.actorSelection(target.path)
     }
+}
+
+private fun RouteTarget.metricTags(): MetricTags {
+    val target = when (this) {
+        is RouteTarget.Entity -> "entity"
+        RouteTarget.GatewayLocal -> "local"
+        is RouteTarget.Service -> "service"
+        is RouteTarget.Singleton -> "singleton"
+    }
+    return MetricTags.of("target" to target)
 }

@@ -10,9 +10,12 @@ import io.github.mikai233.asteria.config.center.ConfigRevision
 import io.github.mikai233.asteria.config.center.ConfigStore
 import io.github.mikai233.asteria.config.center.JacksonConfigCodec
 import io.github.mikai233.asteria.config.center.RuntimeConfigRepository
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
+import org.slf4j.LoggerFactory
 
 /**
  * Validates a config export and publishes its raw artifacts to a config center.
@@ -34,43 +37,66 @@ class ConfigPublisher(
     private val validators: List<ConfigValidator> = emptyList(),
     private val componentBuilders: List<ConfigComponentBuilder<*>> = emptyList(),
     private val clock: Clock = Clock.systemUTC(),
+    private val metrics: Metrics = NoopMetrics,
 ) {
+    private val logger = LoggerFactory.getLogger(ConfigPublisher::class.java)
+
     suspend fun publish(): ConfigPublicationResult {
-        val snapshot = loadAndValidate()
-        val artifacts = artifactSource.artifacts().distinctArtifacts()
-        val manifest = snapshot.toManifest(artifacts, Instant.now(clock))
-        val repository = RuntimeConfigRepository(store, codec)
+        val startedAt = System.nanoTime()
+        metrics.counter("asteria.config.publisher.publish.total").increment()
+        try {
+            val snapshot = loadAndValidate()
+            val artifacts = artifactSource.artifacts().distinctArtifacts()
+            val manifest = snapshot.toManifest(artifacts, Instant.now(clock))
+            val repository = RuntimeConfigRepository(store, codec, metrics)
 
-        val artifactStoreRevisions = linkedMapOf<String, ConfigRevision>()
-        for (artifact in artifacts) {
-            artifactStoreRevisions[artifact.relativePath] = store.put(
-                path = layout.artifactPath(snapshot.revision, artifact.relativePath),
-                bytes = artifact.bytes,
+            val artifactStoreRevisions = linkedMapOf<String, ConfigRevision>()
+            for (artifact in artifacts) {
+                artifactStoreRevisions[artifact.relativePath] = store.put(
+                    path = layout.artifactPath(snapshot.revision, artifact.relativePath),
+                    bytes = artifact.bytes,
+                )
+                metrics.counter("asteria.config.publisher.artifact.published.total").increment()
+                metrics.counter("asteria.config.publisher.artifact.bytes.total").increment(artifact.bytes.size.toLong())
+            }
+            val manifestStoreRevision = repository.put(layout.manifestPath(snapshot.revision), manifest)
+            val recordStoreRevision = repository.put(layout.historyRecordPath(snapshot.revision), manifest.toRecord())
+            val currentStoreRevision = repository.put(
+                layout.currentPath,
+                CurrentConfigPublication(
+                    revision = snapshot.revision,
+                    manifestPath = layout.manifestPath(snapshot.revision).value,
+                    publishedAt = manifest.generatedAt,
+                ),
             )
-        }
-        val manifestStoreRevision = repository.put(layout.manifestPath(snapshot.revision), manifest)
-        val recordStoreRevision = repository.put(layout.historyRecordPath(snapshot.revision), manifest.toRecord())
-        val currentStoreRevision = repository.put(
-            layout.currentPath,
-            CurrentConfigPublication(
-                revision = snapshot.revision,
-                manifestPath = layout.manifestPath(snapshot.revision).value,
-                publishedAt = manifest.generatedAt,
-            ),
-        )
 
-        return ConfigPublicationResult(
-            snapshot = snapshot,
-            manifest = manifest,
-            manifestStoreRevision = manifestStoreRevision,
-            recordStoreRevision = recordStoreRevision,
-            currentStoreRevision = currentStoreRevision,
-            artifactStoreRevisions = artifactStoreRevisions,
-        )
+            metrics.counter("asteria.config.publisher.publish.succeeded.total").increment()
+            logger.info(
+                "config published revision={} artifacts={} bytes={}",
+                snapshot.revision.version,
+                artifacts.size,
+                artifacts.sumOf { it.bytes.size },
+            )
+            return ConfigPublicationResult(
+                snapshot = snapshot,
+                manifest = manifest,
+                manifestStoreRevision = manifestStoreRevision,
+                recordStoreRevision = recordStoreRevision,
+                currentStoreRevision = currentStoreRevision,
+                artifactStoreRevisions = artifactStoreRevisions,
+            )
+        } catch (error: Throwable) {
+            metrics.counter("asteria.config.publisher.publish.failed.total").increment()
+            logger.error("config publish failed", error)
+            throw error
+        } finally {
+            metrics.timer("asteria.config.publisher.publish.duration")
+                .record((System.nanoTime() - startedAt) / 1_000_000)
+        }
     }
 
     private suspend fun loadAndValidate(): ConfigSnapshot {
-        val service = ConfigService(loader, validators, componentBuilders)
+        val service = ConfigService(loader, validators, componentBuilders, metrics = metrics)
         return service.load().current
     }
 

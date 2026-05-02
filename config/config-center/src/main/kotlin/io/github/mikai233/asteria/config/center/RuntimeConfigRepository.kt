@@ -1,8 +1,12 @@
 package io.github.mikai233.asteria.config.center
 
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.mapNotNull
+import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 
 data class Versioned<T : Any>(
@@ -32,12 +36,17 @@ data class RuntimeConfigChildrenSnapshot<T : Any>(
 class RuntimeConfigRepository(
     private val store: ConfigStore,
     private val codec: ConfigCodec,
+    private val metrics: Metrics = NoopMetrics,
 ) {
+    private val logger = LoggerFactory.getLogger(RuntimeConfigRepository::class.java)
+
     suspend fun <T : Any> get(
         path: ConfigPath,
         type: KClass<T>,
     ): Versioned<T>? {
-        return store.get(path)?.toVersioned(type)
+        return measured("get") {
+            store.get(path)?.toVersioned(type)
+        }
     }
 
     suspend inline fun <reified T : Any> get(path: ConfigPath): Versioned<T>? {
@@ -48,10 +57,12 @@ class RuntimeConfigRepository(
         path: ConfigPath,
         type: KClass<T>,
     ): RuntimeConfigChildrenSnapshot<T> {
-        val values = store.children(path).associate { entry ->
-            entry.path.name to entry.toVersioned(type)
+        return measured("children") {
+            val values = store.children(path).associate { entry ->
+                entry.path.name to entry.toVersioned(type)
+            }
+            RuntimeConfigChildrenSnapshot(path, values)
         }
-        return RuntimeConfigChildrenSnapshot(path, values)
     }
 
     suspend inline fun <reified T : Any> children(path: ConfigPath): RuntimeConfigChildrenSnapshot<T> {
@@ -103,7 +114,9 @@ class RuntimeConfigRepository(
         type: KClass<T>,
         expectedRevision: ConfigRevision? = null,
     ): ConfigRevision {
-        return store.put(path, codec.encode(value, type), expectedRevision)
+        return measured("put") {
+            store.put(path, codec.encode(value, type), expectedRevision)
+        }
     }
 
     suspend inline fun <reified T : Any> put(
@@ -118,7 +131,9 @@ class RuntimeConfigRepository(
         path: ConfigPath,
         expectedRevision: ConfigRevision? = null,
     ) {
-        store.delete(path, expectedRevision)
+        measured("delete") {
+            store.delete(path, expectedRevision)
+        }
     }
 
     private fun watch(
@@ -126,12 +141,37 @@ class RuntimeConfigRepository(
         mode: ConfigWatchMode,
     ): Flow<ConfigEvent> {
         return flow {
+            val tags = MetricTags.of("operation" to "watch", "mode" to mode.name)
+            metrics.counter("asteria.config.center.operation.total", tags).increment()
             val watch = store.watch(path, mode)
             try {
-                watch.events.collect { event -> emit(event) }
+                watch.events.collect { event ->
+                    metrics.counter("asteria.config.center.watch.event.total", MetricTags.of("mode" to mode.name)).increment()
+                    emit(event)
+                }
+            } catch (error: Throwable) {
+                metrics.counter("asteria.config.center.operation.failed.total", tags).increment()
+                logger.error("config center watch failed mode={}", mode.name, error)
+                throw error
             } finally {
                 watch.close()
             }
+        }
+    }
+
+    private suspend fun <T> measured(operation: String, block: suspend () -> T): T {
+        val tags = MetricTags.of("operation" to operation)
+        val startedAt = System.nanoTime()
+        metrics.counter("asteria.config.center.operation.total", tags).increment()
+        try {
+            return block()
+        } catch (error: Throwable) {
+            metrics.counter("asteria.config.center.operation.failed.total", tags).increment()
+            logger.error("config center operation failed operation={}", operation, error)
+            throw error
+        } finally {
+            metrics.timer("asteria.config.center.operation.duration", tags)
+                .record((System.nanoTime() - startedAt) / 1_000_000)
         }
     }
 

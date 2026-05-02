@@ -6,6 +6,8 @@ import io.github.mikai233.asteria.broadcast.BroadcastSubscriber
 import io.github.mikai233.asteria.broadcast.BroadcastSubscription
 import io.github.mikai233.asteria.broadcast.BroadcastTopic
 import io.github.mikai233.asteria.broadcast.LocalBroadcastBus
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import org.apache.pekko.actor.AbstractActor
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSystem
@@ -16,6 +18,7 @@ import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.Subscribe
 import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.SubscribeAck
 import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.Unsubscribe
 import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.UnsubscribeAck
+import org.slf4j.LoggerFactory
 
 /**
  * Cluster-wide broadcast bus backed by Pekko Distributed PubSub.
@@ -27,8 +30,11 @@ import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.UnsubscribeAck
  */
 class PekkoBroadcastBus(
     private val system: ActorSystem,
-    private val localBus: LocalBroadcastBus = LocalBroadcastBus(),
+    localBusOverride: LocalBroadcastBus? = null,
+    private val metrics: Metrics = NoopMetrics,
 ) : BroadcastBus, AutoCloseable {
+    private val logger = LoggerFactory.getLogger(PekkoBroadcastBus::class.java)
+    private val localBus: LocalBroadcastBus = localBusOverride ?: LocalBroadcastBus(metrics)
     private val mediator: ActorRef = DistributedPubSub.get(system).mediator()
     private val bridge: ActorRef = system.actorOf(PekkoBroadcastBridge.props(localBus), "asteriaBroadcastBridge")
 
@@ -36,11 +42,13 @@ class PekkoBroadcastBus(
         val wasEmpty = localBus.subscriberCount(topic) == 0
         val localSubscription = localBus.subscribe(topic, subscriber)
         if (wasEmpty && localBus.subscriberCount(topic) == 1) {
+            metrics.counter("asteria.broadcast.pekko.subscribe.topic.total").increment()
             mediator.tell(Subscribe(topic.value, bridge), ActorRef.noSender())
         }
         return BroadcastSubscription {
             localSubscription.close()
             if (localBus.subscriberCount(topic) == 0) {
+                metrics.counter("asteria.broadcast.pekko.unsubscribe.topic.total").increment()
                 mediator.tell(Unsubscribe(topic.value, bridge), ActorRef.noSender())
             }
         }
@@ -49,12 +57,17 @@ class PekkoBroadcastBus(
     override fun unsubscribe(topic: BroadcastTopic, subscriber: BroadcastSubscriber) {
         localBus.unsubscribe(topic, subscriber)
         if (localBus.subscriberCount(topic) == 0) {
+            metrics.counter("asteria.broadcast.pekko.unsubscribe.topic.total").increment()
             mediator.tell(Unsubscribe(topic.value, bridge), ActorRef.noSender())
         }
     }
 
     override fun publish(envelope: BroadcastEnvelope) {
-        if (envelope.isExpired()) return
+        metrics.counter("asteria.broadcast.pekko.publish.total").increment()
+        if (envelope.isExpired()) {
+            metrics.counter("asteria.broadcast.pekko.publish.expired.total").increment()
+            return
+        }
         mediator.tell(Publish(envelope.topic.value, envelope), ActorRef.noSender())
     }
 
@@ -63,6 +76,7 @@ class PekkoBroadcastBus(
             mediator.tell(Unsubscribe(topic.value, bridge), ActorRef.noSender())
         }
         system.stop(bridge)
+        logger.info("Pekko broadcast bus closed")
     }
 }
 
