@@ -1,7 +1,11 @@
 package io.github.mikai233.asteria.config
 
 import io.github.mikai233.asteria.core.gameApplication
+import kotlin.time.Duration
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -50,6 +54,85 @@ class ConfigServiceTest {
     }
 
     @Test
+    fun `hot reload reloads after trigger signal`() = runBlocking {
+        val signals = MutableSharedFlow<ConfigReloadSignal>(replay = 1)
+        var version = 0
+        val service = ConfigService(
+            loader = ConfigLoader {
+                version += 1
+                snapshot("v$version")
+            },
+        )
+        val reloaded = CompletableDeferred<ConfigReloadResult>()
+        service.load()
+        service.subscribe { result ->
+            if (result.previous != null) {
+                reloaded.complete(result)
+            }
+        }
+        val hotReload = ConfigHotReloadService(
+            service,
+            ConfigHotReloadOptions(
+                trigger = ConfigReloadTrigger { signals },
+                debounce = Duration.ZERO,
+                retryDelay = Duration.ZERO,
+            ),
+        )
+
+        try {
+            hotReload.start()
+            signals.emit(ConfigReloadSignal("test"))
+
+            val result = withTimeout(1_000) { reloaded.await() }
+
+            assertEquals("v1", result.previous?.revision?.version)
+            assertEquals("v2", result.current.revision.version)
+            assertEquals("v2", service.current().revision.version)
+        } finally {
+            hotReload.stop()
+        }
+    }
+
+    @Test
+    fun `hot reload failure keeps previous snapshot`() = runBlocking {
+        val signals = MutableSharedFlow<ConfigReloadSignal>(replay = 1)
+        var attempts = 0
+        val service = ConfigService(
+            loader = ConfigLoader {
+                attempts += 1
+                if (attempts > 1) {
+                    error("broken config")
+                }
+                snapshot("v1")
+            },
+        )
+        service.load()
+        val failed = CompletableDeferred<ConfigReloadFailed>()
+        val hotReload = ConfigHotReloadService(
+            service,
+            ConfigHotReloadOptions(
+                trigger = ConfigReloadTrigger { signals },
+                debounce = Duration.ZERO,
+                retryDelay = Duration.ZERO,
+                failureListeners = listOf(ConfigReloadFailureListener { failed.complete(it) }),
+            ),
+        )
+
+        try {
+            hotReload.start()
+            signals.emit(ConfigReloadSignal("test"))
+
+            val failure = withTimeout(1_000) { failed.await() }
+
+            assertEquals("test", failure.signal?.reason)
+            assertEquals("broken config", failure.error.message)
+            assertEquals("v1", service.current().revision.version)
+        } finally {
+            hotReload.stop()
+        }
+    }
+
+    @Test
     fun `module registers service and loads on start`() = runBlocking {
         val app = gameApplication {
             install(
@@ -74,22 +157,26 @@ class ConfigServiceTest {
         val price: Int,
     )
 
-    private class TestConfigLoader : ConfigLoader {
+    private inner class TestConfigLoader : ConfigLoader {
         override suspend fun load(): ConfigSnapshot {
-            return DefaultConfigSnapshot(
-                revision = ConfigRevision("v1"),
-                tables = listOf(
-                    mapConfigTable(
-                        name = "items",
-                        rows = listOf(
-                            ItemConfig(1, "Sword", 10),
-                            ItemConfig(2, "Potion", 5),
-                        ).associateBy { it.id },
-                    ),
-                ),
-                components = listOf(GeneratedTables("project-configs")),
-            )
+            return snapshot("v1")
         }
+    }
+
+    private fun snapshot(version: String): ConfigSnapshot {
+        return DefaultConfigSnapshot(
+            revision = ConfigRevision(version),
+            tables = listOf(
+                mapConfigTable(
+                    name = "items",
+                    rows = listOf(
+                        ItemConfig(1, "Sword", 10),
+                        ItemConfig(2, "Potion", 5),
+                    ).associateBy { it.id },
+                ),
+            ),
+            components = listOf(GeneratedTables("project-configs")),
+        )
     }
 
     private data class GeneratedTables(

@@ -68,6 +68,22 @@ class ConfigCenterTest {
     }
 
     @Test
+    fun `config center reload trigger emits store changes`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val root = configPath("/settings")
+        val trigger = ConfigCenterReloadTrigger(store, root, ConfigWatchMode.Children)
+        val signal = async(start = CoroutineStart.UNDISPATCHED) {
+            trigger.events().first()
+        }
+
+        store.put(root / "gateway", "changed".encodeToByteArray())
+
+        val event = signal.await()
+        assertEquals("config_center_upserted", event.reason)
+        assertEquals("/settings/gateway", event.source)
+    }
+
+    @Test
     fun `module registers store codec and repository`() = runBlocking {
         val app = gameApplication {
             install(

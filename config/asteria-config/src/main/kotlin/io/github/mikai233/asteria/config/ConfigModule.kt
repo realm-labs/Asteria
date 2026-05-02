@@ -3,6 +3,8 @@ package io.github.mikai233.asteria.config
 import io.github.mikai233.asteria.core.AsteriaDsl
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Application module that registers [ConfigService].
@@ -21,13 +23,25 @@ class ConfigModule private constructor(
             loader = loader,
             validators = options.validators,
         )
+        options.reloadListeners.forEach { listener ->
+            service.subscribe(listener)
+        }
         context.services.register(ConfigService::class, service)
+
+        options.hotReload?.let { hotReload ->
+            context.services.register(ConfigHotReloadService::class, ConfigHotReloadService(service, hotReload))
+        }
     }
 
     override suspend fun start(context: ModuleContext) {
         if (options.loadOnStart) {
             context.services.get(ConfigService::class).load()
         }
+        context.services.find(ConfigHotReloadService::class)?.start()
+    }
+
+    override suspend fun stop(context: ModuleContext) {
+        context.services.find(ConfigHotReloadService::class)?.stop()
     }
 
     companion object {
@@ -43,7 +57,9 @@ class ConfigModule private constructor(
 data class ConfigModuleOptions(
     val loader: ConfigLoader?,
     val validators: List<ConfigValidator>,
+    val reloadListeners: List<ConfigReloadListener>,
     val loadOnStart: Boolean,
+    val hotReload: ConfigHotReloadOptions?,
 )
 
 /**
@@ -57,7 +73,9 @@ class ConfigModuleBuilder {
     var loadOnStart: Boolean = true
 
     private var loader: ConfigLoader? = null
+    private var hotReload: ConfigHotReloadOptions? = null
     private val validators: MutableList<ConfigValidator> = mutableListOf()
+    private val reloadListeners: MutableList<ConfigReloadListener> = mutableListOf()
 
     /**
      * Sets the loader that produces full config snapshots.
@@ -80,11 +98,83 @@ class ConfigModuleBuilder {
         validators += configValidator(validate)
     }
 
+    /**
+     * Adds a listener for successful initial loads and reloads.
+     */
+    fun onReload(listener: ConfigReloadListener) {
+        reloadListeners += listener
+    }
+
+    /**
+     * Adds an inline listener for successful initial loads and reloads.
+     */
+    fun onReload(listener: suspend (ConfigReloadResult) -> Unit) {
+        reloadListeners += ConfigReloadListener(listener)
+    }
+
+    /**
+     * Enables background hot reload from an external trigger.
+     */
+    fun hotReload(configure: ConfigHotReloadBuilder.() -> Unit) {
+        hotReload = ConfigHotReloadBuilder().apply(configure).build()
+    }
+
     internal fun build(): ConfigModuleOptions {
         return ConfigModuleOptions(
             loader = loader,
             validators = validators.toList(),
+            reloadListeners = reloadListeners.toList(),
             loadOnStart = loadOnStart,
+            hotReload = hotReload,
+        )
+    }
+}
+
+/**
+ * Builder for config hot reload.
+ */
+@AsteriaDsl
+class ConfigHotReloadBuilder {
+    /**
+     * Delay used to merge bursts of config-center or filesystem events into one reload.
+     */
+    var debounce: Duration = 2.seconds
+
+    /**
+     * Delay before re-subscribing when the trigger stream fails.
+     */
+    var retryDelay: Duration = 5.seconds
+
+    private var trigger: ConfigReloadTrigger? = null
+    private val failureListeners: MutableList<ConfigReloadFailureListener> = mutableListOf()
+
+    /**
+     * Sets the signal source that drives hot reload.
+     */
+    fun trigger(trigger: ConfigReloadTrigger) {
+        this.trigger = trigger
+    }
+
+    /**
+     * Adds a listener for reload and watch failures.
+     */
+    fun onFailure(listener: ConfigReloadFailureListener) {
+        failureListeners += listener
+    }
+
+    /**
+     * Adds an inline listener for reload and watch failures.
+     */
+    fun onFailure(listener: suspend (ConfigReloadFailed) -> Unit) {
+        failureListeners += ConfigReloadFailureListener(listener)
+    }
+
+    internal fun build(): ConfigHotReloadOptions {
+        return ConfigHotReloadOptions(
+            trigger = trigger ?: error("config hot reload trigger must be configured"),
+            debounce = debounce,
+            retryDelay = retryDelay,
+            failureListeners = failureListeners.toList(),
         )
     }
 }
