@@ -35,6 +35,7 @@ data class MongoEntityPropertyModel(
     val type: TypeName,
     val kind: MongoEntityPropertyKind = MongoEntityPropertyKind.Value,
     val trackedType: TypeName = type,
+    val valueKind: MongoEntityPropertyKind = MongoEntityPropertyKind.Value,
 )
 
 enum class MongoEntityPropertyKind {
@@ -118,10 +119,10 @@ object AsteriaMongoEntityCodeGenerator {
                 .delegate(
                     CodeBlock.builder()
                         .add(
-                            "%M(path = ctx.path(%S), initialValue = entity.%L.toMutableMap(), queue = ctx.queue, ",
+                            "%M(path = ctx.path(%S), initialValue = %L, queue = ctx.queue, ",
                             MONGO_TRACKED_MAP,
                             property.fieldName,
-                            property.name,
+                            collectionInitialValueExpression(property, "ctx.path(${property.fieldName.toCodeString()})", "entity.${property.name}", "ctx.queue", "::currentDirtyTarget"),
                         )
                         .add("dirtyTargetProvider = ::currentDirtyTarget)")
                         .build(),
@@ -131,10 +132,10 @@ object AsteriaMongoEntityCodeGenerator {
                 .delegate(
                     CodeBlock.builder()
                         .add(
-                            "%M(path = ctx.path(%S), initialValue = entity.%L.toMutableList(), queue = ctx.queue, ",
+                            "%M(path = ctx.path(%S), initialValue = %L, queue = ctx.queue, ",
                             MONGO_TRACKED_LIST,
                             property.fieldName,
-                            property.name,
+                            collectionInitialValueExpression(property, "ctx.path(${property.fieldName.toCodeString()})", "entity.${property.name}", "ctx.queue", "::currentDirtyTarget"),
                         )
                         .add("dirtyTargetProvider = ::currentDirtyTarget)")
                         .build(),
@@ -161,8 +162,18 @@ object AsteriaMongoEntityCodeGenerator {
             val expression = when (property.kind) {
                 MongoEntityPropertyKind.Value -> property.name
                 MongoEntityPropertyKind.Object -> "${property.name}.toEntity()"
-                MongoEntityPropertyKind.Map -> "${property.name}.toMutableMap()"
-                MongoEntityPropertyKind.List -> "${property.name}.toMutableList()"
+                MongoEntityPropertyKind.Map -> if (property.valueKind == MongoEntityPropertyKind.Object) {
+                    "${property.name}.mapValues { (_, value) -> value.toEntity() }.toMutableMap()"
+                } else {
+                    "${property.name}.toMutableMap()"
+                }
+
+                MongoEntityPropertyKind.List -> if (property.valueKind == MongoEntityPropertyKind.Object) {
+                    "${property.name}.map { it.toEntity() }.toMutableList()"
+                } else {
+                    "${property.name}.toMutableList()"
+                }
+
                 MongoEntityPropertyKind.Set -> "${property.name}.toMutableSet()"
             }
             "${property.name} = $expression"
@@ -243,10 +254,10 @@ object AsteriaMongoEntityCodeGenerator {
             MongoEntityPropertyKind.Map -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false).asMutableCollection(), KModifier.PUBLIC)
                 .delegate(
                     CodeBlock.of(
-                        "%M(path = path.child(%S), initialValue = entity.%L.toMutableMap(), queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
+                        "%M(path = path.child(%S), initialValue = %L, queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
                         MONGO_TRACKED_MAP,
                         property.fieldName,
-                        property.name,
+                        collectionInitialValueExpression(property, "path.child(${property.fieldName.toCodeString()})", "entity.${property.name}", "queue", "::effectiveDirtyTarget"),
                     ),
                 )
                 .build()
@@ -254,10 +265,10 @@ object AsteriaMongoEntityCodeGenerator {
             MongoEntityPropertyKind.List -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false).asMutableCollection(), KModifier.PUBLIC)
                 .delegate(
                     CodeBlock.of(
-                        "%M(path = path.child(%S), initialValue = entity.%L.toMutableList(), queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
+                        "%M(path = path.child(%S), initialValue = %L, queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
                         MONGO_TRACKED_LIST,
                         property.fieldName,
-                        property.name,
+                        collectionInitialValueExpression(property, "path.child(${property.fieldName.toCodeString()})", "entity.${property.name}", "queue", "::effectiveDirtyTarget"),
                     ),
                 )
                 .build()
@@ -280,8 +291,18 @@ object AsteriaMongoEntityCodeGenerator {
             val expression = when (property.kind) {
                 MongoEntityPropertyKind.Value -> property.name
                 MongoEntityPropertyKind.Object -> "${property.name}.toEntity()"
-                MongoEntityPropertyKind.Map -> "${property.name}.toMutableMap()"
-                MongoEntityPropertyKind.List -> "${property.name}.toMutableList()"
+                MongoEntityPropertyKind.Map -> if (property.valueKind == MongoEntityPropertyKind.Object) {
+                    "${property.name}.mapValues { (_, value) -> value.toEntity() }.toMutableMap()"
+                } else {
+                    "${property.name}.toMutableMap()"
+                }
+
+                MongoEntityPropertyKind.List -> if (property.valueKind == MongoEntityPropertyKind.Object) {
+                    "${property.name}.map { it.toEntity() }.toMutableList()"
+                } else {
+                    "${property.name}.toMutableList()"
+                }
+
                 MongoEntityPropertyKind.Set -> "${property.name}.toMutableSet()"
             }
             "${property.name} = $expression"
@@ -352,6 +373,33 @@ object AsteriaMongoEntityCodeGenerator {
                     .build(),
             )
             .build()
+    }
+
+    private fun collectionInitialValueExpression(
+        property: MongoEntityPropertyModel,
+        pathExpression: String,
+        sourceExpression: String,
+        queueExpression: String,
+        dirtyTargetExpression: String,
+    ): String {
+        if (property.valueKind != MongoEntityPropertyKind.Object) {
+            return when (property.kind) {
+                MongoEntityPropertyKind.Map -> "$sourceExpression.toMutableMap()"
+                MongoEntityPropertyKind.List -> "$sourceExpression.toMutableList()"
+                MongoEntityPropertyKind.Set -> "$sourceExpression.toMutableSet()"
+                else -> sourceExpression
+            }
+        }
+        val wrapper = property.collectionValueWrapperType() ?: return ""
+        return when (property.kind) {
+            MongoEntityPropertyKind.Map ->
+                "$sourceExpression.mapValues { (key, value) -> trackChild($wrapper($pathExpression.child(key), value, $queueExpression, $dirtyTargetExpression)) }.toMutableMap()"
+
+            MongoEntityPropertyKind.List ->
+                "$sourceExpression.mapIndexed { index, value -> trackChild($wrapper($pathExpression.child(index), value, $queueExpression, $dirtyTargetExpression)) }.toMutableList()"
+
+            else -> sourceExpression
+        }
     }
 
     private fun buildHelper(
@@ -431,6 +479,26 @@ object AsteriaMongoEntityCodeGenerator {
             else -> return this
         }
         return mutableRawType.parameterizedBy(parameterized.typeArguments).copy(nullable = this.isNullable)
+    }
+
+    private fun MongoEntityPropertyModel.collectionValueWrapperType(): TypeName? {
+        val parameterized = trackedType as? com.squareup.kotlinpoet.ParameterizedTypeName ?: return null
+        return parameterized.typeArguments.lastOrNull()
+    }
+
+    private fun String.toCodeString(): String = buildString {
+        append('"')
+        this@toCodeString.forEach { char ->
+            when (char) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(char)
+            }
+        }
+        append('"')
     }
 
     private val ANY_NULLABLE = ClassName("kotlin", "Any").copy(nullable = true)

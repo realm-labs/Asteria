@@ -27,8 +27,22 @@ class AsteriaMongoEntityCodeGeneratorTest {
                         MongoEntityPropertyKind.Object,
                         TRACKED_PROFILE,
                     ),
-                    MongoEntityPropertyModel("bag", "bag", MUTABLE_MAP.parameterizedBy(STRING, ITEM_STACK), MongoEntityPropertyKind.Map),
-                    MongoEntityPropertyModel("quests", "quests", MUTABLE_LIST.parameterizedBy(QUEST_STATE), MongoEntityPropertyKind.List),
+                    MongoEntityPropertyModel(
+                        "bag",
+                        "bag",
+                        MUTABLE_MAP.parameterizedBy(STRING, ITEM_STACK),
+                        MongoEntityPropertyKind.Map,
+                        MUTABLE_MAP.parameterizedBy(STRING, TRACKED_ITEM_STACK),
+                        MongoEntityPropertyKind.Object,
+                    ),
+                    MongoEntityPropertyModel(
+                        "quests",
+                        "quests",
+                        MUTABLE_LIST.parameterizedBy(QUEST_STATE),
+                        MongoEntityPropertyKind.List,
+                        MUTABLE_LIST.parameterizedBy(TRACKED_QUEST_STATE),
+                        MongoEntityPropertyKind.Object,
+                    ),
                 ),
                 nestedObjects = listOf(
                     MongoNestedObjectModel(
@@ -37,6 +51,22 @@ class AsteriaMongoEntityCodeGeneratorTest {
                         properties = listOf(
                             MongoEntityPropertyModel("nickname", "nickname", STRING),
                             MongoEntityPropertyModel("avatar", "avatar", INT),
+                        ),
+                    ),
+                    MongoNestedObjectModel(
+                        sourceType = ITEM_STACK,
+                        wrapperType = TRACKED_ITEM_STACK,
+                        properties = listOf(
+                            MongoEntityPropertyModel("itemId", "itemId", INT),
+                            MongoEntityPropertyModel("count", "count", INT),
+                        ),
+                    ),
+                    MongoNestedObjectModel(
+                        sourceType = QUEST_STATE,
+                        wrapperType = TRACKED_QUEST_STATE,
+                        properties = listOf(
+                            MongoEntityPropertyModel("questId", "questId", INT),
+                            MongoEntityPropertyModel("status", "status", INT),
                         ),
                     ),
                 ),
@@ -51,18 +81,22 @@ class AsteriaMongoEntityCodeGeneratorTest {
         assertContains(code, "var level: Int by ctx.trackedValue(\"lv\", entity.level)")
         assertContains(code, "public val profile: TrackedPlayerProfile =")
         assertContains(code, "trackChild(TrackedPlayerProfile(ctx.path(\"profile\"), entity.profile, ctx.queue, ::currentDirtyTarget))")
-        assertContains(code, "public val bag: MutableMap<String, ItemStack> by")
+        assertContains(code, "public val bag: MutableMap<String, TrackedItemStack> by")
         assertContains(code, "mongoTrackedMap(path = ctx.path(\"bag\")")
-        assertContains(code, "public val quests: MutableList<QuestState> by")
+        assertContains(code, "entity.bag.mapValues { (key, value) -> trackChild(com.example.player.TrackedItemStack(ctx.path(\"bag\").child(key), value, ctx.queue, ::currentDirtyTarget)) }.toMutableMap()")
+        assertContains(code, "public val quests: MutableList<TrackedQuestState> by")
         assertContains(code, "mongoTrackedList(path = ctx.path(\"quests\")")
+        assertContains(code, "entity.quests.mapIndexed { index, value -> trackChild(com.example.player.TrackedQuestState(ctx.path(\"quests\").child(index), value, ctx.queue, ::currentDirtyTarget)) }.toMutableList()")
         assertContains(code, "class TrackedPlayerProfile(")
+        assertContains(code, "class TrackedItemStack(")
+        assertContains(code, "class TrackedQuestState(")
         assertContains(code, "public var nickname: String by")
         assertContains(code, "mongoTrackedValue(path.child(\"nickname\"), entity.nickname, queue, dirtyTarget = ::effectiveDirtyTarget)")
         assertContains(code, "fun toEntity(): Profile")
         assertContains(code, "override fun toEntity(): PlayerEntity")
         assertContains(code, "profile = profile.toEntity()")
-        assertContains(code, "bag = bag.toMutableMap()")
-        assertContains(code, "quests = quests.toMutableList()")
+        assertContains(code, "bag = bag.mapValues { (_, value) -> value.toEntity() }.toMutableMap()")
+        assertContains(code, "quests = quests.map { it.toEntity() }.toMutableList()")
         assertContains(code, "override fun toMongoValue(): Any?")
         assertContains(code, "\"_id\" to mongoValueOf(id)")
         assertContains(code, "\"lv\" to mongoValueOf(level)")
@@ -82,6 +116,8 @@ class AsteriaMongoEntityCodeGeneratorTest {
         val PROFILE = ClassName("com.example.player", "Profile")
         val TRACKED_PROFILE = ClassName("com.example.player", "TrackedPlayerProfile")
         val ITEM_STACK = ClassName("com.example.player", "ItemStack")
+        val TRACKED_ITEM_STACK = ClassName("com.example.player", "TrackedItemStack")
         val QUEST_STATE = ClassName("com.example.player", "QuestState")
+        val TRACKED_QUEST_STATE = ClassName("com.example.player", "TrackedQuestState")
     }
 }
