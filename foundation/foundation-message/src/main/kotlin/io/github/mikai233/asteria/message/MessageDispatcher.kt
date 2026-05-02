@@ -5,6 +5,9 @@ import io.github.mikai233.asteria.patch.PatchInstallContext
 import io.github.mikai233.asteria.patch.PatchOrder
 import io.github.mikai233.asteria.patch.PatchSlotRegistry
 import io.github.mikai233.asteria.patch.PatchableRegistry
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.metricsOrNoop
+import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 
 /**
@@ -40,6 +43,8 @@ interface MessageHandleRegistry<M : Any> {
 class MessageDispatcher<M : Any>(
     private val handles: MessageHandleRegistry<M>,
 ) {
+    private val logger = LoggerFactory.getLogger(MessageDispatcher::class.java)
+
     fun canDispatch(messageType: KClass<out M>): Boolean = handles.get(messageType) != null
 
     fun dispatch(context: HandlerContext, message: M) {
@@ -47,10 +52,31 @@ class MessageDispatcher<M : Any>(
     }
 
     fun dispatch(context: HandlerContext, messageType: KClass<out M>, message: M) {
+        val metrics = context.runtime.metricsOrNoop()
+        val tags = MetricTags.of(
+            "runtime" to context.runtime.name,
+            "message" to (messageType.qualifiedName ?: messageType.simpleName ?: "unknown"),
+        )
+        val startedAt = System.nanoTime()
+        metrics.counter("asteria.message.dispatch.total", tags).increment()
         val handle = requireNotNull(handles.get(messageType)) {
             "handler for message ${messageType.qualifiedName} not found"
         }
-        handle.invoke(context, message)
+        try {
+            handle.invoke(context, message)
+        } catch (error: Throwable) {
+            metrics.counter("asteria.message.dispatch.failed.total", tags).increment()
+            logger.error(
+                "message dispatch failed runtime={} message={}",
+                context.runtime.name,
+                messageType.qualifiedName,
+                error,
+            )
+            throw error
+        } finally {
+            metrics.timer("asteria.message.dispatch.duration", tags)
+                .record((System.nanoTime() - startedAt) / 1_000_000)
+        }
     }
 }
 

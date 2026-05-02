@@ -3,6 +3,8 @@ package io.github.mikai233.asteria.config
 import io.github.mikai233.asteria.core.AsteriaDsl
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
+import io.github.mikai233.asteria.observability.metricsOrNoop
+import io.github.mikai233.asteria.observability.tracerOrNoop
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -24,6 +26,8 @@ class ConfigModule private constructor(
             loader = loader,
             validators = options.validators,
             componentBuilders = options.componentBuilders,
+            tracer = context.tracerOrNoop(),
+            metrics = context.metricsOrNoop(),
         )
         service.subscribe(monitor)
         options.reloadListeners.forEach { listener ->
@@ -34,7 +38,10 @@ class ConfigModule private constructor(
 
         options.hotReload?.let { hotReload ->
             val monitored = hotReload.copy(failureListeners = listOf(monitor) + hotReload.failureListeners)
-            context.services.register(ConfigHotReloadService::class, ConfigHotReloadService(service, monitored))
+            context.services.register(
+                ConfigHotReloadService::class,
+                ConfigHotReloadService(service, monitored, metrics = context.metricsOrNoop()),
+            )
         }
     }
 

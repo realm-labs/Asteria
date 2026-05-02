@@ -2,6 +2,8 @@ package io.github.mikai233.asteria.persistence.mongodb
 
 import com.mongodb.bulk.BulkWriteResult
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import io.github.mikai233.asteria.persistence.DataLease
 import io.github.mikai233.asteria.persistence.DataLeaseAware
 
@@ -13,10 +15,11 @@ class MongoTrackedDocumentRuntime(
     private val documentId: Any?,
     database: MongoDatabase,
     journal: MongoWriteJournal = NoopMongoWriteJournal,
+    metrics: Metrics = NoopMetrics,
     onDirty: () -> Unit = {},
 ) : DataLeaseAware {
     val queue: MongoPendingWriteQueue = MongoPendingWriteQueue(journal = journal, onDirty = onDirty)
-    private val flusher: MongoPendingWriteFlusher = MongoPendingWriteFlusher(queue, database, journal)
+    private val flusher: MongoPendingWriteFlusher = MongoPendingWriteFlusher(queue, database, journal, metrics = metrics)
     private var lease: DataLease? = null
 
     fun context(): MongoTrackContext {

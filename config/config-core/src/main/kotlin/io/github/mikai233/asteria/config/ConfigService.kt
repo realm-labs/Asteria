@@ -1,8 +1,15 @@
 package io.github.mikai233.asteria.config
 
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
+import io.github.mikai233.asteria.observability.NoopTracer
+import io.github.mikai233.asteria.observability.TraceAttributes
+import io.github.mikai233.asteria.observability.Tracer
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.slf4j.LoggerFactory
 
 /**
  * Loads a complete immutable config snapshot.
@@ -67,7 +74,10 @@ class ConfigService(
     private val loader: ConfigLoader,
     private val validators: List<ConfigValidator> = emptyList(),
     private val componentBuilders: List<ConfigComponentBuilder<*>> = emptyList(),
+    private val tracer: Tracer = NoopTracer,
+    private val metrics: Metrics = NoopMetrics,
 ) {
+    private val logger = LoggerFactory.getLogger(ConfigService::class.java)
     private val listeners: CopyOnWriteArrayList<ConfigReloadListener> = CopyOnWriteArrayList()
     private val reloadLock: Mutex = Mutex()
 
@@ -103,25 +113,46 @@ class ConfigService(
      * Loads, validates, publishes, and broadcasts a new snapshot.
      */
     suspend fun reload(): ConfigReloadResult {
-        return reloadLock.withLock {
-            val raw = loader.load()
-            val loaded = buildComponents(raw)
-            validate(loaded)
+        return tracer.span("config.reload") {
+            metrics.counter("asteria.config.reload.total").increment()
+            metrics.timer("asteria.config.reload.duration").record {
+                reloadLock.withLock {
+                    try {
+                        val raw = loader.load()
+                        val loaded = buildComponents(raw)
+                        validate(loaded)
 
-            val previous = snapshot
-            val changedTables = ConfigSnapshotDiff.between(previous, loaded).changedTableNames()
-            val result = ConfigReloadResult(
-                previous = previous,
-                current = loaded,
-                changedTables = changedTables,
-            )
-            snapshot = loaded
+                        val previous = snapshot
+                        val changedTables = ConfigSnapshotDiff.between(previous, loaded).changedTableNames()
+                        val result = ConfigReloadResult(
+                            previous = previous,
+                            current = loaded,
+                            changedTables = changedTables,
+                        )
+                        snapshot = loaded
 
-            for (listener in listeners) {
-                listener.reloaded(result)
+                        val tags = result.metricTags()
+                        metrics.counter("asteria.config.reload.published.total", tags).increment()
+                        event("config.reload.published", result.traceAttributes())
+                        logger.info(
+                            "config reload published revision={} changedTables={}",
+                            loaded.revision.version,
+                            changedTables.size,
+                        )
+
+                        for (listener in listeners) {
+                            listener.reloaded(result)
+                        }
+
+                        result
+                    } catch (error: Throwable) {
+                        metrics.counter("asteria.config.reload.failed.total").increment()
+                        this@span.error(error)
+                        logger.error("config reload failed", error)
+                        throw error
+                    }
+                }
             }
-
-            result
         }
     }
 
@@ -151,6 +182,21 @@ class ConfigService(
         val errors = validators.flatMap { it.validate(snapshot).errors }
         ConfigValidationResult(errors).throwIfFailed()
     }
+}
+
+private fun ConfigReloadResult.metricTags(): MetricTags {
+    return MetricTags.of(
+        "initial" to (previous == null).toString(),
+        "changed" to changedTables.isNotEmpty().toString(),
+    )
+}
+
+private fun ConfigReloadResult.traceAttributes(): TraceAttributes {
+    return TraceAttributes.of(
+        "config.revision" to current.revision.version,
+        "config.changed_tables" to changedTables.size.toString(),
+        "config.initial" to (previous == null).toString(),
+    )
 }
 
 private fun ConfigSnapshotDiff.changedTableNames(): Set<ConfigTableName> {

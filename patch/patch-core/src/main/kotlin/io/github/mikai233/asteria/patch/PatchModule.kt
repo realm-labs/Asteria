@@ -2,6 +2,8 @@ package io.github.mikai233.asteria.patch
 
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
+import io.github.mikai233.asteria.observability.metricsOrNoop
+import io.github.mikai233.asteria.observability.tracerOrNoop
 
 class PatchModule private constructor(
     private val options: PatchModuleOptions,
@@ -9,10 +11,10 @@ class PatchModule private constructor(
     override val name: String = "patch"
 
     override suspend fun install(context: ModuleContext) {
-        val runtime = PatchRuntime(options.environment)
+        val runtime = PatchRuntime(options.environment, context.tracerOrNoop(), context.metricsOrNoop())
         val repository = options.repository ?: InMemoryRuntimePatchRepository()
         val resolver = options.resolver ?: StaticRuntimePatchPluginResolver()
-        val service = PatchApplicationService(runtime, repository, resolver)
+        val service = PatchApplicationService(runtime, repository, resolver, context.tracerOrNoop(), context.metricsOrNoop())
         val nodeResults = options.nodeResults ?: InMemoryRuntimePatchNodeResultRepository()
         val nodeProvider = options.nodeProvider ?: LocalPatchNodeProvider(options.environment)
         val nodeClient = options.nodeClient ?: LocalPatchNodeClient(service)

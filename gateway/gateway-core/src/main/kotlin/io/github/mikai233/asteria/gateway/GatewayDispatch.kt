@@ -1,6 +1,9 @@
 package io.github.mikai233.asteria.gateway
 
 import io.github.mikai233.asteria.message.RouteTarget
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 
 /**
  * Resolved forwarding decision for one inbound gateway packet.
@@ -27,11 +30,24 @@ fun interface GatewayForwarder<P : Any> {
 class GatewayMessageDispatcher<P : Any>(
     private val routeResolver: GatewayRouteResolver<P>,
     private val forwarder: GatewayForwarder<P>,
+    private val metrics: Metrics = NoopMetrics,
 ) {
     suspend fun dispatch(context: GatewaySessionContext, packet: P): GatewayRoute {
+        val tags = context.metricTags()
+        val startedAt = System.nanoTime()
+        metrics.counter("asteria.gateway.dispatch.total", tags).increment()
         val route = routeResolver.resolve(context, packet)
-        forwarder.forward(context, route, packet)
-        return route
+        try {
+            forwarder.forward(context, route, packet)
+            metrics.counter("asteria.gateway.dispatch.forwarded.total", tags + route.metricTags()).increment()
+            return route
+        } catch (error: Throwable) {
+            metrics.counter("asteria.gateway.dispatch.failed.total", tags + route.metricTags()).increment()
+            throw error
+        } finally {
+            metrics.timer("asteria.gateway.dispatch.duration", tags)
+                .record((System.nanoTime() - startedAt) / 1_000_000)
+        }
     }
 }
 
@@ -46,4 +62,18 @@ class GatewayInboundPipeline<P : Any>(
         val packet = packets.decode(context, frame)
         return dispatcher.dispatch(context, packet)
     }
+}
+
+private fun GatewaySessionContext.metricTags(): MetricTags {
+    return MetricTags.of("transport" to session.transport.name)
+}
+
+private fun GatewayRoute.metricTags(): MetricTags {
+    val targetType = when (target) {
+        is RouteTarget.Entity -> "entity"
+        is RouteTarget.Singleton -> "singleton"
+        is RouteTarget.Service -> "service"
+        RouteTarget.GatewayLocal -> "gateway_local"
+    }
+    return MetricTags.of("target" to targetType)
 }

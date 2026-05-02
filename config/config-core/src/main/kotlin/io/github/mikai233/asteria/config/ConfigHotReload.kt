@@ -1,5 +1,8 @@
 package io.github.mikai233.asteria.config
 
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -16,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.slf4j.LoggerFactory
 
 /**
  * Reason to attempt a config reload.
@@ -83,7 +87,9 @@ class ConfigHotReloadService(
     private val service: ConfigService,
     private val options: ConfigHotReloadOptions,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val metrics: Metrics = NoopMetrics,
 ) {
+    private val logger = LoggerFactory.getLogger(ConfigHotReloadService::class.java)
     private var job: Job? = null
 
     fun start(): Job {
@@ -95,6 +101,8 @@ class ConfigHotReloadService(
             runLoop()
         }.also {
             job = it
+            metrics.counter("asteria.config.hot_reload.started.total").increment()
+            logger.info("config hot reload started")
         }
     }
 
@@ -102,6 +110,8 @@ class ConfigHotReloadService(
         val current = job ?: return
         job = null
         current.cancelAndJoin()
+        metrics.counter("asteria.config.hot_reload.stopped.total").increment()
+        logger.info("config hot reload stopped")
     }
 
     @OptIn(FlowPreview::class)
@@ -114,12 +124,14 @@ class ConfigHotReloadService(
                     options.trigger.events().debounce(options.debounce)
                 }
                 events.collect { signal ->
+                    metrics.counter("asteria.config.hot_reload.signal.total", signal.metricTags()).increment()
                     reload(signal)
                 }
                 return
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                metrics.counter("asteria.config.hot_reload.loop.failed.total").increment()
                 notifyFailure(ConfigReloadFailed(signal = null, error = error))
                 if (options.retryDelay > Duration.ZERO) {
                     delay(options.retryDelay)
@@ -134,13 +146,27 @@ class ConfigHotReloadService(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
+            metrics.counter("asteria.config.hot_reload.reload.failed.total", signal.metricTags()).increment()
             notifyFailure(ConfigReloadFailed(signal = signal, error = error))
         }
     }
 
     private suspend fun notifyFailure(event: ConfigReloadFailed) {
+        logger.error(
+            "config hot reload failed signal={} source={}",
+            event.signal?.reason ?: "unknown",
+            event.signal?.source ?: "",
+            event.error,
+        )
         for (listener in options.failureListeners) {
             listener.failed(event)
         }
     }
+}
+
+private fun ConfigReloadSignal.metricTags(): MetricTags {
+    return MetricTags.of(
+        "reason" to reason,
+        "source" to (source ?: ""),
+    )
 }

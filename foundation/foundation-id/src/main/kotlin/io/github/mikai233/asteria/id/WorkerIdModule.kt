@@ -2,6 +2,8 @@ package io.github.mikai233.asteria.id
 
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.metricsOrNoop
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
@@ -14,6 +16,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.slf4j.LoggerFactory
 
 class WorkerIdModule(
     private val repository: WorkerIdRepository,
@@ -21,6 +24,7 @@ class WorkerIdModule(
 ) : AsteriaModule {
     override val name: String = "worker-id"
 
+    private val logger = LoggerFactory.getLogger(WorkerIdModule::class.java)
     private val defaultOwner = WorkerIdOwner("worker-${UUID.randomUUID()}")
     private var lease: WorkerIdLease? = null
     private var runtime: WorkerIdRuntime? = null
@@ -28,8 +32,18 @@ class WorkerIdModule(
     private var renewJob: Job? = null
 
     override suspend fun start(context: ModuleContext) {
+        val metrics = context.metricsOrNoop()
         val owner = options.owner?.invoke(context) ?: defaultOwner
         val acquired = repository.acquire(owner, options.range, options.ttl)
+        val tags = acquired.metricTags(context.name)
+        metrics.counter("asteria.worker_id.acquired.total", tags).increment()
+        logger.info(
+            "worker id acquired app={} id={} owner={} expiresAt={}",
+            context.name,
+            acquired.id.value,
+            acquired.owner.value,
+            acquired.expiresAt,
+        )
         val generator = options.generator(acquired.id)
         val workerIdRuntime = WorkerIdRuntime(acquired, generator)
         lease = acquired
@@ -42,7 +56,17 @@ class WorkerIdModule(
                 while (isActive) {
                     delay(options.renewInterval.toMillis())
                     val renewed = repository.renew(current, options.ttl)
-                        ?: error("worker id lease ${current.id} for ${current.owner} was lost")
+                    if (renewed == null) {
+                        metrics.counter("asteria.worker_id.renew.failed.total", current.metricTags(context.name)).increment()
+                        logger.error(
+                            "worker id lease lost app={} id={} owner={}",
+                            context.name,
+                            current.id.value,
+                            current.owner.value,
+                        )
+                        error("worker id lease ${current.id} for ${current.owner} was lost")
+                    }
+                    metrics.counter("asteria.worker_id.renewed.total", renewed.metricTags(context.name)).increment()
                     current = renewed
                     lease = renewed
                     workerIdRuntime.update(renewed)
@@ -56,10 +80,30 @@ class WorkerIdModule(
         renewJob = null
         scope?.cancel()
         scope = null
-        lease?.let { repository.release(it) }
+        lease?.let {
+            val released = repository.release(it)
+            context.metricsOrNoop().counter(
+                "asteria.worker_id.released.total",
+                it.metricTags(context.name) + MetricTags.of("released" to released.toString()),
+            ).increment()
+            logger.info(
+                "worker id released app={} id={} owner={} released={}",
+                context.name,
+                it.id.value,
+                it.owner.value,
+                released,
+            )
+        }
         lease = null
         runtime = null
     }
+}
+
+private fun WorkerIdLease.metricTags(appName: String): MetricTags {
+    return MetricTags.of(
+        "app" to appName,
+        "worker_id" to id.value.toString(),
+    )
 }
 
 /**

@@ -2,6 +2,7 @@ package io.github.mikai233.asteria.core
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 
 /**
@@ -43,6 +44,8 @@ class AsteriaApplication internal constructor(
     val singletons: List<SingletonSpec>,
     private val modules: List<AsteriaModule>,
 ) : NodeRuntime {
+    private val logger = LoggerFactory.getLogger(AsteriaApplication::class.java)
+
     override val services: ServiceRegistry = ServiceRegistry()
 
     @Volatile
@@ -82,11 +85,30 @@ class AsteriaApplication internal constructor(
             check(state == NodeState.Unstarted || state == NodeState.Stopped) {
                 "application $name cannot launch from state $state"
             }
+            val startedAt = System.nanoTime()
+            logger.info(
+                "launching application {} modules={} roles={} entities={} singletons={}",
+                name,
+                modules.size,
+                declaredRoles.size,
+                entities.size,
+                singletons.size,
+            )
             changeState(NodeState.Starting)
-            val context = ModuleContext(this, services)
-            modules.forEach { it.install(context) }
-            modules.forEach { it.start(context) }
-            changeState(NodeState.Started)
+            try {
+                val context = ModuleContext(this, services)
+                modules.forEach { it.install(context) }
+                modules.forEach { it.start(context) }
+                changeState(NodeState.Started)
+                logger.info(
+                    "application {} launched in {} ms",
+                    name,
+                    (System.nanoTime() - startedAt) / 1_000_000,
+                )
+            } catch (error: Throwable) {
+                logger.error("application {} failed to launch", name, error)
+                throw error
+            }
         }
     }
 
@@ -98,10 +120,22 @@ class AsteriaApplication internal constructor(
             if (state == NodeState.Stopped || state == NodeState.Unstarted) {
                 return
             }
+            val startedAt = System.nanoTime()
+            logger.info("stopping application {}", name)
             changeState(NodeState.Stopping)
-            val context = ModuleContext(this, services)
-            modules.asReversed().forEach { it.stop(context) }
-            changeState(NodeState.Stopped)
+            try {
+                val context = ModuleContext(this, services)
+                modules.asReversed().forEach { it.stop(context) }
+                changeState(NodeState.Stopped)
+                logger.info(
+                    "application {} stopped in {} ms",
+                    name,
+                    (System.nanoTime() - startedAt) / 1_000_000,
+                )
+            } catch (error: Throwable) {
+                logger.error("application {} failed to stop", name, error)
+                throw error
+            }
         }
     }
 

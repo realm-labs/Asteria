@@ -1,8 +1,15 @@
 package io.github.mikai233.asteria.patch
 
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
+import io.github.mikai233.asteria.observability.NoopTracer
+import io.github.mikai233.asteria.observability.TraceAttributes
+import io.github.mikai233.asteria.observability.Tracer
 import java.io.Serializable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.slf4j.LoggerFactory
 
 /**
  * Runtime patch unit loaded and applied by a node.
@@ -80,26 +87,38 @@ class PatchUninstallContext internal constructor(
 
 class PatchRuntime(
     val environment: PatchEnvironment,
+    private val tracer: Tracer = NoopTracer,
+    private val metrics: Metrics = NoopMetrics,
 ) {
+    private val logger = LoggerFactory.getLogger(PatchRuntime::class.java)
     private val lock = Mutex()
     private val applied: MutableMap<PatchId, AppliedRuntimePatch> = linkedMapOf()
 
     suspend fun apply(patch: RuntimePatch, plugin: RuntimePatchPlugin): PatchApplyResult {
-        return lock.withLock {
-            when {
-                patch.id in applied -> PatchApplyResult.Ignored(patch.id, "patch ${patch.id} is already applied")
-                patch.status != PatchStatus.Enabled -> PatchApplyResult.Ignored(patch.id, "patch ${patch.id} is ${patch.status}")
-                !patch.compatibility.matches(environment) -> PatchApplyResult.Ignored(
-                    patch.id,
-                    "patch ${patch.id} is not compatible with ${environment.appName}:${environment.version}",
-                )
+        return tracer.span("patch.apply", patch.traceAttributes()) {
+            metrics.counter("asteria.patch.apply.total", patch.metricTags()).increment()
+            metrics.timer("asteria.patch.apply.duration", patch.metricTags()).record {
+                lock.withLock {
+                    val result = when {
+                        patch.id in applied -> PatchApplyResult.Ignored(patch.id, "patch ${patch.id} is already applied")
+                        patch.status != PatchStatus.Enabled -> PatchApplyResult.Ignored(patch.id, "patch ${patch.id} is ${patch.status}")
+                        !patch.compatibility.matches(environment) -> PatchApplyResult.Ignored(
+                            patch.id,
+                            "patch ${patch.id} is not compatible with ${environment.appName}:${environment.version}",
+                        )
 
-                !patch.target.matches(environment) -> PatchApplyResult.Ignored(
-                    patch.id,
-                    "patch ${patch.id} does not target this node",
-                )
+                        !patch.target.matches(environment) -> PatchApplyResult.Ignored(
+                            patch.id,
+                            "patch ${patch.id} does not target this node",
+                        )
 
-                else -> applyEnabled(patch, plugin)
+                        else -> applyEnabled(patch, plugin)
+                    }
+                    val tags = patch.metricTags() + MetricTags.of("result" to result.resultTag())
+                    metrics.counter("asteria.patch.apply.result.total", tags).increment()
+                    event("patch.apply.result", TraceAttributes.of("patch.result" to result.resultTag()))
+                    result
+                }
             }
         }
     }
@@ -110,13 +129,22 @@ class PatchRuntime(
     }
 
     suspend fun remove(id: PatchId): Boolean {
-        return lock.withLock {
-            val appliedPatch = applied.remove(id) ?: return@withLock false
-            runCatching {
-                appliedPatch.plugin.uninstall(PatchUninstallContext(appliedPatch.patch))
+        return tracer.span("patch.remove", TraceAttributes.of("patch.id" to id.value)) {
+            metrics.counter("asteria.patch.remove.total", MetricTags.of("patch_id" to id.value)).increment()
+            lock.withLock {
+                val appliedPatch = applied.remove(id) ?: return@withLock false
+                runCatching {
+                    appliedPatch.plugin.uninstall(PatchUninstallContext(appliedPatch.patch))
+                }.onFailure { error ->
+                    metrics.counter("asteria.patch.uninstall.failed.total", appliedPatch.patch.metricTags()).increment()
+                    this@span.error(error)
+                    logger.error("patch {} uninstall failed", id.value, error)
+                }
+                appliedPatch.operations.asReversed().forEach { it.rollback() }
+                metrics.counter("asteria.patch.remove.applied.total", appliedPatch.patch.metricTags()).increment()
+                logger.info("patch removed id={}", id.value)
+                true
             }
-            appliedPatch.operations.asReversed().forEach { it.rollback() }
-            true
         }
     }
 
@@ -126,21 +154,58 @@ class PatchRuntime(
 
     private suspend fun applyEnabled(patch: RuntimePatch, plugin: RuntimePatchPlugin): PatchApplyResult {
         val context = PatchInstallContext(patch.order)
-        plugin.install(context)
-        val operations = context.operations()
-        operations.forEach { it.validate() }
-        val committed = mutableListOf<PatchOperation>()
         try {
-            operations.forEach { operation ->
-                operation.commit()
-                committed.add(operation)
+            plugin.install(context)
+            val operations = context.operations()
+            operations.forEach { it.validate() }
+            val committed = mutableListOf<PatchOperation>()
+            try {
+                operations.forEach { operation ->
+                    operation.commit()
+                    committed.add(operation)
+                }
+                applied[patch.id] = AppliedRuntimePatch(patch, plugin, operations)
+                logger.info(
+                    "patch applied id={} operations={} priority={} sequence={}",
+                    patch.id.value,
+                    operations.size,
+                    patch.priority,
+                    patch.sequence,
+                )
+                return PatchApplyResult.Applied(patch.id, operations.size)
+            } catch (error: Throwable) {
+                committed.asReversed().forEach { it.rollback() }
+                throw error
             }
-            applied[patch.id] = AppliedRuntimePatch(patch, plugin, operations)
-            return PatchApplyResult.Applied(patch.id, operations.size)
         } catch (error: Throwable) {
-            committed.asReversed().forEach { it.rollback() }
+            metrics.counter("asteria.patch.apply.failed.total", patch.metricTags()).increment()
+            logger.error("patch {} apply failed", patch.id.value, error)
             throw error
         }
+    }
+}
+
+private fun RuntimePatch.metricTags(): MetricTags {
+    return MetricTags.of(
+        "patch_id" to id.value,
+        "app" to compatibility.appName,
+    )
+}
+
+private fun RuntimePatch.traceAttributes(): TraceAttributes {
+    return TraceAttributes.of(
+        "patch.id" to id.value,
+        "patch.name" to name,
+        "patch.app" to compatibility.appName,
+        "patch.priority" to priority.toString(),
+        "patch.sequence" to sequence.toString(),
+    )
+}
+
+private fun PatchApplyResult.resultTag(): String {
+    return when (this) {
+        is PatchApplyResult.Applied -> "applied"
+        is PatchApplyResult.Ignored -> "ignored"
     }
 }
 
