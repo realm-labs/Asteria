@@ -13,17 +13,50 @@ import io.github.mikai233.asteria.core.RoleKey
  * for tests, local multi-node tooling, and GM/debug endpoints that need a compact view of how the node was started.
  */
 data class GameServerStartupSummary(
+    /**
+     * Application / ActorSystem name.
+     */
     val applicationName: String,
+    /**
+     * Startup path that produced this node, such as `local`, `local-static`, `local-config-center`, or `config-center`.
+     */
     val topologySource: String,
+    /**
+     * Runtime node id when topology based startup is used.
+     */
     val nodeId: String?,
+    /**
+     * Published canonical host for topology based startup.
+     */
     val host: String?,
+    /**
+     * Published canonical port for topology based startup.
+     */
     val port: Int?,
+    /**
+     * Roles owned by this concrete running node.
+     */
     val roles: Set<String>,
+    /**
+     * Node ids marked as seed nodes in the resolved topology.
+     */
     val seedNodes: List<String>,
+    /**
+     * All node ids in the resolved topology.
+     */
     val topologyNodes: List<String>,
+    /**
+     * Entity kinds declared by the application.
+     */
     val entities: List<String>,
+    /**
+     * Singleton names declared by the application.
+     */
     val singletons: List<String>,
 ) {
+    /**
+     * Renders a compact line-oriented summary suitable for logs or debug HTTP responses.
+     */
     fun render(): String {
         return buildString {
             appendLine("application=$applicationName")
@@ -39,6 +72,9 @@ data class GameServerStartupSummary(
     }
 }
 
+/**
+ * Registers [GameServerStartupSummary] after earlier runtime modules have resolved topology and node roles.
+ */
 class GameServerStartupSummaryModule(
     private val topologySource: String,
 ) : AsteriaModule {

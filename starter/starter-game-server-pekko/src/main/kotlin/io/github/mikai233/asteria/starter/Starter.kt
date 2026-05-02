@@ -23,6 +23,11 @@ import io.github.mikai233.asteria.message.RouteRegistry
 import io.github.mikai233.asteria.message.RouteRegistryBuilder
 import io.github.mikai233.asteria.rpc.RpcModule
 
+/**
+ * Installs a prebuilt gateway/client protocol route registry.
+ *
+ * Most applications should use [routes] instead of constructing this module directly.
+ */
 class RouteModule(
     private val registry: RouteRegistry,
 ) : AsteriaModule {
@@ -33,10 +38,23 @@ class RouteModule(
     }
 }
 
+/**
+ * Installs message routes into the application.
+ *
+ * Routes are intentionally separate from protobuf parsing and gateway packet framing. They only describe the runtime
+ * target selected for an already decoded message.
+ */
 fun AsteriaApplicationBuilder.routes(configure: RouteRegistryBuilder.() -> Unit) {
     install(RouteModule(RouteRegistryBuilder().apply(configure).build()))
 }
 
+/**
+ * Builds a single local Pekko game node.
+ *
+ * The node self-joins a local cluster, uses the roles declared by the application, installs RPC auto-discovery, and
+ * registers [GameServerStartupSummary]. Use this for simple local development. Use [localGameCluster] when behavior
+ * depends on multiple concrete nodes.
+ */
 fun localGameApplication(configure: AsteriaApplicationBuilder.() -> Unit): AsteriaApplication {
     return gameApplication {
         install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
@@ -46,6 +64,12 @@ fun localGameApplication(configure: AsteriaApplicationBuilder.() -> Unit): Aster
     }
 }
 
+/**
+ * Builds a cluster node whose topology is read from an already installed [RuntimeConfigRepository].
+ *
+ * This overload is useful when the application installs a concrete config-center module itself, for example Nacos,
+ * Zookeeper, or Etcd. The node is selected by [nodeId].
+ */
 fun clusterGameApplication(
     nodeId: String,
     layout: ClusterConfigLayout? = null,
@@ -66,6 +90,12 @@ fun clusterGameApplication(
     }
 }
 
+/**
+ * Builds a cluster node and installs a [ConfigCenterModule] backed by [store].
+ *
+ * This is the compact startup path for tests, tools, or deployments that already have a concrete [ConfigStore]
+ * instance. The topology is loaded from [layout], defaulting to the application name.
+ */
 fun clusterGameApplication(
     nodeId: String,
     store: ConfigStore,
@@ -94,6 +124,12 @@ fun clusterGameApplication(
     }
 }
 
+/**
+ * Builds a cluster node from an in-memory/static [topology].
+ *
+ * This path does not require a config center. It is useful for tests and local fixed-topology runs. For local tests that
+ * should exercise the same config-center topology path as production, use [localConfigCenterGameCluster].
+ */
 fun clusterGameApplication(
     nodeId: String,
     topology: ClusterTopology,
@@ -121,6 +157,12 @@ fun clusterGameApplication(
     }
 }
 
+/**
+ * Writes a full cluster topology into a config store using [ClusterConfigLayout.node] paths.
+ *
+ * This helper is intentionally small: it only publishes node records. It does not remove nodes that are no longer in
+ * [topology], so tools that manage topology replacement should handle cleanup explicitly.
+ */
 suspend fun ConfigStore.publishClusterTopology(
     topology: ClusterTopology,
     layout: ClusterConfigLayout,

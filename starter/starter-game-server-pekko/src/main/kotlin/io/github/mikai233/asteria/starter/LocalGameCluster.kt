@@ -23,13 +23,35 @@ import java.net.ServerSocket
 
 /**
  * Built local multi-node cluster for tests and local development.
+ *
+ * The cluster owns multiple [AsteriaApplication] instances in the same JVM. [topology] is generated before launch and
+ * shared by all nodes. When built through [localConfigCenterGameCluster], [store] and [layout] expose the in-memory
+ * config-center topology used by the nodes.
  */
 class LocalGameCluster internal constructor(
+    /**
+     * Static topology generated for this local cluster.
+     */
     val topology: ClusterTopology,
+    /**
+     * Node applications keyed by `nodeId`.
+     */
     val applications: Map<String, AsteriaApplication>,
+    /**
+     * Config store used by config-center based local clusters, or `null` for static local clusters.
+     */
     val store: ConfigStore? = null,
+    /**
+     * Cluster topology layout used by [store], or `null` for static local clusters.
+     */
     val layout: ClusterConfigLayout? = null,
 ) {
+    /**
+     * Launches every node in declaration order.
+     *
+     * If any node fails to launch, nodes that already started are stopped in reverse order before the original failure
+     * is rethrown.
+     */
     suspend fun launch(): LocalGameCluster {
         val launched = mutableListOf<AsteriaApplication>()
         try {
@@ -46,12 +68,18 @@ class LocalGameCluster internal constructor(
         }
     }
 
+    /**
+     * Stops every node in reverse declaration order.
+     */
     suspend fun stop() {
         applications.values.toList().asReversed().forEach { application ->
             application.stop()
         }
     }
 
+    /**
+     * Returns the application for [nodeId].
+     */
     operator fun get(nodeId: String): AsteriaApplication {
         return applications[nodeId] ?: error("local game cluster does not contain node $nodeId")
     }
@@ -68,6 +96,13 @@ fun localGameCluster(configure: LocalGameClusterBuilder.() -> Unit): LocalGameCl
     return LocalGameClusterBuilder().apply(configure).build()
 }
 
+/**
+ * Builds a local multi-node cluster that uses an in-memory config center topology path.
+ *
+ * The generated topology is written to [configStore] before node applications are built. Each node then starts through
+ * [TopologyPekkoClusterStartup] without receiving a static provider directly, which makes local tests exercise the same
+ * topology lookup path as config-center based deployments.
+ */
 suspend fun localConfigCenterGameCluster(
     configStore: ConfigStore = InMemoryConfigStore(),
     layout: ClusterConfigLayout? = null,
@@ -77,10 +112,16 @@ suspend fun localConfigCenterGameCluster(
     return LocalGameClusterBuilder().apply(configure).buildConfigCenter(configStore, layout, configCodec)
 }
 
+/**
+ * Builds and immediately launches a [localGameCluster].
+ */
 suspend fun launchLocalGameCluster(configure: LocalGameClusterBuilder.() -> Unit): LocalGameCluster {
     return localGameCluster(configure).launch()
 }
 
+/**
+ * Builds and immediately launches a [localConfigCenterGameCluster].
+ */
 suspend fun launchLocalConfigCenterGameCluster(
     configStore: ConfigStore = InMemoryConfigStore(),
     layout: ClusterConfigLayout? = null,
@@ -92,8 +133,17 @@ suspend fun launchLocalConfigCenterGameCluster(
 
 @AsteriaDsl
 class LocalGameClusterBuilder {
+    /**
+     * Application / Pekko ActorSystem name shared by all local nodes.
+     */
     var name: String = "asteria-local-${System.nanoTime()}"
+    /**
+     * Default host for nodes that do not override [node]'s `host` parameter.
+     */
     var host: String = "127.0.0.1"
+    /**
+     * Extra Pekko config merged into every local node.
+     */
     var pekkoConfig: Config = ConfigFactory.empty()
 
     private val applicationConfigurators: MutableList<AsteriaApplicationBuilder.() -> Unit> = mutableListOf()
@@ -108,6 +158,9 @@ class LocalGameClusterBuilder {
 
     /**
      * Adds one local node.
+     *
+     * A `port` of `0` means the builder allocates a free local TCP port when [build] or [buildConfigCenter] runs.
+     * [configure] is node-local application DSL and runs after common [application] declarations.
      */
     fun node(
         nodeId: String,
@@ -131,6 +184,8 @@ class LocalGameClusterBuilder {
 
     /**
      * Adds one seed node.
+     *
+     * This is equivalent to [node] with `seed = true`.
      */
     fun seedNode(
         nodeId: String,
@@ -151,6 +206,9 @@ class LocalGameClusterBuilder {
         )
     }
 
+    /**
+     * Builds a static-topology local cluster.
+     */
     fun build(): LocalGameCluster {
         val runtimeNodes = runtimeNodes()
         val topology = ClusterTopology(runtimeNodes)
@@ -180,6 +238,11 @@ class LocalGameClusterBuilder {
         return LocalGameCluster(topology, applications)
     }
 
+    /**
+     * Builds a config-center-topology local cluster.
+     *
+     * The generated topology is published to [configStore] under [layout] before any node application is built.
+     */
     suspend fun buildConfigCenter(
         configStore: ConfigStore = InMemoryConfigStore(),
         layout: ClusterConfigLayout? = null,
