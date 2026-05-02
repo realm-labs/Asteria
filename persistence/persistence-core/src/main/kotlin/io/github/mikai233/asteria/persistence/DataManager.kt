@@ -1,13 +1,19 @@
 package io.github.mikai233.asteria.persistence
 
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import java.time.Clock
 import kotlin.reflect.KClass
+import org.slf4j.LoggerFactory
 
 class DataManager<ID : Any>(
     private val scope: DataScope<ID>,
     modules: Iterable<DataModule<ID, out MemData>>,
     private val clock: Clock = Clock.systemUTC(),
+    private val metrics: Metrics = NoopMetrics,
 ) {
+    private val logger = LoggerFactory.getLogger(DataManager::class.java)
     private val modules: List<DataModule<ID, out MemData>> = modules.toList()
     private val modulesByType: Map<KClass<out MemData>, DataModule<ID, out MemData>> =
         this.modules.associateBy { it.type }.also { modulesByType ->
@@ -19,7 +25,7 @@ class DataManager<ID : Any>(
     /**
      * Loads modules declared with [DataLoadPolicy.Eager].
      */
-    suspend fun loadEager() {
+    suspend fun loadEager() = measured("load_eager", baseTags()) {
         check(!eagerLoaded) { "eager data for ${scope.entityKind}:${scope.entityId} already loaded" }
         eagerLoaded = true
         modulesByType.values
@@ -38,7 +44,12 @@ class DataManager<ID : Any>(
         check(module.bucket.loadPolicy != DataLoadPolicy.UnloadableLazy) {
             "unloadable mem data ${type.qualifiedName} must be accessed with use"
         }
-        return loaded(type) ?: load(module)
+        loaded(type)?.let { data ->
+            metrics.counter("asteria.persistence.data.cache.hit.total", dataTags(module)).increment()
+            return data
+        }
+        metrics.counter("asteria.persistence.data.cache.miss.total", dataTags(module)).increment()
+        return load(module)
     }
 
     /**
@@ -46,12 +57,19 @@ class DataManager<ID : Any>(
      */
     suspend fun <T : MemData, R> use(type: KClass<T>, block: suspend (T) -> R): R {
         val module = module(type)
-        val data = loaded(type) ?: load(module)
-        touch(type)
-        return try {
-            block(data)
-        } finally {
+        return measured("use", dataTags(module)) {
+            val data = loaded(type)?.also {
+                metrics.counter("asteria.persistence.data.cache.hit.total", dataTags(module)).increment()
+            } ?: run {
+                metrics.counter("asteria.persistence.data.cache.miss.total", dataTags(module)).increment()
+                load(module)
+            }
             touch(type)
+            try {
+                block(data)
+            } finally {
+                touch(type)
+            }
         }
     }
 
@@ -60,18 +78,20 @@ class DataManager<ID : Any>(
         return loadedDataByType[type]?.data as? T ?: error("mem data ${type.qualifiedName} not loaded")
     }
 
-    suspend fun tick() {
+    suspend fun tick() = measured("tick", baseTags()) {
         loadedDataByType.values.toList().forEach { loadedData ->
             val data = loadedData.data
             if (data is AutoFlushMemData) {
-                data.tick()
+                measured("data_tick", dataTags(loadedData.module)) {
+                    data.tick()
+                }
             }
         }
         unloadIdle()
     }
 
-    suspend fun flush(): Boolean {
-        return loadedDataByType.values
+    suspend fun flush(): Boolean = measured("flush", baseTags()) {
+        loadedDataByType.values
             .map { it.data }
             .filterIsInstance<AutoFlushMemData>()
             .all { it.flush() }
@@ -80,7 +100,7 @@ class DataManager<ID : Any>(
     /**
      * Flushes and unloads idle data from unloadable buckets.
      */
-    suspend fun unloadIdle() {
+    suspend fun unloadIdle() = measured("unload_idle", baseTags()) {
         val now = clock.millis()
         val expired = loadedDataByType.values
             .filter { loadedData ->
@@ -105,20 +125,22 @@ class DataManager<ID : Any>(
 
     private suspend fun <T : MemData> load(module: DataModule<ID, T>): T {
         loaded(module.type)?.let { return it }
-        val data = module.create(scope)
-        val lease = if (module.bucket.loadPolicy == DataLoadPolicy.UnloadableLazy) {
-            val lease = DataLease("mem data ${module.type.qualifiedName}")
-            require(data is DataLeaseAware) {
-                "unloadable mem data ${module.type.qualifiedName} must implement DataLeaseAware"
+        return measured("load", dataTags(module)) {
+            val data = module.create(scope)
+            val lease = if (module.bucket.loadPolicy == DataLoadPolicy.UnloadableLazy) {
+                val lease = DataLease("mem data ${module.type.qualifiedName}")
+                require(data is DataLeaseAware) {
+                    "unloadable mem data ${module.type.qualifiedName} must implement DataLeaseAware"
+                }
+                data.bindLease(lease)
+                lease
+            } else {
+                null
             }
-            data.bindLease(lease)
-            lease
-        } else {
-            null
+            data.load()
+            loadedDataByType[module.type] = LoadedData(module, data, clock.millis(), lease)
+            data
         }
-        data.load()
-        loadedDataByType[module.type] = LoadedData(module, data, clock.millis(), lease)
-        return data
     }
 
     private fun touch(type: KClass<out MemData>) {
@@ -127,14 +149,44 @@ class DataManager<ID : Any>(
         loadedData.lastAccessMillis = clock.millis()
     }
 
-    private suspend fun unload(loadedData: LoadedData<ID, out MemData>) {
+    private suspend fun unload(loadedData: LoadedData<ID, out MemData>) = measured("unload", dataTags(loadedData.module)) {
         val data = loadedData.data
         if (data is AutoFlushMemData && !data.flush()) {
+            metrics.counter("asteria.persistence.data.unload.skipped.total", dataTags(loadedData.module)).increment()
             loadedData.lastAccessMillis = clock.millis()
-            return
+            return@measured
         }
         loadedData.lease?.invalidate()
         loadedDataByType.remove(loadedData.module.type)
+    }
+
+    private fun baseTags(): MetricTags {
+        return MetricTags.of("entity_kind" to scope.entityKind.value)
+    }
+
+    private fun dataTags(module: DataModule<ID, out MemData>): MetricTags {
+        return MetricTags.of(
+            "entity_kind" to scope.entityKind.value,
+            "data" to (module.type.qualifiedName ?: module.type.toString()),
+            "bucket" to module.bucket.name,
+            "load_policy" to module.bucket.loadPolicy.name,
+        )
+    }
+
+    private suspend fun <T> measured(operation: String, tags: MetricTags, block: suspend () -> T): T {
+        val metricTags = tags + MetricTags.of("operation" to operation)
+        metrics.counter("asteria.persistence.data.operation.total", metricTags).increment()
+        val start = System.nanoTime()
+        return try {
+            block()
+        } catch (error: Throwable) {
+            metrics.counter("asteria.persistence.data.operation.failed.total", metricTags).increment()
+            logger.warn("persistence data operation failed: operation={}", operation, error)
+            throw error
+        } finally {
+            metrics.timer("asteria.persistence.data.operation.duration", metricTags)
+                .record((System.nanoTime() - start) / 1_000_000)
+        }
     }
 }
 

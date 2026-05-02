@@ -19,22 +19,30 @@ import io.github.mikai233.asteria.id.WorkerIdOwner
 import io.github.mikai233.asteria.id.WorkerIdRange
 import io.github.mikai233.asteria.id.WorkerIdRepository
 import io.github.mikai233.asteria.id.WorkerIdUnavailableException
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.toList
 import org.bson.Document
+import org.slf4j.LoggerFactory
 
 class MongoWorkerIdRepository(
     database: MongoDatabase,
     collectionName: String = "worker_id_leases",
+    private val metrics: Metrics = NoopMetrics,
 ) : WorkerIdRepository {
+    private val logger = LoggerFactory.getLogger(MongoWorkerIdRepository::class.java)
     private val leases: MongoCollection<Document> = database.getCollection(collectionName)
 
     suspend fun ensureIndexes() {
-        leases.createIndex(Indexes.ascending("owner"))
-        leases.createIndex(Indexes.ascending("expiresAtMillis"))
+        measured("ensure_indexes") {
+            leases.createIndex(Indexes.ascending("owner"))
+            leases.createIndex(Indexes.ascending("expiresAtMillis"))
+        }
     }
 
     override suspend fun acquire(
@@ -43,13 +51,15 @@ class MongoWorkerIdRepository(
         ttl: Duration,
         now: Instant,
     ): WorkerIdLease {
-        require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
-        expire(now)
-        renewCurrentOwnerLease(owner, range, ttl, now)?.let { return it }
-        for (id in range.ids()) {
-            insertLease(WorkerId(id), owner, ttl, now)?.let { return it }
+        return measured("acquire") {
+            require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+            expire(now)
+            renewCurrentOwnerLease(owner, range, ttl, now)?.let { return@measured it }
+            for (id in range.ids()) {
+                insertLease(WorkerId(id), owner, ttl, now)?.let { return@measured it }
+            }
+            throw WorkerIdUnavailableException(owner, range)
         }
-        throw WorkerIdUnavailableException(owner, range)
     }
 
     override suspend fun renew(
@@ -57,36 +67,58 @@ class MongoWorkerIdRepository(
         ttl: Duration,
         now: Instant,
     ): WorkerIdLease? {
-        require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
-        return leases.findOneAndUpdate(
-            and(
-                eq("_id", lease.id.value),
-                eq("owner", lease.owner.value),
-                eq("token", lease.token),
-                gte("expiresAtMillis", now.toEpochMilli() + 1),
-            ),
-            set("expiresAtMillis", now.plus(ttl).toEpochMilli()),
-            FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER),
-        )?.toLease()
+        return measured("renew") {
+            require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+            leases.findOneAndUpdate(
+                and(
+                    eq("_id", lease.id.value),
+                    eq("owner", lease.owner.value),
+                    eq("token", lease.token),
+                    gte("expiresAtMillis", now.toEpochMilli() + 1),
+                ),
+                set("expiresAtMillis", now.plus(ttl).toEpochMilli()),
+                FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER),
+            )?.toLease()
+        }
     }
 
     override suspend fun release(lease: WorkerIdLease): Boolean {
-        val result = leases.deleteOne(
-            and(
-                eq("_id", lease.id.value),
-                eq("owner", lease.owner.value),
-                eq("token", lease.token),
-            ),
-        )
-        return result.deletedCount == 1L
+        return measured("release") {
+            val result = leases.deleteOne(
+                and(
+                    eq("_id", lease.id.value),
+                    eq("owner", lease.owner.value),
+                    eq("token", lease.token),
+                ),
+            )
+            result.deletedCount == 1L
+        }
     }
 
     override suspend fun leases(now: Instant): List<WorkerIdLease> {
-        expire(now)
-        return leases.find()
-            .sort(Sorts.ascending("_id"))
-            .toList()
-            .map { it.toLease() }
+        return measured("leases") {
+            expire(now)
+            leases.find()
+                .sort(Sorts.ascending("_id"))
+                .toList()
+                .map { it.toLease() }
+        }
+    }
+
+    private suspend fun <T> measured(operation: String, block: suspend () -> T): T {
+        val tags = MetricTags.of("backend" to "mongodb", "operation" to operation)
+        val startedAt = System.nanoTime()
+        metrics.counter("asteria.worker_id.repository.operation.total", tags).increment()
+        try {
+            return block()
+        } catch (error: Throwable) {
+            metrics.counter("asteria.worker_id.repository.operation.failed.total", tags).increment()
+            logger.error("Mongo worker id repository operation failed operation={}", operation, error)
+            throw error
+        } finally {
+            metrics.timer("asteria.worker_id.repository.operation.duration", tags)
+                .record((System.nanoTime() - startedAt) / 1_000_000)
+        }
     }
 
     private suspend fun renewCurrentOwnerLease(

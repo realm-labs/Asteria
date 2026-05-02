@@ -7,10 +7,13 @@ import io.github.mikai233.asteria.gm.core.GmFeatureRegistry
 import io.github.mikai233.asteria.gm.core.GmPolicyEvaluator
 import io.github.mikai233.asteria.gm.core.NoopGmAuditSink
 import io.github.mikai233.asteria.gm.core.discoverGmFeatures
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Bean
 
 @AutoConfiguration
@@ -47,8 +50,9 @@ class GmSpringAutoConfiguration {
         principalResolver: GmPrincipalResolver,
         policyEvaluator: GmPolicyEvaluator,
         auditSink: GmAuditSink,
+        metrics: ObjectProvider<Metrics>,
     ): GmEndpointSupport {
-        return GmEndpointSupport(principalResolver, policyEvaluator, auditSink)
+        return GmEndpointSupport(principalResolver, policyEvaluator, auditSink, metrics.ifAvailable ?: NoopMetrics)
     }
 
     @Bean

@@ -4,6 +4,8 @@ plugins {
 
 dependencies {
     api(project(":script:script-core"))
+    api(project(":observability:observability-core"))
     implementation(libs.groovy)
     implementation(libs.kotlin.reflect)
+    implementation(libs.slf4j.api)
 }

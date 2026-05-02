@@ -15,17 +15,23 @@ import io.github.mikai233.asteria.id.WorkerIdOwner
 import io.github.mikai233.asteria.id.WorkerIdRange
 import io.github.mikai233.asteria.id.WorkerIdRepository
 import io.github.mikai233.asteria.id.WorkerIdUnavailableException
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.future.await
+import org.slf4j.LoggerFactory
 
 class EtcdWorkerIdRepository(
     private val client: Client,
     keyPrefix: String = "/asteria/worker-ids",
+    private val metrics: Metrics = NoopMetrics,
 ) : WorkerIdRepository {
+    private val logger = LoggerFactory.getLogger(EtcdWorkerIdRepository::class.java)
     private val normalizedPrefix = normalizePrefix(keyPrefix)
 
     override suspend fun acquire(
@@ -34,15 +40,17 @@ class EtcdWorkerIdRepository(
         ttl: Duration,
         now: Instant,
     ): WorkerIdLease {
-        require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
-        expire(now)
-        leases(now)
-            .firstOrNull { lease -> lease.owner == owner && lease.id in range }
-            ?.let { current -> renew(current, ttl, now)?.let { return it } }
-        for (id in range.ids().map(::WorkerId)) {
-            acquireSlot(id, owner, ttl, now)?.let { return it }
+        return measured("acquire") {
+            require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+            expire(now)
+            leases(now)
+                .firstOrNull { lease -> lease.owner == owner && lease.id in range }
+                ?.let { current -> renew(current, ttl, now)?.let { return@measured it } }
+            for (id in range.ids().map(::WorkerId)) {
+                acquireSlot(id, owner, ttl, now)?.let { return@measured it }
+            }
+            throw WorkerIdUnavailableException(owner, range)
         }
-        throw WorkerIdUnavailableException(owner, range)
     }
 
     override suspend fun renew(
@@ -50,43 +58,65 @@ class EtcdWorkerIdRepository(
         ttl: Duration,
         now: Instant,
     ): WorkerIdLease? {
-        require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
-        val key = byteKey(lease.id)
-        val current = client.kvClient.get(key).await().kvs.firstOrNull() ?: return null
-        val currentLease = current.toLeaseOrNull() ?: return null
-        if (currentLease.owner != lease.owner || currentLease.token != lease.token || currentLease.isExpired(now)) {
-            if (currentLease.isExpired(now)) {
-                deleteIfRevision(key, current.modRevision)
+        return measured("renew") {
+            require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+            val key = byteKey(lease.id)
+            val current = client.kvClient.get(key).await().kvs.firstOrNull() ?: return@measured null
+            val currentLease = current.toLeaseOrNull() ?: return@measured null
+            if (currentLease.owner != lease.owner || currentLease.token != lease.token || currentLease.isExpired(now)) {
+                if (currentLease.isExpired(now)) {
+                    deleteIfRevision(key, current.modRevision)
+                }
+                return@measured null
             }
-            return null
+            val renewed = currentLease.copy(expiresAt = now.plus(ttl))
+            val response = client.kvClient.txn()
+                .If(Cmp(key, Cmp.Op.EQUAL, CmpTarget.modRevision(current.modRevision)))
+                .Then(Op.put(key, ByteSequence.from(renewed.encode(), UTF_8), PutOption.DEFAULT))
+                .commit()
+                .await()
+            if (response.isSucceeded) renewed else null
         }
-        val renewed = currentLease.copy(expiresAt = now.plus(ttl))
-        val response = client.kvClient.txn()
-            .If(Cmp(key, Cmp.Op.EQUAL, CmpTarget.modRevision(current.modRevision)))
-            .Then(Op.put(key, ByteSequence.from(renewed.encode(), UTF_8), PutOption.DEFAULT))
-            .commit()
-            .await()
-        return if (response.isSucceeded) renewed else null
     }
 
     override suspend fun release(lease: WorkerIdLease): Boolean {
-        val key = byteKey(lease.id)
-        val current = client.kvClient.get(key).await().kvs.firstOrNull() ?: return false
-        val currentLease = current.toLeaseOrNull() ?: return false
-        if (currentLease.owner != lease.owner || currentLease.token != lease.token) {
-            return false
+        return measured("release") {
+            val key = byteKey(lease.id)
+            val current = client.kvClient.get(key).await().kvs.firstOrNull() ?: return@measured false
+            val currentLease = current.toLeaseOrNull() ?: return@measured false
+            if (currentLease.owner != lease.owner || currentLease.token != lease.token) {
+                return@measured false
+            }
+            deleteIfRevision(key, current.modRevision)
         }
-        return deleteIfRevision(key, current.modRevision)
     }
 
     override suspend fun leases(now: Instant): List<WorkerIdLease> {
-        expire(now)
-        return client.kvClient.get(bytePrefix(), GetOption.builder().isPrefix(true).build())
-            .await()
-            .kvs
-            .mapNotNull { keyValue -> keyValue.toLeaseOrNull() }
-            .filterNot { lease -> lease.isExpired(now) }
-            .sortedBy { lease -> lease.id.value }
+        return measured("leases") {
+            expire(now)
+            client.kvClient.get(bytePrefix(), GetOption.builder().isPrefix(true).build())
+                .await()
+                .kvs
+                .mapNotNull { keyValue -> keyValue.toLeaseOrNull() }
+                .filterNot { lease -> lease.isExpired(now) }
+                .sortedBy { lease -> lease.id.value }
+        }
+    }
+
+    private suspend fun <T> measured(operation: String, block: suspend () -> T): T {
+        val tags = MetricTags.of("backend" to "etcd", "operation" to operation)
+        val startedAt = System.nanoTime()
+        metrics.counter("asteria.worker_id.repository.operation.total", tags).increment()
+        try {
+            return block()
+        } catch (error: Throwable) {
+            metrics.counter("asteria.worker_id.repository.operation.failed.total", tags).increment()
+            logger.error("Etcd worker id repository operation failed operation={}", operation, error)
+            throw error
+        } finally {
+            metrics.timer("asteria.worker_id.repository.operation.duration", tags)
+                .record((System.nanoTime() - startedAt) / 1_000_000)
+        }
     }
 
     private suspend fun acquireSlot(

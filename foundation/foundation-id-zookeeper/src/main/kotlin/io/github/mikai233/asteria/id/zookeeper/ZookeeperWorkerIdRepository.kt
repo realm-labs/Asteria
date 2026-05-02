@@ -6,6 +6,9 @@ import io.github.mikai233.asteria.id.WorkerIdOwner
 import io.github.mikai233.asteria.id.WorkerIdRange
 import io.github.mikai233.asteria.id.WorkerIdRepository
 import io.github.mikai233.asteria.id.WorkerIdUnavailableException
+import io.github.mikai233.asteria.observability.MetricTags
+import io.github.mikai233.asteria.observability.Metrics
+import io.github.mikai233.asteria.observability.NoopMetrics
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Duration
 import java.time.Instant
@@ -16,26 +19,29 @@ import org.apache.curator.x.async.AsyncCuratorFramework
 import org.apache.curator.x.async.api.CreateOption
 import org.apache.zookeeper.KeeperException
 import org.apache.zookeeper.data.Stat
+import org.slf4j.LoggerFactory
 
 class ZookeeperWorkerIdRepository(
     private val client: AsyncCuratorFramework,
     pathPrefix: String = "/asteria/worker-ids",
+    private val metrics: Metrics = NoopMetrics,
 ) : WorkerIdRepository {
     private val normalizedPrefix = normalizePrefix(pathPrefix)
+    private val logger = LoggerFactory.getLogger(ZookeeperWorkerIdRepository::class.java)
 
     override suspend fun acquire(
         owner: WorkerIdOwner,
         range: WorkerIdRange,
         ttl: Duration,
         now: Instant,
-    ): WorkerIdLease {
+    ): WorkerIdLease = measured("acquire") {
         require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
         expire(now)
         leases(now)
             .firstOrNull { lease -> lease.owner == owner && lease.id in range }
-            ?.let { current -> renew(current, ttl, now)?.let { return it } }
+            ?.let { current -> renew(current, ttl, now)?.let { return@measured it } }
         for (id in range.ids().map(::WorkerId)) {
-            acquireSlot(id, owner, ttl, now)?.let { return it }
+            acquireSlot(id, owner, ttl, now)?.let { return@measured it }
         }
         throw WorkerIdUnavailableException(owner, range)
     }
@@ -44,18 +50,18 @@ class ZookeeperWorkerIdRepository(
         lease: WorkerIdLease,
         ttl: Duration,
         now: Instant,
-    ): WorkerIdLease? {
+    ): WorkerIdLease? = measured("renew") {
         require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
         val path = pathOf(lease.id)
-        val current = read(path) ?: return null
+        val current = read(path) ?: return@measured null
         if (current.lease.owner != lease.owner || current.lease.token != lease.token || current.lease.isExpired(now)) {
             if (current.lease.isExpired(now)) {
                 delete(path, current.version)
             }
-            return null
+            return@measured null
         }
         val renewed = current.lease.copy(expiresAt = now.plus(ttl))
-        return try {
+        try {
             client.setData()
                 .withVersion(current.version)
                 .forPath(path, renewed.encode().toByteArray(UTF_8))
@@ -68,18 +74,18 @@ class ZookeeperWorkerIdRepository(
         }
     }
 
-    override suspend fun release(lease: WorkerIdLease): Boolean {
+    override suspend fun release(lease: WorkerIdLease): Boolean = measured("release") {
         val path = pathOf(lease.id)
-        val current = read(path) ?: return false
+        val current = read(path) ?: return@measured false
         if (current.lease.owner != lease.owner || current.lease.token != lease.token) {
-            return false
+            return@measured false
         }
-        return delete(path, current.version)
+        delete(path, current.version)
     }
 
-    override suspend fun leases(now: Instant): List<WorkerIdLease> {
+    override suspend fun leases(now: Instant): List<WorkerIdLease> = measured("leases") {
         expire(now)
-        return children()
+        children()
             .mapNotNull { id -> read(pathOf(WorkerId(id)))?.lease }
             .filterNot { lease -> lease.isExpired(now) }
             .sortedBy { lease -> lease.id.value }
@@ -212,6 +218,22 @@ class ZookeeperWorkerIdRepository(
         val trimmed = prefix.trim().trimEnd('/')
         require(trimmed.startsWith("/")) { "zookeeper worker id path prefix must start with /" }
         return trimmed
+    }
+
+    private suspend fun <T> measured(operation: String, block: suspend () -> T): T {
+        val tags = MetricTags.of("backend" to "zookeeper", "operation" to operation)
+        metrics.counter("asteria.worker_id.repository.operation.total", tags).increment()
+        val start = System.nanoTime()
+        return try {
+            block()
+        } catch (error: Throwable) {
+            metrics.counter("asteria.worker_id.repository.operation.failed.total", tags).increment()
+            logger.warn("zookeeper worker id repository operation failed: operation={}", operation, error)
+            throw error
+        } finally {
+            metrics.timer("asteria.worker_id.repository.operation.duration", tags)
+                .record((System.nanoTime() - start) / 1_000_000)
+        }
     }
 
     private data class StoredLease(
