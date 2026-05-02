@@ -1,5 +1,6 @@
 package io.github.mikai233.asteria.patch
 
+import java.io.Serializable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -92,7 +93,7 @@ class PatchRuntime(
     }
 }
 
-sealed interface PatchApplyResult {
+sealed interface PatchApplyResult : Serializable {
     val patchId: PatchId
 
     data class Applied(

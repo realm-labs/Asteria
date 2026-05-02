@@ -1,5 +1,7 @@
 package io.github.mikai233.asteria.core
 
+import java.io.Serializable
+
 /**
  * Logical capability owned by a node, such as `gateway`, `player`, or `match`.
  *
@@ -8,7 +10,7 @@ package io.github.mikai233.asteria.core
  * current process owns.
  */
 @JvmInline
-value class RoleKey(val value: String) {
+value class RoleKey(val value: String) : Serializable {
     init {
         require(value.isNotBlank()) { "role key must not be blank" }
     }

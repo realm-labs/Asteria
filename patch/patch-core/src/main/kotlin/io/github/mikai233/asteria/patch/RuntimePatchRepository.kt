@@ -13,6 +13,17 @@ interface RuntimePatchRepository {
     suspend fun list(query: RuntimePatchQuery = RuntimePatchQuery()): List<RuntimePatch>
 
     suspend fun updateStatus(id: PatchId, status: PatchStatus): RuntimePatch?
+
+    suspend fun expireIncompatible(environment: PatchEnvironment): List<RuntimePatch> {
+        return list(
+            RuntimePatchQuery(
+                status = PatchStatus.Enabled,
+                appName = environment.appName,
+            ),
+        )
+            .filterNot { it.compatibility.matches(environment) }
+            .mapNotNull { patch -> updateStatus(patch.id, PatchStatus.Expired) }
+    }
 }
 
 data class RuntimePatchQuery(

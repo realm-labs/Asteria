@@ -42,6 +42,31 @@ class JarRuntimePatchPluginResolverTest {
         Unit
     }
 
+    @Test
+    fun evictDropsLoadedPluginCache() = runBlocking {
+        val jar = jarWithPluginClass(TestPatchPlugin::class.java)
+        val artifact = PatchArtifact(
+            name = "test-patch.jar",
+            checksum = "sha256:${jar.sha256Hex()}",
+        )
+        val store = CountingPatchArtifactStore(artifact, jar)
+        val resolver = JarRuntimePatchPluginResolver(store)
+        val patch = RuntimePatch(
+            id = PatchId("test"),
+            name = "test",
+            artifact = artifact,
+            compatibility = PatchCompatibility("game", setOf("1.0.0")),
+            sequence = 1,
+        )
+
+        resolver.resolve(patch)
+        resolver.resolve(patch)
+        resolver.evict(patch)
+        resolver.resolve(patch)
+
+        kotlin.test.assertEquals(2, store.loadCount)
+    }
+
     class TestPatchPlugin : RuntimePatchPlugin {
         override suspend fun install(context: PatchInstallContext) {
         }
@@ -69,5 +94,19 @@ class JarRuntimePatchPluginResolverTest {
         return MessageDigest.getInstance("SHA-256")
             .digest(this)
             .joinToString("") { "%02x".format(it) }
+    }
+
+    private class CountingPatchArtifactStore(
+        private val artifact: PatchArtifact,
+        private val bytes: ByteArray,
+    ) : io.github.mikai233.asteria.patch.PatchArtifactStore {
+        var loadCount: Int = 0
+            private set
+
+        override suspend fun load(artifact: PatchArtifact): ByteArray {
+            require(artifact == this.artifact)
+            loadCount += 1
+            return bytes
+        }
     }
 }

@@ -1,9 +1,10 @@
 package io.github.mikai233.asteria.patch
 
 import io.github.mikai233.asteria.core.RoleKey
+import java.io.Serializable
 
 @JvmInline
-value class PatchId(val value: String) {
+value class PatchId(val value: String) : Serializable {
     init {
         require(value.isNotBlank()) { "patch id must not be blank" }
     }
@@ -20,7 +21,7 @@ data class RuntimePatch(
     val priority: Int = 0,
     val sequence: Long,
     val status: PatchStatus = PatchStatus.Enabled,
-) {
+) : Serializable {
     init {
         require(name.isNotBlank()) { "patch name must not be blank" }
         require(sequence > 0) { "patch sequence must be positive" }
@@ -39,7 +40,7 @@ data class PatchArtifact(
     val name: String,
     val checksum: String,
     val version: String? = null,
-) {
+) : Serializable {
     init {
         require(name.isNotBlank()) { "patch artifact name must not be blank" }
         require(checksum.isNotBlank()) { "patch artifact checksum must not be blank" }
@@ -50,7 +51,7 @@ data class PatchArtifact(
 data class PatchCompatibility(
     val appName: String,
     val versions: Set<String>,
-) {
+) : Serializable {
     init {
         require(appName.isNotBlank()) { "patch compatibility app name must not be blank" }
         require(versions.isNotEmpty()) { "patch compatibility versions must not be empty" }
@@ -67,7 +68,7 @@ data class PatchEnvironment(
     val version: String,
     val nodeAddress: String? = null,
     val roles: Set<RoleKey> = emptySet(),
-) {
+) : Serializable {
     init {
         require(appName.isNotBlank()) { "patch environment app name must not be blank" }
         require(version.isNotBlank()) { "patch environment version must not be blank" }
@@ -75,7 +76,7 @@ data class PatchEnvironment(
     }
 }
 
-sealed interface PatchTarget {
+sealed interface PatchTarget : Serializable {
     fun matches(environment: PatchEnvironment): Boolean
 
     data object AllNodes : PatchTarget {
@@ -116,7 +117,7 @@ data class PatchOrder(
     val priority: Int,
     val sequence: Long,
     val id: PatchId,
-) : Comparable<PatchOrder> {
+) : Comparable<PatchOrder>, Serializable {
     init {
         require(sequence > 0) { "patch order sequence must be positive" }
     }

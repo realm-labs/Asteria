@@ -3,9 +3,11 @@ package io.github.mikai233.asteria.gm.patch.spring
 import io.github.mikai233.asteria.gm.patch.GmPatchOperations
 import io.github.mikai233.asteria.gm.patch.GmPatchPermissions
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
-import io.github.mikai233.asteria.patch.PatchApplyResult
+import io.github.mikai233.asteria.patch.PatchClusterApplyResult
 import io.github.mikai233.asteria.patch.PatchId
 import io.github.mikai233.asteria.patch.PatchStatus
+import io.github.mikai233.asteria.patch.RuntimePatchNodeResult
+import io.github.mikai233.asteria.patch.RuntimePatchNodeStatus
 import io.github.mikai233.asteria.patch.RuntimePatch
 import jakarta.servlet.http.HttpServletRequest
 import kotlinx.coroutines.Dispatchers
@@ -117,11 +119,32 @@ class GmPatchController(
         }
     }
 
+    @GetMapping("/node-results")
+    suspend fun nodeResults(
+        request: HttpServletRequest,
+        @RequestParam patchId: String? = null,
+        @RequestParam address: String? = null,
+        @RequestParam status: RuntimePatchNodeStatus? = null,
+    ): List<RuntimePatchNodeResult> {
+        return endpoints.execute(
+            request = request,
+            permission = GmPatchPermissions.Read,
+            action = "gm.patch.node-results",
+            attributes = buildMap {
+                patchId?.let { put("patchId", it) }
+                address?.let { put("address", it) }
+                status?.let { put("status", it.name) }
+            },
+        ) {
+            patches.nodeResults(GmPatchNodeResultListRequest(patchId, address, status).toQuery())
+        }
+    }
+
     @PostMapping("/{patchId}/apply")
     suspend fun apply(
         request: HttpServletRequest,
         @PathVariable patchId: String,
-    ): PatchApplyResult {
+    ): PatchClusterApplyResult {
         return endpoints.execute(
             request = request,
             permission = GmPatchPermissions.Apply,
@@ -135,13 +158,26 @@ class GmPatchController(
     @PostMapping("/apply-enabled")
     suspend fun applyEnabled(
         request: HttpServletRequest,
-    ): List<PatchApplyResult> {
+    ): List<PatchClusterApplyResult> {
         return endpoints.execute(
             request = request,
             permission = GmPatchPermissions.Apply,
             action = "gm.patch.apply-enabled",
         ) {
             patches.applyEnabled()
+        }
+    }
+
+    @PostMapping("/expire-incompatible")
+    suspend fun expireIncompatible(
+        request: HttpServletRequest,
+    ): List<RuntimePatch> {
+        return endpoints.execute(
+            request = request,
+            permission = GmPatchPermissions.Expire,
+            action = "gm.patch.expire-incompatible",
+        ) {
+            patches.expireIncompatible()
         }
     }
 

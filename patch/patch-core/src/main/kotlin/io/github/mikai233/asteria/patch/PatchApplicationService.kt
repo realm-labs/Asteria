@@ -1,7 +1,10 @@
 package io.github.mikai233.asteria.patch
 
-fun interface RuntimePatchPluginResolver {
+interface RuntimePatchPluginResolver {
     suspend fun resolve(patch: RuntimePatch): RuntimePatchPlugin
+
+    suspend fun evict(patch: RuntimePatch) {
+    }
 }
 
 class StaticRuntimePatchPluginResolver(
@@ -24,6 +27,12 @@ class PatchApplicationService(
     private val repository: RuntimePatchRepository,
     private val resolver: RuntimePatchPluginResolver,
 ) {
+    val environment: PatchEnvironment get() = runtime.environment
+
+    suspend fun expireIncompatiblePatches(): List<RuntimePatch> {
+        return repository.expireIncompatible(runtime.environment)
+    }
+
     suspend fun applyEnabledPatches(): PatchApplyReport {
         val patches = repository.list(
             RuntimePatchQuery(
@@ -43,8 +52,10 @@ class PatchApplicationService(
     }
 
     suspend fun disable(id: PatchId): Boolean {
-        repository.updateStatus(id, PatchStatus.Disabled) ?: return false
-        return runtime.remove(id)
+        val patch = repository.updateStatus(id, PatchStatus.Disabled) ?: return false
+        val removed = runtime.remove(id)
+        resolver.evict(patch)
+        return removed
     }
 
     private suspend fun applyPatches(patches: List<RuntimePatch>): PatchApplyReport {

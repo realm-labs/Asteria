@@ -2,14 +2,22 @@ package io.github.mikai233.asteria.gm.patch
 
 import io.github.mikai233.asteria.patch.PatchApplicationService
 import io.github.mikai233.asteria.patch.PatchApplyResult
+import io.github.mikai233.asteria.patch.PatchClusterApplicationService
+import io.github.mikai233.asteria.patch.PatchClusterApplyResult
 import io.github.mikai233.asteria.patch.PatchCompatibility
 import io.github.mikai233.asteria.patch.PatchId
+import io.github.mikai233.asteria.patch.PatchNode
+import io.github.mikai233.asteria.patch.PatchNodeProvider
 import io.github.mikai233.asteria.patch.PatchStatus
 import io.github.mikai233.asteria.patch.PatchTarget
+import io.github.mikai233.asteria.patch.RuntimePatchNodeResult
+import io.github.mikai233.asteria.patch.RuntimePatchNodeResultQuery
+import io.github.mikai233.asteria.patch.RuntimePatchNodeStatus
 import io.github.mikai233.asteria.patch.RuntimePatch
 import io.github.mikai233.asteria.patch.RuntimePatchQuery
 import io.github.mikai233.asteria.patch.RuntimePatchRepository
 import io.github.mikai233.asteria.patch.WritablePatchArtifactStore
+import java.time.Instant
 
 interface GmPatchOperations {
     suspend fun create(
@@ -23,9 +31,13 @@ interface GmPatchOperations {
 
     suspend fun save(patch: RuntimePatch)
 
-    suspend fun apply(id: PatchId): PatchApplyResult
+    suspend fun apply(id: PatchId): PatchClusterApplyResult
 
-    suspend fun applyEnabled(): List<PatchApplyResult>
+    suspend fun applyEnabled(): List<PatchClusterApplyResult>
+
+    suspend fun nodeResults(query: RuntimePatchNodeResultQuery = RuntimePatchNodeResultQuery()): List<RuntimePatchNodeResult>
+
+    suspend fun expireIncompatible(): List<RuntimePatch>
 
     suspend fun disable(id: PatchId): Boolean
 }
@@ -34,6 +46,8 @@ class DefaultGmPatchOperations(
     private val repository: RuntimePatchRepository,
     private val applications: PatchApplicationService,
     private val artifacts: WritablePatchArtifactStore? = null,
+    private val clusterApplications: PatchClusterApplicationService? = null,
+    private val nodes: PatchNodeProvider? = null,
 ) : GmPatchOperations {
     override suspend fun create(
         request: GmPatchCreateRequest,
@@ -71,17 +85,81 @@ class DefaultGmPatchOperations(
         repository.save(patch)
     }
 
-    override suspend fun apply(id: PatchId): PatchApplyResult {
+    override suspend fun apply(id: PatchId): PatchClusterApplyResult {
         repository.updateStatus(id, PatchStatus.Enabled) ?: error("patch $id not found")
-        return applications.apply(id)
+        return clusterApplications?.apply(id) ?: applyLocal(id)
     }
 
-    override suspend fun applyEnabled(): List<PatchApplyResult> {
-        return applications.applyEnabledPatches().results
+    override suspend fun applyEnabled(): List<PatchClusterApplyResult> {
+        clusterApplications?.let { return it.applyEnabledPatches() }
+        val node = localNode()
+        return applications.applyEnabledPatches().results.map {
+            localResult(it, node, Instant.now())
+        }
+    }
+
+    override suspend fun nodeResults(query: RuntimePatchNodeResultQuery): List<RuntimePatchNodeResult> {
+        return clusterApplications?.results(query) ?: emptyList()
+    }
+
+    override suspend fun expireIncompatible(): List<RuntimePatch> {
+        return applications.expireIncompatiblePatches()
     }
 
     override suspend fun disable(id: PatchId): Boolean {
-        return applications.disable(id)
+        repository.updateStatus(id, PatchStatus.Disabled) ?: return false
+        val clusterResult = clusterApplications?.disable(id)
+        val localRemoved = applications.disable(id)
+        return clusterResult?.succeeded ?: localRemoved
+    }
+
+    private suspend fun applyLocal(id: PatchId): PatchClusterApplyResult {
+        val requestedAt = Instant.now()
+        val result = applications.apply(id)
+        return localResult(result, localNode(), requestedAt)
+    }
+
+    private suspend fun localNode(): PatchNode {
+        return nodes?.nodes()?.singleOrNull() ?: PatchNode(
+            nodeId = null,
+            address = applications.environment.nodeAddress ?: "local",
+            appName = applications.environment.appName,
+            version = applications.environment.version,
+            roles = applications.environment.roles,
+        )
+    }
+
+    private fun localResult(
+        result: PatchApplyResult,
+        node: PatchNode,
+        requestedAt: Instant,
+    ): PatchClusterApplyResult {
+        val nodeResult = when (result) {
+            is PatchApplyResult.Applied -> RuntimePatchNodeResult(
+                patchId = result.patchId,
+                nodeId = node.nodeId,
+                address = node.address,
+                appName = node.appName,
+                version = node.version,
+                roles = node.roles,
+                status = RuntimePatchNodeStatus.Applied,
+                attempt = 1,
+                operationCount = result.operationCount,
+            )
+
+            is PatchApplyResult.Ignored -> RuntimePatchNodeResult(
+                patchId = result.patchId,
+                nodeId = node.nodeId,
+                address = node.address,
+                appName = node.appName,
+                version = node.version,
+                roles = node.roles,
+                status = RuntimePatchNodeStatus.Ignored,
+                attempt = 1,
+                message = result.reason,
+            )
+        }
+        return PatchClusterApplyResult(result.patchId, requestedAt, listOf(nodeResult))
     }
 }
 

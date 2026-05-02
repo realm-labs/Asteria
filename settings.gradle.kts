@@ -21,6 +21,7 @@ include(
     "patch:patch-core",
     "patch:patch-jar",
     "patch:patch-mongodb",
+    "patch:patch-pekko",
     "rpc:rpc-core",
     "rpc:rpc-protobuf",
     "protocol:protobuf-codegen",

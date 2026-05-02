@@ -5,7 +5,9 @@ import io.github.mikai233.asteria.gm.patch.GmPatchOperations
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import io.github.mikai233.asteria.gm.spring.GmSpringAutoConfiguration
 import io.github.mikai233.asteria.patch.LocalFilePatchArtifactStore
+import io.github.mikai233.asteria.patch.PatchClusterApplicationService
 import io.github.mikai233.asteria.patch.PatchApplicationService
+import io.github.mikai233.asteria.patch.PatchNodeProvider
 import io.github.mikai233.asteria.patch.RuntimePatchRepository
 import io.github.mikai233.asteria.patch.WritablePatchArtifactStore
 import org.springframework.beans.factory.ObjectProvider
@@ -32,8 +34,16 @@ class GmPatchSpringAutoConfiguration {
         repository: RuntimePatchRepository,
         applications: PatchApplicationService,
         artifacts: ObjectProvider<WritablePatchArtifactStore>,
+        clusterApplications: ObjectProvider<PatchClusterApplicationService>,
+        nodes: ObjectProvider<PatchNodeProvider>,
     ): GmPatchOperations {
-        return DefaultGmPatchOperations(repository, applications, artifacts.getIfAvailable())
+        return DefaultGmPatchOperations(
+            repository = repository,
+            applications = applications,
+            artifacts = artifacts.getIfAvailable(),
+            clusterApplications = clusterApplications.getIfAvailable(),
+            nodes = nodes.getIfAvailable(),
+        )
     }
 
     @Bean

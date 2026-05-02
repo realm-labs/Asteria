@@ -105,6 +105,24 @@ class PatchApplicationServiceTest {
         assertEquals(PatchStatus.Disabled, repository.find(patch.id)?.status)
     }
 
+    @Test
+    fun serviceExpiresEnabledPatchesThatDoNotMatchCurrentVersion() = runBlocking {
+        val oldPatch = patch("old", sequence = 1, versions = setOf("0.9.0"))
+        val currentPatch = patch("current", sequence = 2)
+        val repository = InMemoryRuntimePatchRepository(listOf(oldPatch, currentPatch))
+        val service = PatchApplicationService(
+            runtime = runtime(),
+            repository = repository,
+            resolver = StaticRuntimePatchPluginResolver(),
+        )
+
+        val expired = service.expireIncompatiblePatches()
+
+        assertEquals(listOf(oldPatch.id), expired.map { it.id })
+        assertEquals(PatchStatus.Expired, repository.find(oldPatch.id)?.status)
+        assertEquals(PatchStatus.Enabled, repository.find(currentPatch.id)?.status)
+    }
+
     private fun runtime(): PatchRuntime {
         return PatchRuntime(environment())
     }

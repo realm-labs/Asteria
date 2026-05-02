@@ -5,6 +5,8 @@ import io.github.mikai233.asteria.gm.patch.GmPatchCreateRequest
 import io.github.mikai233.asteria.patch.PatchId
 import io.github.mikai233.asteria.patch.PatchStatus
 import io.github.mikai233.asteria.patch.PatchTarget
+import io.github.mikai233.asteria.patch.RuntimePatchNodeResultQuery
+import io.github.mikai233.asteria.patch.RuntimePatchNodeStatus
 import io.github.mikai233.asteria.patch.RuntimePatchQuery
 
 data class GmPatchListRequest(
@@ -17,6 +19,20 @@ data class GmPatchListRequest(
             status = status,
             appName = appName,
             version = version,
+        )
+    }
+}
+
+data class GmPatchNodeResultListRequest(
+    val patchId: String? = null,
+    val address: String? = null,
+    val status: RuntimePatchNodeStatus? = null,
+) {
+    fun toQuery(): RuntimePatchNodeResultQuery {
+        return RuntimePatchNodeResultQuery(
+            patchId = patchId?.let(::PatchId),
+            address = address,
+            status = status,
         )
     }
 }
