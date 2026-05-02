@@ -46,6 +46,23 @@ class NettyGatewayPipelineContext(
             writer = writer,
         )
     }
+
+    fun <I : Any> gatewayMessageHandler(
+        inboundType: Class<out I>,
+        receiver: NettyGatewayMessageReceiver<I>,
+        writer: NettyGatewayFrameWriter = NettyGatewayFrameWriters.BYTE_BUF,
+    ): ChannelHandler {
+        return NettyGatewayMessageHandler(
+            inboundType = inboundType,
+            transport = transport,
+            scope = scope,
+            handler = handler,
+            receiver = receiver,
+            connectionIdFactory = connectionIdFactory,
+            metrics = metrics,
+            writer = writer,
+        )
+    }
 }
 
 fun interface NettyGatewayFrameWriter {
