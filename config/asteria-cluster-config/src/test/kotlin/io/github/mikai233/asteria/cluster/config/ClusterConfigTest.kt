@@ -1,6 +1,7 @@
 package io.github.mikai233.asteria.cluster.config
 
 import com.typesafe.config.ConfigFactory
+import io.github.mikai233.asteria.config.ConfigRevision
 import io.github.mikai233.asteria.config.center.ConfigCenterModule
 import io.github.mikai233.asteria.config.center.ConfigCodec
 import io.github.mikai233.asteria.config.center.InMemoryConfigStore
@@ -14,7 +15,9 @@ import kotlinx.coroutines.runBlocking
 import kotlin.reflect.KClass
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class ClusterConfigTest {
     @Test
@@ -102,6 +105,76 @@ class ClusterConfigTest {
         assertEquals(listOf("seed-1"), topology.seedNodes.map { it.nodeId })
         assertEquals(setOf("seed", "player"), topology.requireNode("seed-1").roles)
         assertEquals("local-a", topology.requireNode("seed-1").attributes["zone"])
+    }
+
+    @Test
+    fun `revision consistency reports matching reachable revisions`() {
+        val consistency = ClusterConfigRevisionConsistency(
+            statuses = listOf(
+                ClusterConfigNodeStatus("player-1", "pekko://asteria@127.0.0.1:2551", setOf("player"), ConfigRevision("v1")),
+                ClusterConfigNodeStatus("world-1", "pekko://asteria@127.0.0.1:2552", setOf("world"), ConfigRevision("v1")),
+            ),
+        )
+
+        assertTrue(consistency.consistent)
+        assertEquals(listOf(ConfigRevision("v1")), consistency.revisionGroups.map { it.revision })
+        assertEquals(listOf("player-1", "world-1"), consistency.revisionGroups.single().nodes.map { it.nodeId })
+    }
+
+    @Test
+    fun `revision consistency reports mismatched or unreachable nodes`() {
+        val mismatched = ClusterConfigRevisionConsistency(
+            statuses = listOf(
+                ClusterConfigNodeStatus("player-1", "pekko://asteria@127.0.0.1:2551", revision = ConfigRevision("v1")),
+                ClusterConfigNodeStatus("world-1", "pekko://asteria@127.0.0.1:2552", revision = ConfigRevision("v2")),
+            ),
+        )
+        val unreachable = ClusterConfigRevisionConsistency(
+            statuses = listOf(
+                ClusterConfigNodeStatus("player-1", "pekko://asteria@127.0.0.1:2551", revision = ConfigRevision("v1")),
+                ClusterConfigNodeStatus(
+                    nodeId = "world-1",
+                    address = "pekko://asteria@127.0.0.1:2552",
+                    revision = null,
+                    reachable = false,
+                    message = "timeout",
+                ),
+            ),
+        )
+
+        assertFalse(mismatched.consistent)
+        assertFalse(unreachable.consistent)
+    }
+
+    @Test
+    fun `reload result is only successful when every selected node succeeds`() {
+        val success = ClusterConfigReloadResult(
+            target = ClusterConfigReloadTarget.All,
+            requestedAt = java.time.Instant.EPOCH,
+            results = listOf(
+                ClusterConfigNodeReloadResult(
+                    nodeId = "player-1",
+                    address = "pekko://asteria@127.0.0.1:2551",
+                    previousRevision = ConfigRevision("v1"),
+                    currentRevision = ConfigRevision("v2"),
+                    status = ClusterConfigNodeReloadStatus.Succeeded,
+                ),
+            ),
+        )
+        val partialFailure = success.copy(
+            results = success.results + ClusterConfigNodeReloadResult(
+                nodeId = "world-1",
+                address = "pekko://asteria@127.0.0.1:2552",
+                previousRevision = null,
+                currentRevision = null,
+                status = ClusterConfigNodeReloadStatus.Timeout,
+                message = "timeout",
+            ),
+        )
+
+        assertTrue(success.succeeded)
+        assertFalse(partialFailure.succeeded)
+        assertFalse(success.copy(results = emptyList()).succeeded)
     }
 
     object NodeCodec : ConfigCodec {

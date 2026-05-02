@@ -1,5 +1,9 @@
 package io.github.mikai233.asteria.gm.config.spring
 
+import io.github.mikai233.asteria.cluster.config.ClusterConfigControlService
+import io.github.mikai233.asteria.cluster.config.ClusterConfigNodeStatus
+import io.github.mikai233.asteria.cluster.config.ClusterConfigReloadResult
+import io.github.mikai233.asteria.cluster.config.ClusterConfigRevisionConsistency
 import io.github.mikai233.asteria.config.ConfigTableName
 import io.github.mikai233.asteria.gm.config.GmConfigInspector
 import io.github.mikai233.asteria.gm.config.GmConfigMetadata
@@ -30,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController
 class GmConfigController(
     private val inspector: GmConfigInspector,
     private val endpoints: GmEndpointSupport,
+    private val clusterControl: ClusterConfigControlService? = null,
 ) {
     @GetMapping("/metadata")
     suspend fun metadata(request: HttpServletRequest): GmConfigMetadata {
@@ -76,6 +81,46 @@ class GmConfigController(
             action = "gm.config.reload",
         ) {
             inspector.reloadNow()
+        }
+    }
+
+    @GetMapping("/cluster/status")
+    suspend fun clusterStatus(request: HttpServletRequest): List<ClusterConfigNodeStatus> {
+        val control = clusterControl ?: error("cluster config control service is not configured")
+        return endpoints.execute(
+            request = request,
+            permission = GmConfigPermissions.Read,
+            action = "gm.config.cluster.status",
+        ) {
+            control.statuses()
+        }
+    }
+
+    @GetMapping("/cluster/consistency")
+    suspend fun clusterConsistency(request: HttpServletRequest): ClusterConfigRevisionConsistency {
+        val control = clusterControl ?: error("cluster config control service is not configured")
+        return endpoints.execute(
+            request = request,
+            permission = GmConfigPermissions.Read,
+            action = "gm.config.cluster.consistency",
+        ) {
+            control.checkConsistency()
+        }
+    }
+
+    @PostMapping("/cluster/reload")
+    suspend fun clusterReload(
+        request: HttpServletRequest,
+        @RequestBody body: GmClusterConfigReloadHttpRequest,
+    ): ClusterConfigReloadResult {
+        val control = clusterControl ?: error("cluster config control service is not configured")
+        return endpoints.execute(
+            request = request,
+            permission = GmConfigPermissions.Reload,
+            action = "gm.config.cluster.reload",
+            attributes = mapOf("target" to body.target),
+        ) {
+            control.reload(body.reloadTarget(), body.timeout())
         }
     }
 

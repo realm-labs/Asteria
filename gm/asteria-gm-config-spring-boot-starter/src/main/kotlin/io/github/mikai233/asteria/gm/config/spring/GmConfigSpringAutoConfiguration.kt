@@ -1,5 +1,6 @@
 package io.github.mikai233.asteria.gm.config.spring
 
+import io.github.mikai233.asteria.cluster.config.ClusterConfigControlService
 import io.github.mikai233.asteria.config.ConfigService
 import io.github.mikai233.asteria.config.ConfigReloadMonitor
 import io.github.mikai233.asteria.gm.config.ConfigRowProjector
@@ -49,7 +50,8 @@ class GmConfigSpringAutoConfiguration {
     fun gmConfigController(
         inspector: GmConfigInspector,
         endpointSupport: GmEndpointSupport,
+        clusterControl: ObjectProvider<ClusterConfigControlService>,
     ): GmConfigController {
-        return GmConfigController(inspector, endpointSupport)
+        return GmConfigController(inspector, endpointSupport, clusterControl.getIfAvailable())
     }
 }

@@ -1,5 +1,6 @@
 package io.github.mikai233.asteria.config
 
+import java.io.Serializable
 import kotlin.reflect.KClass
 
 /**
@@ -11,7 +12,7 @@ import kotlin.reflect.KClass
 data class ConfigRevision(
     val version: String,
     val checksum: String? = null,
-) {
+) : Serializable {
     init {
         require(version.isNotBlank()) { "config revision version must not be blank" }
         require(checksum == null || checksum.isNotBlank()) { "config revision checksum must not be blank" }
