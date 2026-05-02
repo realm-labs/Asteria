@@ -1,0 +1,45 @@
+package io.github.mikai233.asteria.gm.patch
+
+import io.github.mikai233.asteria.gm.core.GmFeature
+import io.github.mikai233.asteria.gm.core.GmFeatureDescriptor
+import io.github.mikai233.asteria.gm.core.GmFeatureId
+import io.github.mikai233.asteria.gm.core.GmMenuItem
+import io.github.mikai233.asteria.gm.core.GmPermission
+import io.github.mikai233.asteria.gm.core.GmPermissionKey
+import io.github.mikai233.asteria.gm.core.GmRoute
+
+object GmPatchPermissions {
+    val Read: GmPermissionKey = GmPermissionKey("gm.patch.read")
+    val Apply: GmPermissionKey = GmPermissionKey("gm.patch.apply")
+    val Disable: GmPermissionKey = GmPermissionKey("gm.patch.disable")
+}
+
+class GmPatchFeature : GmFeature {
+    override val descriptor: GmFeatureDescriptor = GmFeatureDescriptor(
+        id = GmFeatureId("asteria.patch"),
+        name = "Patch",
+        description = "Manage runtime patches applied to game server nodes.",
+        permissions = listOf(
+            GmPermission(GmPatchPermissions.Read, "Read runtime patches"),
+            GmPermission(GmPatchPermissions.Apply, "Apply runtime patches", highRisk = true),
+            GmPermission(GmPatchPermissions.Disable, "Disable runtime patches", highRisk = true),
+        ),
+        menus = listOf(
+            GmMenuItem(
+                id = "asteria.patch",
+                title = "Patch",
+                route = "/patches",
+                permission = GmPatchPermissions.Read,
+                order = 500,
+            ),
+        ),
+        routes = listOf(
+            GmRoute(
+                id = "asteria.patch.list",
+                path = "/patches",
+                component = "asteria/patch/PatchList",
+                permission = GmPatchPermissions.Read,
+            ),
+        ),
+    )
+}

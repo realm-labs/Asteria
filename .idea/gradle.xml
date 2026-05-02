@@ -58,12 +58,16 @@
             <option value="$PROJECT_DIR$/gm/gm-config" />
             <option value="$PROJECT_DIR$/gm/gm-config-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-core" />
+            <option value="$PROJECT_DIR$/gm/gm-patch" />
             <option value="$PROJECT_DIR$/gm/gm-script" />
             <option value="$PROJECT_DIR$/gm/gm-script-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-spring-boot-starter" />
             <option value="$PROJECT_DIR$/observability" />
             <option value="$PROJECT_DIR$/observability/observability-core" />
             <option value="$PROJECT_DIR$/observability/observability-opentelemetry" />
+            <option value="$PROJECT_DIR$/patch" />
+            <option value="$PROJECT_DIR$/patch/patch-core" />
+            <option value="$PROJECT_DIR$/patch/patch-mongodb" />
             <option value="$PROJECT_DIR$/persistence" />
             <option value="$PROJECT_DIR$/persistence/persistence-core" />
             <option value="$PROJECT_DIR$/persistence/persistence-mongodb" />
