@@ -16,12 +16,28 @@ data class ProtocolRoute<M : Any>(
     val messageType: KClass<M>,
     val target: RouteTarget,
     val idResolver: ((M) -> Any?)? = null,
-)
+) {
+    fun resolveId(message: Any): Any? {
+        val resolver = idResolver ?: return null
+        require(messageType.isInstance(message)) {
+            "route ${messageType.qualifiedName} cannot resolve id from ${message::class.qualifiedName}"
+        }
+        @Suppress("UNCHECKED_CAST")
+        return (resolver as (Any) -> Any?)(message)
+    }
+}
 
 class RouteRegistry(
     routes: Iterable<ProtocolRoute<*>> = emptyList(),
 ) {
-    private val routesByMessageType: Map<KClass<*>, ProtocolRoute<*>> = routes.associateBy { it.messageType }
+    private val routesByMessageType: Map<KClass<*>, ProtocolRoute<*>> = buildMap {
+        routes.forEach { route ->
+            val previous = put(route.messageType, route)
+            check(previous == null) {
+                "duplicate protocol route for ${route.messageType.qualifiedName}"
+            }
+        }
+    }
 
     fun routeFor(messageType: KClass<*>): ProtocolRoute<*>? = routesByMessageType[messageType]
 
