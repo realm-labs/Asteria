@@ -21,12 +21,13 @@ class ConfigServiceTest {
         service.subscribe { result -> notified = result }
 
         val result = service.reload()
-        val table = result.current.requireTable<Int, ItemConfig>(ConfigTableName("items"))
+        val table = result.current[TestConfigTables.Items]
 
         assertNull(result.previous)
         assertEquals("v1", result.current.revision.version)
         assertEquals("Sword", table.require(1).name)
         assertEquals(2, table.size)
+        assertEquals(ConfigTableName("items"), TestConfigTables.Items.name)
         assertEquals("project-configs", result.current.requireComponent<GeneratedTables>().name)
         assertEquals(result, notified)
         val diff = ConfigSnapshotDiff.between(result.previous, result.current)
@@ -251,11 +252,31 @@ class ConfigServiceTest {
         app.stop()
     }
 
+    @Test
+    fun `generated table refs fail fast on type mismatch`() = runBlocking {
+        val service = ConfigService(TestConfigLoader())
+        val result = service.load()
+        val wrongRef = configTableRef<String, ItemConfig>("items")
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            result.current.requireTable(wrongRef)
+        }
+
+        assertEquals(
+            "config table items key type mismatch, expected kotlin.String, actual kotlin.Int",
+            error.message,
+        )
+    }
+
     private data class ItemConfig(
         val id: Int,
         val name: String,
         val price: Int,
     )
+
+    private object TestConfigTables {
+        val Items = configTableRef<Int, ItemConfig>("items")
+    }
 
     private inner class TestConfigLoader : ConfigLoader {
         override suspend fun load(): ConfigSnapshot {
@@ -268,7 +289,7 @@ class ConfigServiceTest {
             revision = ConfigRevision(version),
             tables = listOf(
                 mapConfigTable(
-                    name = "items",
+                    ref = TestConfigTables.Items,
                     rows = listOf(
                         ItemConfig(1, "Sword", 10),
                         ItemConfig(2, "Potion", 5),
@@ -283,7 +304,7 @@ class ConfigServiceTest {
             revision = ConfigRevision(version),
             tables = listOf(
                 mapConfigTable(
-                    name = "items",
+                    ref = TestConfigTables.Items,
                     rows = listOf(
                         ItemConfig(1, "Sword-$version", 10),
                         ItemConfig(2, "Potion", 5),

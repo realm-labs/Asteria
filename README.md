@@ -39,6 +39,8 @@ GM modules:
 Config modules:
 
 - `config/asteria-config`: config table snapshot, reload, validation, and module contracts.
+- `config/asteria-config-annotations`: annotations used by config table accessor code generation.
+- `config/asteria-config-ksp`: KSP processor that generates strongly typed config table refs and dynamic accessors.
 - `config/asteria-config-luban`: optional Luban Java JSON and binary config loaders with module integration.
 - `config/asteria-config-center`: config center store, watch, typed repository, codec, and in-memory implementation contracts.
 - `config/asteria-config-center-zookeeper`: Zookeeper config center adapter backed by Apache Curator.

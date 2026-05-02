@@ -99,3 +99,13 @@ inline fun <reified K : Any, reified R : Any> mapConfigTable(
 ): MapConfigTable<K, R> {
     return MapConfigTable(ConfigTableName(name), K::class, R::class, rows)
 }
+
+/**
+ * Creates a [MapConfigTable] from a generated [ConfigTableRef].
+ */
+fun <K : Any, R : Any> mapConfigTable(
+    ref: ConfigTableRef<K, R>,
+    rows: Map<K, R>,
+): MapConfigTable<K, R> {
+    return MapConfigTable(ref.name, ref.keyType, ref.rowType, rows)
+}
