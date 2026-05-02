@@ -50,6 +50,16 @@ abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrack
         return requireNotNull(value) { "tracked document $collectionName:${scope.entityId} is not loaded" }
     }
 
+    protected suspend fun deleteValue(): Boolean {
+        if (value == null) return true
+        runtime.enqueueDelete()
+        val deleted = runtime.flushSafely()
+        if (deleted) {
+            value = null
+        }
+        return deleted
+    }
+
     override suspend fun tick() {
         flush()
     }

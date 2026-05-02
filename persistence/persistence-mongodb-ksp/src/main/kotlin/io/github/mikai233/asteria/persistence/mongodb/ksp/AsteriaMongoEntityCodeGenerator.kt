@@ -29,6 +29,7 @@ data class MongoEntityPropertyModel(
     val valueKind: MongoEntityPropertyKind = MongoEntityPropertyKind.Value,
     val scanIgnored: Boolean = false,
     val scanWholeField: Boolean = false,
+    val scanListKey: String? = null,
 )
 
 enum class MongoEntityPropertyKind {
@@ -572,18 +573,33 @@ object AsteriaMongoEntityCodeGenerator {
         val scannedFields = model.properties
             .filterNot { property -> property.name == model.id.name || property.scanIgnored }
             .map { property ->
-                val member = if (property.kind == MongoEntityPropertyKind.Map && !property.scanWholeField) {
-                    MONGO_SCANNED_MAP_FIELD
-                } else {
-                    MONGO_SCANNED_FIELD
+                val member = when {
+                    property.kind == MongoEntityPropertyKind.Map && !property.scanWholeField -> MONGO_SCANNED_MAP_FIELD
+                    property.kind == MongoEntityPropertyKind.List && property.scanListKey != null -> {
+                        MONGO_SCANNED_LIST_BY_KEY_FIELD
+                    }
+
+                    else -> MONGO_SCANNED_FIELD
                 }
-                CodeBlock.of(
-                    "%M(%S) { entity: %T -> %L }",
-                    member,
-                    property.fieldName,
-                    model.entityType,
-                    scanValueExpression(property, "entity.${property.name}"),
-                )
+                if (property.kind == MongoEntityPropertyKind.List && property.scanListKey != null) {
+                    CodeBlock.of(
+                        "%M(fieldName = %S, value = { entity: %T -> entity.%L }, key = { value -> value.%L }, persistentValue = { value -> %L })",
+                        member,
+                        property.fieldName,
+                        model.entityType,
+                        property.name,
+                        property.scanListKey,
+                        scanListElementValueExpression(property),
+                    )
+                } else {
+                    CodeBlock.of(
+                        "%M(%S) { entity: %T -> %L }",
+                        member,
+                        property.fieldName,
+                        model.entityType,
+                        scanValueExpression(property, "entity.${property.name}"),
+                    )
+                }
             }
         if (scannedFields.isEmpty()) {
             return CodeBlock.of("%M<%T>()", MONGO_SCAN_PLAN, model.entityType)
@@ -625,6 +641,14 @@ object AsteriaMongoEntityCodeGenerator {
                     .build(),
             )
             .build()
+    }
+
+    private fun scanListElementValueExpression(property: MongoEntityPropertyModel): CodeBlock {
+        if (property.valueKind != MongoEntityPropertyKind.Object) {
+            return CodeBlock.of("value")
+        }
+        val wrapperType = property.collectionValueWrapperType() ?: return CodeBlock.of("value")
+        return CodeBlock.of("%L(value)", mongoValueFunctionName(wrapperType))
     }
 
     private fun scanValueExpression(property: MongoEntityPropertyModel, sourceExpression: String): CodeBlock {
@@ -706,6 +730,7 @@ object AsteriaMongoEntityCodeGenerator {
     private val MONGO_SCAN_PLAN = MemberName(MONGODB_PACKAGE, "mongoScanPlan")
     private val MONGO_SCANNED_FIELD = MemberName(MONGODB_PACKAGE, "mongoScannedField")
     private val MONGO_SCANNED_MAP_FIELD = MemberName(MONGODB_PACKAGE, "mongoScannedMapField")
+    private val MONGO_SCANNED_LIST_BY_KEY_FIELD = MemberName(MONGODB_PACKAGE, "mongoScannedListByKeyField")
     private const val PERSISTENCE_PACKAGE = "io.github.mikai233.asteria.persistence"
     private const val MONGODB_PACKAGE = "io.github.mikai233.asteria.persistence.mongodb"
 }

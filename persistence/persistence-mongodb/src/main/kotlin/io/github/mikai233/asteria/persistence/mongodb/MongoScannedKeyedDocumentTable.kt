@@ -23,6 +23,9 @@ import kotlin.time.TimeSource
 
 /**
  * Mongo row table that detects dirty rows through hash scans.
+ *
+ * Scan snapshots are advanced when changed fields enter the pending write queue. If Mongo flush fails, the queued write
+ * is retried later; the row does not need to be marked dirty again by comparing with the old snapshot.
  */
 open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
     private val collectionName: String,
@@ -136,6 +139,11 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         }
     }
 
+    suspend fun flushAllScanned(): Boolean {
+        scanLoaded()
+        return flush()
+    }
+
     suspend fun flushSome(budget: MongoFlushBudget): MongoFlushProgress {
         val start = TimeSource.Monotonic.markNow()
         var attemptedRows = 0
@@ -159,6 +167,36 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
             }
         }
         return MongoFlushProgress(attemptedRows, flushedRows, failedRows)
+    }
+
+    suspend fun deleteLoaded(key: ID): Boolean {
+        val row = rowsById[key] ?: return true
+        val runtime = runtime(row)
+        runtime.enqueueDelete()
+        val deleted = runtime.flushSafely()
+        if (deleted) {
+            dropLoaded(key)
+        }
+        return deleted
+    }
+
+    /**
+     * Deletes [key] even when the row is not loaded in memory.
+     */
+    suspend fun deleteByKey(key: ID): Boolean {
+        if (key in rowsById) {
+            return deleteLoaded(key)
+        }
+        val runtime = MongoScannedDocumentRuntime(
+            collectionName = collectionName,
+            documentId = key,
+            scanPlan = scanPlan,
+            database = database,
+            journal = journal,
+            metrics = metrics,
+        )
+        runtime.enqueueDelete()
+        return runtime.flushSafely()
     }
 
     suspend fun queryKeys(filter: Bson = Document()): List<ID> {

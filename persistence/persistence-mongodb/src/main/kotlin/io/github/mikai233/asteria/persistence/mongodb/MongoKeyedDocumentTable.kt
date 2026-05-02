@@ -89,6 +89,34 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
         return MongoFlushProgress(attemptedRows, flushedRows, failedRows)
     }
 
+    suspend fun deleteLoaded(key: ID): Boolean {
+        val row = rowsById[key] ?: return true
+        val runtime = runtime(row)
+        runtime.enqueueDelete()
+        val deleted = runtime.flushSafely()
+        if (deleted) {
+            dropLoaded(key)
+        }
+        return deleted
+    }
+
+    /**
+     * Deletes [key] even when the row is not loaded in memory.
+     */
+    suspend fun deleteByKey(key: ID): Boolean {
+        if (key in rowsById) {
+            return deleteLoaded(key)
+        }
+        val runtime = MongoTrackedDocumentRuntime(
+            collectionName = collectionName,
+            documentId = key,
+            database = database,
+            journal = journal,
+        )
+        runtime.enqueueDelete()
+        return runtime.flushSafely()
+    }
+
     suspend fun queryKeys(filter: Bson = Document()): List<ID> {
         return collection.find(filter).toList().map { it.id }
     }

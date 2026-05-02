@@ -48,6 +48,10 @@ class MongoTrackedDocumentRuntime(
         }
     }
 
+    fun enqueueDelete() {
+        queue.enqueue(MongoChangeOp.Delete(MongoDocumentKey(collectionName, documentId)))
+    }
+
     fun pendingWrites(): List<MongoPendingWrite> = queue.snapshot()
 
     suspend fun flush(): List<BulkWriteResult> {

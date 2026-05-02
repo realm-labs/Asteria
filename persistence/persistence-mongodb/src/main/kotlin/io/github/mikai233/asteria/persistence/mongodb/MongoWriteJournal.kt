@@ -358,28 +358,32 @@ private object MongoJournalCodec {
         val op = entry.op
         val document = Document()
             .append("seq", entry.sequence)
-            .append("collection", op.path.collection)
-            .append("documentId", op.path.documentId)
-            .append("fieldPath", op.path.fieldPath)
+            .append("collection", op.key.collection)
+            .append("documentId", op.key.documentId)
         return when (op) {
             is MongoChangeOp.Set -> document
                 .append("op", "set")
+                .append("fieldPath", op.path.fieldPath)
                 .append("value", mongoValueOf(op.value))
 
-            is MongoChangeOp.Unset -> document.append("op", "unset")
+            is MongoChangeOp.Unset -> document
+                .append("op", "unset")
+                .append("fieldPath", op.path.fieldPath)
+
+            is MongoChangeOp.Delete -> document.append("op", "delete")
         }
     }
 
     private fun decode(document: Document): MongoJournalEntry {
         val sequence = (document.get("seq") as Number).toLong()
-        val path = MongoPath(
+        val key = MongoDocumentKey(
             collection = document.getString("collection"),
             documentId = document.get("documentId"),
-            fieldPath = document.getString("fieldPath"),
         )
         val op = when (document.getString("op")) {
-            "set" -> MongoChangeOp.Set(path, document.get("value"))
-            "unset" -> MongoChangeOp.Unset(path)
+            "set" -> MongoChangeOp.Set(key.path(document.getString("fieldPath")), document.get("value"))
+            "unset" -> MongoChangeOp.Unset(key.path(document.getString("fieldPath")))
+            "delete" -> MongoChangeOp.Delete(key)
             else -> error("unknown Mongo journal op ${document.getString("op")}")
         }
         return MongoJournalEntry(sequence, op)

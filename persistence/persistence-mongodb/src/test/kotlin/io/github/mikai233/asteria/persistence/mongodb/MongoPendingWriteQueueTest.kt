@@ -109,6 +109,38 @@ class MongoPendingWriteQueueTest {
     }
 
     @Test
+    fun `delete overrides field updates`() {
+        val queue = MongoPendingWriteQueue()
+        val key = MongoDocumentKey("player", 1001L)
+
+        queue.enqueue(MongoChangeOp.Set(key.path("level"), 2))
+        queue.enqueue(MongoChangeOp.Unset(key.path("nickname")))
+        queue.enqueue(MongoChangeOp.Delete(key))
+        queue.enqueue(MongoChangeOp.Set(key.path("level"), 3))
+
+        val write = queue.drain().single()
+
+        assertEquals(key, write.key)
+        assertTrue(write.delete)
+        assertTrue(write.sets.isEmpty())
+        assertTrue(write.unsets.isEmpty())
+    }
+
+    @Test
+    fun `requeue preserves delete writes`() {
+        val queue = MongoPendingWriteQueue()
+        val write = MongoPendingWrite(
+            key = MongoDocumentKey("player", 1001L),
+            delete = true,
+            journalSequences = setOf(3),
+        )
+
+        queue.requeue(listOf(write))
+
+        assertEquals(write, queue.drain().single())
+    }
+
+    @Test
     fun `queue notifies dirty callback when writes are enqueued`() {
         var dirtyCount = 0
         val queue = MongoPendingWriteQueue { dirtyCount += 1 }

@@ -145,6 +145,9 @@ private class AsteriaMongoEntitySymbolProcessor(
             valueKind = valueKind,
             scanIgnored = property.hasAnnotation(AsteriaMongoScanIgnore::class.qualifiedName!!),
             scanWholeField = property.hasAnnotation(AsteriaMongoScanWholeField::class.qualifiedName!!),
+            scanListKey = property.findAnnotation(AsteriaMongoScanListById::class.qualifiedName!!)
+                ?.stringArg("property")
+                ?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -253,8 +256,48 @@ private class AsteriaMongoEntitySymbolProcessor(
             }
             val declaration = owner.property(property.name)
             val type = declaration?.type?.resolve() ?: return@all true
+            if (!validateScanListKey(owner, property, type)) {
+                return@all false
+            }
             validateMongoType(type, "property ${owner.simpleName.asString()}.${property.name}", mutableSetOf())
         }
+    }
+
+    private fun validateScanListKey(
+        owner: KSClassDeclaration,
+        property: MongoEntityPropertyModel,
+        type: KSType,
+    ): Boolean {
+        val keyName = property.scanListKey ?: return true
+        if (property.kind != MongoEntityPropertyKind.List) {
+            logger.error(
+                "@AsteriaMongoScanListById can only be used on List properties: " +
+                        "${owner.simpleName.asString()}.${property.name}",
+            )
+            return false
+        }
+        if (property.scanWholeField) {
+            logger.error(
+                "@AsteriaMongoScanListById cannot be combined with @AsteriaMongoScanWholeField: " +
+                        "${owner.simpleName.asString()}.${property.name}",
+            )
+            return false
+        }
+        val elementType = type.arguments.getOrNull(0)?.type?.resolve()
+        val elementDeclaration = elementType?.declaration as? KSClassDeclaration
+        if (elementDeclaration == null) {
+            logger.error("@AsteriaMongoScanListById requires a resolvable list element type", owner)
+            return false
+        }
+        val keyProperty = elementDeclaration.property(keyName)
+        if (keyProperty == null) {
+            logger.error(
+                "@AsteriaMongoScanListById key $keyName was not found on " +
+                        "${elementDeclaration.qualifiedName?.asString() ?: elementDeclaration.simpleName.asString()}",
+            )
+            return false
+        }
+        return validateMongoMapKeyType(keyProperty.type.resolve(), "@AsteriaMongoScanListById key $keyName")
     }
 
     private fun validateMongoType(

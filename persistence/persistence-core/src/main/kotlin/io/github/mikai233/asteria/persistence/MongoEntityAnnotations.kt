@@ -69,6 +69,19 @@ annotation class AsteriaMongoScanIgnore
 annotation class AsteriaMongoScanWholeField
 
 /**
+ * Tracks a list field by a stable property on each element instead of replacing the whole list.
+ *
+ * This is intended for list-as-table data such as quest states. Element keys must be unique at scan time and must be
+ * safe Mongo path keys. Insertions, removals, and element updates are emitted as per-key set/unset operations under the
+ * list field path.
+ */
+@Target(AnnotationTarget.PROPERTY)
+@Retention(AnnotationRetention.BINARY)
+annotation class AsteriaMongoScanListById(
+    val property: String,
+)
+
+/**
  * Marks a project-defined value type as safe to persist through the Mongo driver without generated field-level
  * tracking.
  *

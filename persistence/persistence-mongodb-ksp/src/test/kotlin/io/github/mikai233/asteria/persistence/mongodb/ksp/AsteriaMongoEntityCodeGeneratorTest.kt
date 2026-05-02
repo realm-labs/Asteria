@@ -42,6 +42,7 @@ class AsteriaMongoEntityCodeGeneratorTest {
                         MongoEntityPropertyKind.List,
                         MUTABLE_LIST.parameterizedBy(TRACKED_QUEST_STATE),
                         MongoEntityPropertyKind.Object,
+                        scanListKey = "questId",
                     ),
                 ),
                 nestedObjects = listOf(
@@ -122,7 +123,10 @@ class AsteriaMongoEntityCodeGeneratorTest {
             "mongoScannedMapField(\"bag\") { entity: PlayerEntity -> entity.bag.mapValues { (_, value) -> trackedItemStackMongoValue(value) } }"
         )
         assertContains(code, "trackedPlayerProfileMongoValue(entity.profile)")
-        assertContains(code, "trackedQuestStateMongoValue(value)")
+        assertContains(
+            code,
+            "mongoScannedListByKeyField(fieldName = \"quests\", value = { entity: PlayerEntity -> entity.quests }, key = { value -> value.questId }, persistentValue = { value -> trackedQuestStateMongoValue(value) })"
+        )
         assertContains(code, "fun table(")
         assertContains(code, "MongoKeyedDocumentTable<Long, PlayerEntity, TrackedPlayerEntity>")
         assertContains(code, "fun scannedTable(")

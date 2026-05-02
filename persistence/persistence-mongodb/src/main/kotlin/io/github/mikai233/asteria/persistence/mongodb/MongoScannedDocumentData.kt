@@ -17,6 +17,9 @@ import kotlin.reflect.KClass
  *
  * Business code mutates the loaded raw entity. Before flushing, the runtime scans the entity, compares it with the last
  * snapshot, and writes only changed fields.
+ *
+ * The runtime snapshot means "already converted into pending writes", not "already persisted". Failed flushes keep the
+ * pending write queued for retry.
  */
 abstract class MongoScannedDocumentData<ID : Any, E : Entity<ID>>(
     protected val scope: DataScope<ID>,
@@ -48,6 +51,16 @@ abstract class MongoScannedDocumentData<ID : Any, E : Entity<ID>>(
 
     protected fun requireValue(): E {
         return requireNotNull(value) { "scanned document $collectionName:${scope.entityId} is not loaded" }
+    }
+
+    protected suspend fun deleteValue(): Boolean {
+        if (value == null) return true
+        runtime.enqueueDelete()
+        val deleted = runtime.flushSafely()
+        if (deleted) {
+            value = null
+        }
+        return deleted
     }
 
     override suspend fun tick() {

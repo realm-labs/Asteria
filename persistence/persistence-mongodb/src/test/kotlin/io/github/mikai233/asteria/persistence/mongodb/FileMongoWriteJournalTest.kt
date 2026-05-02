@@ -37,6 +37,31 @@ class FileMongoWriteJournalTest {
     }
 
     @Test
+    fun `journal recovers unacknowledged delete entry`() {
+        val directory = createTempDirectory("asteria-mongo-journal")
+        val key = MongoDocumentKey("player", 1001L)
+        FileMongoWriteJournal(
+            MongoJournalPolicy(
+                enabled = true,
+                directory = directory,
+                forceOnAppend = true,
+            ),
+        ).use { journal ->
+            journal.append(MongoChangeOp.Delete(key))
+        }
+
+        FileMongoWriteJournal(
+            MongoJournalPolicy(
+                enabled = true,
+                directory = directory,
+                forceOnAppend = true,
+            ),
+        ).use { journal ->
+            assertEquals(MongoChangeOp.Delete(key), journal.recover().single().op)
+        }
+    }
+
+    @Test
     fun `checkpoint only advances over contiguous acknowledged entries`() {
         val directory = createTempDirectory("asteria-mongo-journal")
         FileMongoWriteJournal(

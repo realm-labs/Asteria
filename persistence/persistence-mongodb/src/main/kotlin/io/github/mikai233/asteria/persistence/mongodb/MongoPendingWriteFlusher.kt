@@ -2,9 +2,11 @@ package io.github.mikai233.asteria.persistence.mongodb
 
 import com.mongodb.bulk.BulkWriteResult
 import com.mongodb.client.model.BulkWriteOptions
+import com.mongodb.client.model.DeleteOneModel
 import com.mongodb.client.model.Filters.eq
 import com.mongodb.client.model.UpdateOneModel
 import com.mongodb.client.model.UpdateOptions
+import com.mongodb.client.model.WriteModel
 import com.mongodb.client.model.Updates.*
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.mikai233.asteria.observability.MetricTags
@@ -39,13 +41,7 @@ class MongoPendingWriteFlusher(
             writesByCollection.forEach { (collectionName, collectionWrites) ->
                 val tags = MetricTags.of("collection" to collectionName)
                 val collection = database.getCollection<Document>(collectionName)
-                val models = collectionWrites.map { write ->
-                    UpdateOneModel<Document>(
-                        eq(idField, write.key.documentId),
-                        write.update(),
-                        UpdateOptions().upsert(write.upsert),
-                    )
-                }
+                val models = collectionWrites.map { write -> write.model() }
                 results += collection.bulkWrite(models, BulkWriteOptions().ordered(false))
                 metrics.counter("asteria.persistence.mongodb.flush.documents.total", tags)
                     .increment(collectionWrites.size.toLong())
@@ -80,5 +76,17 @@ class MongoPendingWriteFlusher(
         unsets.forEach { path -> updates += unset(path) }
         require(updates.isNotEmpty()) { "Mongo pending write must contain at least one update" }
         return combine(updates)
+    }
+
+    private fun MongoPendingWrite.model(): WriteModel<Document> {
+        return if (delete) {
+            DeleteOneModel(eq(idField, key.documentId))
+        } else {
+            UpdateOneModel(
+                eq(idField, key.documentId),
+                update(),
+                UpdateOptions().upsert(upsert),
+            )
+        }
     }
 }

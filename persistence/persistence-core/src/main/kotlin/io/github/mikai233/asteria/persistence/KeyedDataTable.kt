@@ -83,6 +83,13 @@ abstract class KeyedDataTable<K : Any, R : Any>(
 
     protected open suspend fun flushRow(row: R): Boolean = true
 
+    protected fun dropLoaded(key: K): R? {
+        val loaded = rows.remove(key) ?: return null
+        loaded.lease.invalidate()
+        afterUnload(loaded.row)
+        return loaded.row
+    }
+
     protected open fun bindLease(row: R, lease: DataLease) {
         require(row is DataLeaseAware) { "row must implement DataLeaseAware" }
         row.bindLease(lease)

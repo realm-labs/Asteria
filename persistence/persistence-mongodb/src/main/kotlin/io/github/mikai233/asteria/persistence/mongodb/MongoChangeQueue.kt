@@ -3,9 +3,20 @@ package io.github.mikai233.asteria.persistence.mongodb
 /**
  * One logical change to a Mongo document.
  */
-sealed class MongoChangeOp(open val path: MongoPath) {
-    data class Set(override val path: MongoPath, val value: Any?) : MongoChangeOp(path)
-    data class Unset(override val path: MongoPath) : MongoChangeOp(path)
+sealed class MongoChangeOp {
+    abstract val key: MongoDocumentKey
+
+    data class Set(val path: MongoPath, val value: Any?) : MongoChangeOp() {
+        override val key: MongoDocumentKey
+            get() = path.key
+    }
+
+    data class Unset(val path: MongoPath) : MongoChangeOp() {
+        override val key: MongoDocumentKey
+            get() = path.key
+    }
+
+    data class Delete(override val key: MongoDocumentKey) : MongoChangeOp()
 }
 
 fun interface MongoChangeQueue {
@@ -19,13 +30,14 @@ data class MongoPendingWrite(
     val key: MongoDocumentKey,
     val sets: Map<String, Any?> = emptyMap(),
     val unsets: Set<String> = emptySet(),
+    val delete: Boolean = false,
     val journalSequences: Set<Long> = emptySet(),
 ) {
     val empty: Boolean
-        get() = sets.isEmpty() && unsets.isEmpty()
+        get() = !delete && sets.isEmpty() && unsets.isEmpty()
 
     val upsert: Boolean
-        get() = sets.isNotEmpty()
+        get() = !delete && sets.isNotEmpty()
 }
 
 /**
@@ -49,7 +61,7 @@ class MongoPendingWriteQueue(
     }
 
     private fun enqueue(op: MongoChangeOp, journalSequence: Long?) {
-        val patch = patches.getOrPut(op.path.key) { PendingMongoPatch() }
+        val patch = patches.getOrPut(op.key) { PendingMongoPatch() }
         patch.merge(op, journalSequence)
         onDirty()
     }
@@ -64,6 +76,9 @@ class MongoPendingWriteQueue(
     fun requeue(writes: Iterable<MongoPendingWrite>) {
         writes.forEach { write ->
             val patch = patches.getOrPut(write.key) { PendingMongoPatch() }
+            if (write.delete) {
+                patch.merge(MongoChangeOp.Delete(write.key), null)
+            }
             write.sets.forEach { (fieldPath, value) ->
                 patch.merge(MongoChangeOp.Set(write.key.path(fieldPath), value), null)
             }
@@ -85,12 +100,14 @@ private class PendingMongoPatch {
     private val sets: MutableMap<String, Any?> = linkedMapOf()
     private val unsets: MutableSet<String> = linkedSetOf()
     private val journalSequences: MutableSet<Long> = linkedSetOf()
+    private var delete: Boolean = false
 
     fun merge(op: MongoChangeOp, journalSequence: Long?) {
         journalSequence?.let(journalSequences::add)
         when (op) {
             is MongoChangeOp.Set -> set(op.path.fieldPath, op.value)
             is MongoChangeOp.Unset -> unset(op.path.fieldPath)
+            is MongoChangeOp.Delete -> delete()
         }
     }
 
@@ -99,6 +116,7 @@ private class PendingMongoPatch {
     }
 
     private fun set(path: String, value: Any?) {
+        if (delete) return
         if (hasAncestorOperation(path)) return
         removeDescendantOperations(path)
         unsets.remove(path)
@@ -106,10 +124,17 @@ private class PendingMongoPatch {
     }
 
     private fun unset(path: String) {
+        if (delete) return
         if (hasAncestorOperation(path)) return
         removeDescendantOperations(path)
         sets.remove(path)
         unsets.add(path)
+    }
+
+    private fun delete() {
+        delete = true
+        sets.clear()
+        unsets.clear()
     }
 
     private fun hasAncestorOperation(path: String): Boolean {
@@ -135,6 +160,7 @@ private class PendingMongoPatch {
             key = key,
             sets = sets.mapValues { (_, value) -> mongoValueOf(value) },
             unsets = unsets.toSet(),
+            delete = delete,
             journalSequences = journalSequences.toSet(),
         )
     }

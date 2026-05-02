@@ -14,6 +14,10 @@ import io.github.mikai233.asteria.persistence.FieldChange
 
 /**
  * Hash-scan dirty tracking runtime for one Mongo document.
+ *
+ * A scan snapshot records the state that has already been converted into this runtime's pending write queue. It is
+ * advanced when changes are enqueued, not when Mongo confirms the write. If a flush fails, [MongoPendingWriteQueue]
+ * requeues the pending write, so the runtime does not need to rediscover the same change on the next scan.
  */
 class MongoScannedDocumentRuntime<ID : Any, E : Entity<ID>>(
     private val collectionName: String,
@@ -38,10 +42,21 @@ class MongoScannedDocumentRuntime<ID : Any, E : Entity<ID>>(
         snapshot = scanPlan.capture(entity)
     }
 
+    /**
+     * Enqueues every scanned field as `$set`.
+     *
+     * Mongo applies the resulting write as an upsert. This is intentionally not an insert-only operation; callers that
+     * need optimistic insert semantics should check existence before creating the entity.
+     */
     fun enqueueCreated(entity: E) {
         val current = scanPlan.capture(entity)
         scanPlan.setAll(current, entity).forEach(::enqueue)
         snapshot = current
+    }
+
+    fun enqueueDelete() {
+        queue.enqueue(MongoChangeOp.Delete(MongoDocumentKey(collectionName, documentId)))
+        snapshot = EntityScanSnapshot.Empty
     }
 
     fun scan(entity: E): MongoScanResult {

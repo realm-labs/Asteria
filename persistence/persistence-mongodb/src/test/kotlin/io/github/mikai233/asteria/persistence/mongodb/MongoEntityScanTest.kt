@@ -52,8 +52,41 @@ class MongoEntityScanTest {
         )
     }
 
+    @Test
+    fun `generated mongo scan helpers detect list element changes by key`() {
+        val plan = mongoScanPlan(
+            mongoScannedListByKeyField(
+                fieldName = "quests",
+                value = { entity: QuestEntity -> entity.quests },
+                key = { quest -> quest.questId },
+            ),
+        )
+        val before = QuestEntity(listOf(QuestState(1, 1), QuestState(2, 1)))
+        val after = QuestEntity(listOf(QuestState(1, 2), QuestState(3, 1)))
+
+        val changes = plan.diff(plan.capture(before), plan.capture(after), after)
+
+        assertEquals(
+            listOf(
+                FieldChange.Unset(FieldPath.of("quests").child(2)),
+                FieldChange.Set(FieldPath.of("quests").child(1), QuestState(1, 2)),
+                FieldChange.Set(FieldPath.of("quests").child(3), QuestState(3, 1)),
+            ),
+            changes,
+        )
+    }
+
     private data class TestEntity(
         val name: String,
         val bag: Map<String, Int>,
+    )
+
+    private data class QuestEntity(
+        val quests: List<QuestState>,
+    )
+
+    private data class QuestState(
+        val questId: Int,
+        val status: Int,
     )
 }
