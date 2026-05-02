@@ -59,6 +59,7 @@
             <option value="$PROJECT_DIR$/gm/gm-config-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-core" />
             <option value="$PROJECT_DIR$/gm/gm-patch" />
+            <option value="$PROJECT_DIR$/gm/gm-patch-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-script" />
             <option value="$PROJECT_DIR$/gm/gm-script-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-spring-boot-starter" />
