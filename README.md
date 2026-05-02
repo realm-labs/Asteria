@@ -118,6 +118,18 @@ install(ConfigModule {
 })
 ```
 
+Operational tools can use `ConfigPublicationOperations` to list publication history, promote a known-good revision as
+the new current revision, or prune old immutable artifacts:
+
+```kotlin
+val publications = ConfigPublicationOperations(configStore)
+val history = publications.history()
+val current = publications.current()
+
+publications.promote(history.last().revision)
+publications.prune(retainLatest = 5)
+```
+
 Observability modules:
 
 - `:observability:observability-core`: optional tracing, metrics, trace context, no-op defaults, and module registration.

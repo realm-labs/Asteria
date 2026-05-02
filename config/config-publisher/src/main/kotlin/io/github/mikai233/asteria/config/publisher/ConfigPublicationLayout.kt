@@ -15,6 +15,7 @@ data class ConfigPublicationLayout(
 ) {
     val currentPath: ConfigPath = root / "current"
     val revisionsPath: ConfigPath = root / "revisions"
+    val historyPath: ConfigPath = root / "history"
 
     fun revisionPath(revision: ConfigRevision): ConfigPath {
         return revisionsPath / revision.version.toConfigPathSegment()
@@ -34,6 +35,10 @@ data class ConfigPublicationLayout(
     ): ConfigPath {
         ConfigPublicationArtifact(relativePath, ByteArray(0))
         return artifactsPath(revision) / relativePath
+    }
+
+    fun historyRecordPath(revision: ConfigRevision): ConfigPath {
+        return historyPath / revision.version.toConfigPathSegment()
     }
 }
 

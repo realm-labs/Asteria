@@ -1,5 +1,6 @@
 package io.github.mikai233.asteria.config.publisher
 
+import io.github.mikai233.asteria.config.ConfigRevision
 import io.github.mikai233.asteria.config.center.ConfigCodec
 import io.github.mikai233.asteria.config.center.ConfigPath
 import io.github.mikai233.asteria.config.center.ConfigStore
@@ -23,11 +24,32 @@ class ConfigPublicationConsumer(
         val current = repository.get<CurrentConfigPublication>(layout.currentPath)?.value
             ?: throw ConfigPublicationNotFoundException(layout.currentPath)
         val manifestPath = ConfigPath(current.manifestPath)
+        return load(
+            revision = current.revision,
+            manifestPath = manifestPath,
+            current = current,
+        )
+    }
+
+    suspend fun loadRevision(revision: ConfigRevision): ConfigPublicationBundle {
+        return load(
+            revision = revision,
+            manifestPath = layout.manifestPath(revision),
+            current = null,
+        )
+    }
+
+    private suspend fun load(
+        revision: ConfigRevision,
+        manifestPath: ConfigPath,
+        current: CurrentConfigPublication?,
+    ): ConfigPublicationBundle {
+        val repository = RuntimeConfigRepository(store, codec)
         val manifest = repository.get<ConfigPublicationManifest>(manifestPath)?.value
             ?: throw ConfigPublicationNotFoundException(manifestPath)
-        if (manifest.revision != current.revision) {
+        if (manifest.revision != revision) {
             throw ConfigPublicationValidationException(
-                "current revision ${current.revision} points to manifest ${manifestPath.value} with revision ${manifest.revision}",
+                "config revision $revision points to manifest ${manifestPath.value} with revision ${manifest.revision}",
             )
         }
 
@@ -60,7 +82,7 @@ class ConfigPublicationConsumer(
 }
 
 data class ConfigPublicationBundle(
-    val current: CurrentConfigPublication,
+    val current: CurrentConfigPublication?,
     val manifest: ConfigPublicationManifest,
     val artifacts: Map<String, ByteArray>,
 ) {

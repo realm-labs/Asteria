@@ -49,6 +49,7 @@ class ConfigPublisher(
             )
         }
         val manifestStoreRevision = repository.put(layout.manifestPath(snapshot.revision), manifest)
+        val recordStoreRevision = repository.put(layout.historyRecordPath(snapshot.revision), manifest.toRecord())
         val currentStoreRevision = repository.put(
             layout.currentPath,
             CurrentConfigPublication(
@@ -62,6 +63,7 @@ class ConfigPublisher(
             snapshot = snapshot,
             manifest = manifest,
             manifestStoreRevision = manifestStoreRevision,
+            recordStoreRevision = recordStoreRevision,
             currentStoreRevision = currentStoreRevision,
             artifactStoreRevisions = artifactStoreRevisions,
         )
@@ -96,12 +98,23 @@ class ConfigPublisher(
             },
         )
     }
+
+    private fun ConfigPublicationManifest.toRecord(): ConfigPublicationRecord {
+        return ConfigPublicationRecord(
+            revision = revision,
+            manifestPath = layout.manifestPath(revision).value,
+            publishedAt = generatedAt,
+            artifactCount = artifacts.size,
+            totalArtifactBytes = artifacts.sumOf { it.size },
+        )
+    }
 }
 
 data class ConfigPublicationResult(
     val snapshot: ConfigSnapshot,
     val manifest: ConfigPublicationManifest,
     val manifestStoreRevision: ConfigRevision,
+    val recordStoreRevision: ConfigRevision,
     val currentStoreRevision: ConfigRevision,
     val artifactStoreRevisions: Map<String, ConfigRevision>,
 )

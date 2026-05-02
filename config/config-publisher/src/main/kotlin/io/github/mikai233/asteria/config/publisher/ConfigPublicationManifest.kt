@@ -39,4 +39,18 @@ data class CurrentConfigPublication(
     val publishedAt: Instant,
 )
 
+/**
+ * Lightweight history entry for one successful publication.
+ *
+ * The full manifest stays under the immutable revision path. History records are optimized for listing and operational
+ * rollback decisions without reading every raw artifact.
+ */
+data class ConfigPublicationRecord(
+    val revision: ConfigRevision,
+    val manifestPath: String,
+    val publishedAt: Instant,
+    val artifactCount: Int,
+    val totalArtifactBytes: Long,
+)
+
 internal fun ConfigTableName.asManifestName(): String = value

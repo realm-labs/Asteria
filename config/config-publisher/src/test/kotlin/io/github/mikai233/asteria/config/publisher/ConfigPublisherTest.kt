@@ -66,6 +66,7 @@ class ConfigPublisherTest {
         val repository = RuntimeConfigRepository(store, JacksonConfigCodec())
         val manifest = repository.get<ConfigPublicationManifest>(layout.manifestPath(revision))?.value
         val current = repository.get<CurrentConfigPublication>(layout.currentPath)?.value
+        val record = repository.get<ConfigPublicationRecord>(layout.historyRecordPath(revision))?.value
 
         assertEquals(revision, result.snapshot.revision)
         assertNotNull(manifest)
@@ -75,6 +76,10 @@ class ConfigPublisherTest {
         assertEquals(listOf("item-index"), manifest.components.map { it.name })
         assertEquals(revision, current?.revision)
         assertEquals(layout.manifestPath(revision).value, current?.manifestPath)
+        assertNotNull(record)
+        assertEquals(revision, record.revision)
+        assertEquals(2, record.artifactCount)
+        assertEquals(10, record.totalArtifactBytes)
         assertNotNull(store.get(layout.artifactPath(revision, "items.bytes")))
         assertNotNull(store.get(layout.artifactPath(revision, "activity/tasks.bytes")))
     }
@@ -158,6 +163,55 @@ class ConfigPublisherTest {
         val emitted = signal.await()
         assertEquals("config_center_upserted", emitted.reason)
         assertEquals(layout.currentPath.value, emitted.source)
+    }
+
+    @Test
+    fun `publication operations list history and promote previous revision`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val layout = ConfigPublicationLayout(configPath("/game/config"))
+        val first = ConfigRevision("2026.05.02", "checksum-1")
+        val second = ConfigRevision("2026.05.03", "checksum-2")
+
+        publishRevision(store, layout, first, "1:Sword")
+        publishRevision(store, layout, second, "1:Axe")
+
+        val operations = ConfigPublicationOperations(
+            store = store,
+            layout = layout,
+            clock = Clock.fixed(Instant.parse("2026-05-04T00:00:00Z"), ZoneOffset.UTC),
+        )
+        assertEquals(listOf(second, first), operations.history().map { it.revision })
+
+        val current = operations.promote(first)
+
+        assertEquals(first, current.revision)
+        assertEquals(Instant.parse("2026-05-04T00:00:00Z"), current.publishedAt)
+        assertEquals(first, ConfigPublicationConsumer(store, layout).loadCurrent().manifest.revision)
+    }
+
+    @Test
+    fun `publication operations prune old non current revisions`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val layout = ConfigPublicationLayout(configPath("/game/config"))
+        val first = ConfigRevision("2026.05.02", "checksum-1")
+        val second = ConfigRevision("2026.05.03", "checksum-2")
+        val third = ConfigRevision("2026.05.04", "checksum-3")
+
+        publishRevision(store, layout, first, "1:Sword")
+        publishRevision(store, layout, second, "1:Axe")
+        publishRevision(store, layout, third, "1:Bow")
+        ConfigPublicationOperations(store, layout).promote(first)
+
+        val result = ConfigPublicationOperations(store, layout).prune(retainLatest = 1)
+
+        assertEquals(listOf(second), result.deletedRevisions)
+        assertNotNull(store.get(layout.manifestPath(first)))
+        assertNotNull(store.get(layout.artifactPath(first, "item_tbitem.bytes")))
+        assertNotNull(store.get(layout.manifestPath(third)))
+        assertNotNull(store.get(layout.artifactPath(third, "item_tbitem.bytes")))
+        assertEquals(null, store.get(layout.manifestPath(second)))
+        assertEquals(null, store.get(layout.artifactPath(second, "item_tbitem.bytes")))
+        assertEquals(listOf(third, first), ConfigPublicationOperations(store, layout).history().map { it.revision })
     }
 
     @Test
@@ -256,6 +310,27 @@ class ConfigPublisherTest {
         }
         assertEquals(null, store.get(layout.currentPath))
     }
+}
+
+private suspend fun publishRevision(
+    store: InMemoryConfigStore,
+    layout: ConfigPublicationLayout,
+    revision: ConfigRevision,
+    rows: String,
+) {
+    ConfigPublisher(
+        loader = {
+            DefaultConfigSnapshot(
+                revision = revision,
+                tables = listOf(mapConfigTable("items", mapOf(1 to ItemConfig(1)))),
+            )
+        },
+        artifactSource = ConfigArtifactSource {
+            listOf(ConfigPublicationArtifact("item_tbitem.bytes", rows.toByteArray()))
+        },
+        store = store,
+        layout = layout,
+    ).publish()
 }
 
 private data class ItemConfig(
