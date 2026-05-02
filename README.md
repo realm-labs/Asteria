@@ -177,6 +177,43 @@ val app = localGameApplication {
 app.launch()
 ```
 
+For local multi-node tests, use `localGameCluster`. It allocates free local ports, creates one static topology, and
+starts every node with the same application declarations. If no node is marked as a seed, the first node becomes the
+seed node.
+
+```kotlin
+val cluster = localGameCluster {
+    name = "demo-game-local"
+
+    application {
+        entity<Long>("player") {
+            role("player")
+            handoffMessage = PlayerHandoff
+            actor { runtime, _ -> PlayerActor.props(runtime) }
+        }
+    }
+
+    seedNode("seed-1", "seed")
+    node("player-1", "player")
+}
+
+cluster.launch()
+val summary = cluster["player-1"].services.get<GameServerStartupSummary>()
+println(summary.render())
+cluster.stop()
+```
+
+When a test needs to exercise the config-center topology path instead of the static provider, use
+`localConfigCenterGameCluster`. It writes the generated topology to an in-memory `ConfigStore` before building nodes.
+
+```kotlin
+val cluster = localConfigCenterGameCluster {
+    name = "demo-game-local"
+    seedNode("seed-1", "seed")
+    node("player-1", "player")
+}
+```
+
 RPC entity ids are intended to be generated from protobuf metadata and loaded through `RpcModule.autoDiscover()`.
 The runtime consumes `RpcEntityIdRegistry`; game projects should not have to register every sharded RPC message in the
 application DSL.
@@ -462,6 +499,22 @@ val app = clusterGameApplication(nodeId = System.getenv("ASTERIA_NODE_ID")) {
 }
 
 app.launch()
+```
+
+Tests or tools that use an in-memory config center can publish topology directly:
+
+```kotlin
+val store = InMemoryConfigStore()
+val layout = ClusterConfigLayout.default("demo-game")
+store.publishClusterTopology(cluster.topology, layout)
+
+val app = clusterGameApplication(
+    nodeId = "player-1",
+    store = store,
+    layout = layout,
+) {
+    name = "demo-game"
+}
 ```
 
 For local files, use a static Typesafe config topology provider:

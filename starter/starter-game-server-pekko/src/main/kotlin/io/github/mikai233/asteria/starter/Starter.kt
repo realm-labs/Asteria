@@ -6,6 +6,11 @@ import io.github.mikai233.asteria.cluster.config.ClusterConfigLayout
 import io.github.mikai233.asteria.cluster.config.ClusterConfigModule
 import io.github.mikai233.asteria.cluster.config.ClusterTopology
 import io.github.mikai233.asteria.cluster.config.StaticClusterTopologyProvider
+import io.github.mikai233.asteria.config.center.ConfigCenterModule
+import io.github.mikai233.asteria.config.center.ConfigCodec
+import io.github.mikai233.asteria.config.center.ConfigStore
+import io.github.mikai233.asteria.config.center.JacksonConfigCodec
+import io.github.mikai233.asteria.config.center.RuntimeConfigRepository
 import io.github.mikai233.asteria.cluster.pekko.LocalPekkoClusterStartup
 import io.github.mikai233.asteria.cluster.pekko.PekkoRuntimeModule
 import io.github.mikai233.asteria.cluster.pekko.TopologyPekkoClusterStartup
@@ -37,6 +42,7 @@ fun localGameApplication(configure: AsteriaApplicationBuilder.() -> Unit): Aster
         install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
         install(RpcModule.autoDiscover())
         configure()
+        install(GameServerStartupSummaryModule("local"))
     }
 }
 
@@ -56,6 +62,35 @@ fun clusterGameApplication(
             },
         )
         install(PekkoRuntimeModule(TopologyPekkoClusterStartup(nodeId, config = pekkoConfig)))
+        install(GameServerStartupSummaryModule("config-center"))
+    }
+}
+
+fun clusterGameApplication(
+    nodeId: String,
+    store: ConfigStore,
+    layout: ClusterConfigLayout? = null,
+    codec: ConfigCodec = JacksonConfigCodec(),
+    pekkoConfig: Config = ConfigFactory.empty(),
+    configure: AsteriaApplicationBuilder.() -> Unit,
+): AsteriaApplication {
+    return gameApplication {
+        install(
+            ConfigCenterModule {
+                store(store)
+                codec(codec)
+            },
+        )
+        install(RpcModule.autoDiscover())
+        configure()
+        val applicationName = name
+        install(
+            ClusterConfigModule {
+                this.layout = layout ?: ClusterConfigLayout.default(applicationName)
+            },
+        )
+        install(PekkoRuntimeModule(TopologyPekkoClusterStartup(nodeId, config = pekkoConfig)))
+        install(GameServerStartupSummaryModule("config-center"))
     }
 }
 
@@ -82,5 +117,17 @@ fun clusterGameApplication(
                 ),
             ),
         )
+        install(GameServerStartupSummaryModule("static"))
+    }
+}
+
+suspend fun ConfigStore.publishClusterTopology(
+    topology: ClusterTopology,
+    layout: ClusterConfigLayout,
+    codec: ConfigCodec = JacksonConfigCodec(),
+) {
+    val repository = RuntimeConfigRepository(this, codec)
+    for (node in topology.nodes) {
+        repository.put(layout.node(node.nodeId), node)
     }
 }

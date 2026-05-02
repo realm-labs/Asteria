@@ -14,4 +14,5 @@ dependencies {
     api(project(":protocol:protocol-protobuf"))
     api(project(":gateway:gateway-netty"))
     api(project(":config:config-core"))
+    api(project(":config:config-center"))
 }
