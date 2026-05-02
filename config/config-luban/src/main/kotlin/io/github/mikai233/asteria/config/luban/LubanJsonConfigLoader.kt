@@ -7,27 +7,25 @@ import io.github.mikai233.asteria.config.ConfigSnapshot
 import io.github.mikai233.asteria.config.DefaultConfigSnapshot
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
-import java.nio.file.Path
 import kotlin.reflect.KClass
 
 class LubanJsonConfigLoader(
     private val tablesType: KClass<out Any>,
-    private val dataDir: Path,
+    private val dataSource: LubanDataSource,
     private val objectMapper: ObjectMapper = ObjectMapper(),
     private val charset: Charset = StandardCharsets.UTF_8,
-    private val fileResolver: (String) -> Path = { dataDir.resolve("$it.json") },
-    private val preloadOptions: LubanPreloadOptions = LubanPreloadOptions(),
     private val includeTableComponents: Boolean = true,
     private val revisionFactory: (LubanJsonLoadReport) -> ConfigRevision = { report ->
         ConfigRevision(version = report.checksum, checksum = report.checksum)
     },
 ) : ConfigLoader {
     override suspend fun load(): ConfigSnapshot {
-        val preloadedFiles = preloadDataFiles(dataDir, ".json", preloadOptions)
-        val loadedFiles = linkedMapOf<Path, ByteArray>()
+        val sourceFiles = dataSource.list(".json")
+        val loadedFiles = linkedMapOf<String, ByteArray>()
         val tables = instantiateLubanTables(tablesType, "AsteriaLubanJsonLoader") { file, returnType ->
-            val path = fileResolver(file)
-            val bytes = readDataFile(path, preloadedFiles, loadedFiles)
+            val name = fileNameWithExtension(file, ".json")
+            val bytes = requireNotNull(sourceFiles[name]) { "Luban json data file $name not found" }
+            loadedFiles[name] = bytes
             objectMapper.readTree(bytes.toString(charset)).also { json ->
                 require(returnType.isInstance(json)) {
                     "Luban json loader return type ${returnType.name} is not compatible with ${json.javaClass.name}"
@@ -36,9 +34,8 @@ class LubanJsonConfigLoader(
         }
 
         val report = LubanJsonLoadReport(
-            dataDir = dataDir,
             files = loadedFiles.keys.toList(),
-            checksum = checksum(loadedFiles),
+            checksum = checksumByName(loadedFiles),
         )
         val components = buildList {
             add(tables)
@@ -56,7 +53,6 @@ class LubanJsonConfigLoader(
 }
 
 data class LubanJsonLoadReport(
-    override val dataDir: Path,
-    override val files: List<Path>,
+    override val files: List<String>,
     override val checksum: String,
 ) : LubanLoadReport

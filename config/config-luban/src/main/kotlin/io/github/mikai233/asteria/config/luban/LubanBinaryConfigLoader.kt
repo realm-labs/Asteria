@@ -4,32 +4,29 @@ import io.github.mikai233.asteria.config.ConfigLoader
 import io.github.mikai233.asteria.config.ConfigRevision
 import io.github.mikai233.asteria.config.ConfigSnapshot
 import io.github.mikai233.asteria.config.DefaultConfigSnapshot
-import java.nio.file.Path
 import kotlin.reflect.KClass
 
 class LubanBinaryConfigLoader(
     private val tablesType: KClass<out Any>,
-    private val dataDir: Path,
-    private val fileResolver: (String) -> Path = { dataDir.resolve("$it.bytes") },
-    private val preloadOptions: LubanPreloadOptions = LubanPreloadOptions(),
+    private val dataSource: LubanDataSource,
     private val includeTableComponents: Boolean = true,
     private val revisionFactory: (LubanBinaryLoadReport) -> ConfigRevision = { report ->
         ConfigRevision(version = report.checksum, checksum = report.checksum)
     },
 ) : ConfigLoader {
     override suspend fun load(): ConfigSnapshot {
-        val preloadedFiles = preloadDataFiles(dataDir, ".bytes", preloadOptions)
-        val loadedFiles = linkedMapOf<Path, ByteArray>()
+        val sourceFiles = dataSource.list(".bytes")
+        val loadedFiles = linkedMapOf<String, ByteArray>()
         val tables = instantiateLubanTables(tablesType, "AsteriaLubanBinaryLoader") { file, returnType ->
-            val path = fileResolver(file)
-            val bytes = readDataFile(path, preloadedFiles, loadedFiles)
+            val name = fileNameWithExtension(file, ".bytes")
+            val bytes = requireNotNull(sourceFiles[name]) { "Luban binary data file $name not found" }
+            loadedFiles[name] = bytes
             returnType.newByteBuf(bytes)
         }
 
         val report = LubanBinaryLoadReport(
-            dataDir = dataDir,
             files = loadedFiles.keys.toList(),
-            checksum = checksum(loadedFiles),
+            checksum = checksumByName(loadedFiles),
         )
         val components = buildList {
             add(tables)
@@ -47,8 +44,7 @@ class LubanBinaryConfigLoader(
 }
 
 data class LubanBinaryLoadReport(
-    override val dataDir: Path,
-    override val files: List<Path>,
+    override val files: List<String>,
     override val checksum: String,
 ) : LubanLoadReport
 

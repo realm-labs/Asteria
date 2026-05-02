@@ -89,7 +89,7 @@ Config publication:
 val publisher = ConfigPublisher(
     loader = LubanBinaryConfigLoader(
         tablesType = GameTables::class,
-        dataDir = layout.projectDirectory.dir("build/luban").asFile.toPath(),
+        dataSource = DirectoryLubanDataSource(layout.projectDirectory.dir("build/luban").asFile.toPath()),
     ),
     artifactSource = DirectoryConfigArtifactSource(layout.projectDirectory.dir("build/luban").asFile.toPath()),
     store = configStore,
@@ -377,7 +377,8 @@ val item = tables.tbItem.get(1001)
 ```
 
 Luban loaders preload matching data files with bounded concurrency before constructing `cfg.Tables`; the generated
-`Tables` object still controls table construction order and cross-table initialization.
+`Tables` object still controls table construction order and cross-table initialization. Runtime reloads can skip local
+temporary files by loading config-center artifacts into memory and passing `MemoryLubanDataSource` to the loader.
 
 Server runtime configuration is separated from the concrete config center. A `ConfigStore` owns byte-level get, children,
 watch, put, and delete operations; `RuntimeConfigRepository` adds typed decoding through a pluggable `ConfigCodec`.

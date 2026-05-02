@@ -22,23 +22,19 @@ class LubanConfigModule private constructor(
 
     override suspend fun install(context: ModuleContext) {
         val tablesType = options.tablesType ?: error("Luban tables type must be configured")
-        val dataDir = options.dataDir ?: error("Luban data dir must be configured")
+        val dataSource = options.dataSource ?: error("Luban data source must be configured")
         val loader = when (options.format) {
             LubanConfigFormat.Json -> LubanJsonConfigLoader(
                 tablesType = tablesType,
-                dataDir = dataDir,
+                dataSource = dataSource,
                 objectMapper = options.objectMapper,
                 charset = options.charset,
-                fileResolver = options.fileResolver,
-                preloadOptions = options.preloadOptions,
                 includeTableComponents = options.includeTableComponents,
                 revisionFactory = { report -> options.revisionFactory(report) },
             )
             LubanConfigFormat.Binary -> LubanBinaryConfigLoader(
                 tablesType = tablesType,
-                dataDir = dataDir,
-                fileResolver = options.fileResolver,
-                preloadOptions = options.preloadOptions,
+                dataSource = dataSource,
                 includeTableComponents = options.includeTableComponents,
                 revisionFactory = { report -> options.revisionFactory(report) },
             )
@@ -64,12 +60,10 @@ class LubanConfigModule private constructor(
 
 data class LubanConfigModuleOptions(
     val tablesType: KClass<out Any>?,
-    val dataDir: Path?,
+    val dataSource: LubanDataSource?,
     val format: LubanConfigFormat,
     val objectMapper: ObjectMapper,
     val charset: Charset,
-    val fileResolver: (String) -> Path,
-    val preloadOptions: LubanPreloadOptions,
     val includeTableComponents: Boolean,
     val revisionFactory: (LubanLoadReport) -> ConfigRevision,
     val validators: List<ConfigValidator>,
@@ -93,7 +87,7 @@ class LubanConfigModuleBuilder {
 
     private var tablesType: KClass<out Any>? = null
     private var dataDir: Path? = null
-    private var fileResolver: ((Path, String) -> Path)? = null
+    private var dataSource: LubanDataSource? = null
     private var revisionFactory: (LubanLoadReport) -> ConfigRevision = { report ->
         ConfigRevision(version = report.checksum, checksum = report.checksum)
     }
@@ -109,6 +103,16 @@ class LubanConfigModuleBuilder {
 
     fun dataDir(path: Path) {
         dataDir = path
+        dataSource = null
+    }
+
+    fun dataSource(source: LubanDataSource) {
+        dataSource = source
+        dataDir = null
+    }
+
+    fun memory(files: Map<String, ByteArray>) {
+        dataSource(MemoryLubanDataSource(files))
     }
 
     fun json() {
@@ -117,10 +121,6 @@ class LubanConfigModuleBuilder {
 
     fun binary() {
         format = LubanConfigFormat.Binary
-    }
-
-    fun fileResolver(resolve: (Path, String) -> Path) {
-        fileResolver = resolve
     }
 
     fun preload(
@@ -144,32 +144,25 @@ class LubanConfigModuleBuilder {
     }
 
     internal fun build(): LubanConfigModuleOptions {
-        val dataDir = dataDir
+        val source = dataSource ?: dataDir?.let { dir ->
+            DirectoryLubanDataSource(
+                dataDir = dir,
+                preloadOptions = LubanPreloadOptions(
+                    enabled = preload,
+                    maxConcurrency = preloadConcurrency,
+                ),
+            )
+        }
         return LubanConfigModuleOptions(
             tablesType = tablesType,
-            dataDir = dataDir,
+            dataSource = source,
             format = format,
             objectMapper = objectMapper,
             charset = charset,
-            fileResolver = { file ->
-                val dir = dataDir ?: error("Luban data dir must be configured")
-                fileResolver?.invoke(dir, file) ?: dir.resolve(fileName(file))
-            },
-            preloadOptions = LubanPreloadOptions(
-                enabled = preload,
-                maxConcurrency = preloadConcurrency,
-            ),
             includeTableComponents = includeTableComponents,
             revisionFactory = revisionFactory,
             validators = validators.toList(),
             loadOnStart = loadOnStart,
         )
-    }
-
-    private fun fileName(file: String): String {
-        return when (format) {
-            LubanConfigFormat.Json -> "$file.json"
-            LubanConfigFormat.Binary -> "$file.bytes"
-        }
     }
 }

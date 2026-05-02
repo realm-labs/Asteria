@@ -28,7 +28,7 @@ class LubanConfigLoaderTest {
 
         val snapshot = LubanJsonConfigLoader(
             tablesType = FakeTables::class,
-            dataDir = dataDir,
+            dataSource = DirectoryLubanDataSource(dataDir),
         ).load()
 
         val tables = snapshot.requireComponent<FakeTables>()
@@ -44,7 +44,7 @@ class LubanConfigLoaderTest {
         val file = dataDir.resolve("item_tbitem.json")
         file.writeText("""[{"id": 1, "name": "Sword"}]""")
 
-        val loader = LubanJsonConfigLoader(FakeTables::class, dataDir)
+        val loader = LubanJsonConfigLoader(FakeTables::class, DirectoryLubanDataSource(dataDir))
         val first = loader.load()
 
         file.writeText("""[{"id": 1, "name": "Axe"}]""")
@@ -85,12 +85,26 @@ class LubanConfigLoaderTest {
 
         val snapshot = LubanBinaryConfigLoader(
             tablesType = FakeBinaryTables::class,
-            dataDir = dataDir,
+            dataSource = DirectoryLubanDataSource(dataDir),
         ).load()
 
         val tables = snapshot.requireComponent<FakeBinaryTables>()
         val items = snapshot.requireComponent<FakeBinaryTbItem>()
         assertEquals("Sword", tables.getTbItem().get(1).name)
+        assertEquals("Potion", items.get(2).name)
+    }
+
+    @Test
+    fun `loads generated binary tables from memory source`() = runBlocking {
+        val snapshot = LubanBinaryConfigLoader(
+            tablesType = FakeBinaryTables::class,
+            dataSource = MemoryLubanDataSource(
+                mapOf("item_tbitem.bytes" to "1:Sword\n2:Potion".toByteArray()),
+            ),
+        ).load()
+
+        val items = snapshot.requireComponent<FakeBinaryTbItem>()
+        assertEquals("Sword", items.get(1).name)
         assertEquals("Potion", items.get(2).name)
     }
 

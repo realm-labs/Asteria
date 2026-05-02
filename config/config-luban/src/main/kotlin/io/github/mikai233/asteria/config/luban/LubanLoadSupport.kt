@@ -27,9 +27,66 @@ data class LubanPreloadOptions(
 }
 
 interface LubanLoadReport {
-    val dataDir: Path
-    val files: List<Path>
+    val files: List<String>
     val checksum: String
+}
+
+/**
+ * Source of raw Luban table files.
+ *
+ * Runtime reloads can use [MemoryLubanDataSource] directly from config-center artifacts. Local development and
+ * publication jobs can use [DirectoryLubanDataSource].
+ */
+interface LubanDataSource {
+    suspend fun list(extension: String): Map<String, ByteArray>
+}
+
+class MemoryLubanDataSource(
+    files: Map<String, ByteArray>,
+) : LubanDataSource {
+    private val files: Map<String, ByteArray> = files.mapKeys { (name, _) ->
+        normalizeLubanFileName(name)
+    }.mapValues { (_, bytes) ->
+        bytes.copyOf()
+    }
+
+    override suspend fun list(extension: String): Map<String, ByteArray> {
+        return files
+            .filterKeys { it.endsWith(extension) }
+            .toSortedMap()
+            .mapValues { it.value.copyOf() }
+    }
+}
+
+class DirectoryLubanDataSource(
+    private val dataDir: Path,
+    private val preloadOptions: LubanPreloadOptions = LubanPreloadOptions(),
+    private val fileResolver: (String) -> Path = { file -> dataDir.resolve(file) },
+) : LubanDataSource {
+    override suspend fun list(extension: String): Map<String, ByteArray> {
+        val files = Files.list(dataDir).use { stream ->
+            stream
+                .filter { path -> Files.isRegularFile(path) && path.name.endsWith(extension) }
+                .sorted()
+                .toList()
+        }
+        if (!preloadOptions.enabled) {
+            return files.associate { path ->
+                path.name to Files.readAllBytes(fileResolver(path.name))
+            }
+        }
+        val semaphore = Semaphore(preloadOptions.maxConcurrency)
+
+        return coroutineScope {
+            files.map { path ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        path.name to Files.readAllBytes(path)
+                    }
+                }
+            }.awaitAll().toMap(linkedMapOf())
+        }
+    }
 }
 
 internal fun instantiateLubanTables(
@@ -76,10 +133,10 @@ internal fun extractTableComponents(tables: Any): List<Any> {
         .toList()
 }
 
-internal fun checksum(files: Map<Path, ByteArray>): String {
+internal fun checksumByName(files: Map<String, ByteArray>): String {
     val digest = MessageDigest.getInstance("SHA-256")
-    files.toSortedMap(compareBy<Path> { it.name }.thenBy { it.toString() }).forEach { (path, bytes) ->
-        digest.update(path.name.toByteArray(StandardCharsets.UTF_8))
+    files.toSortedMap().forEach { (name, bytes) ->
+        digest.update(name.toByteArray(StandardCharsets.UTF_8))
         digest.update(0)
         digest.update(bytes)
         digest.update(0)
@@ -87,47 +144,25 @@ internal fun checksum(files: Map<Path, ByteArray>): String {
     return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
-internal suspend fun preloadDataFiles(
-    dataDir: Path,
+internal fun fileNameWithExtension(
+    file: String,
     extension: String,
-    options: LubanPreloadOptions,
-): Map<Path, ByteArray> {
-    if (!options.enabled) {
-        return emptyMap()
-    }
-
-    val files = Files.list(dataDir).use { stream ->
-        stream
-            .filter { path -> Files.isRegularFile(path) && path.name.endsWith(extension) }
-            .sorted()
-            .toList()
-    }
-    val semaphore = Semaphore(options.maxConcurrency)
-
-    return coroutineScope {
-        files.map { path ->
-            async(Dispatchers.IO) {
-                semaphore.withPermit {
-                    path.cacheKey() to Files.readAllBytes(path)
-                }
-            }
-        }.awaitAll().toMap(linkedMapOf())
-    }
+): String {
+    val normalized = normalizeLubanFileName(file)
+    return if (normalized.endsWith(extension)) normalized else "$normalized$extension"
 }
 
-internal fun readDataFile(
-    path: Path,
-    preloadedFiles: Map<Path, ByteArray>,
-    loadedFiles: MutableMap<Path, ByteArray>,
-): ByteArray {
-    val key = path.cacheKey()
-    val bytes = preloadedFiles[key] ?: Files.readAllBytes(path)
-    loadedFiles[key] = bytes
-    return bytes
-}
-
-private fun Path.cacheKey(): Path {
-    return toAbsolutePath().normalize()
+internal fun normalizeLubanFileName(file: String): String {
+    val normalized = file.trim()
+        .replace('\\', '/')
+        .removePrefix("./")
+    require(normalized.isNotBlank()) { "Luban data file name must not be blank" }
+    require(!normalized.startsWith("/")) { "Luban data file name must be relative: $file" }
+    require(!normalized.contains("//")) { "Luban data file name must not contain empty segments: $file" }
+    require(normalized.split('/').none { it == "." || it == ".." }) {
+        "Luban data file name must not contain dot segments: $file"
+    }
+    return normalized
 }
 
 private fun Method.isLoadMethod(): Boolean {
