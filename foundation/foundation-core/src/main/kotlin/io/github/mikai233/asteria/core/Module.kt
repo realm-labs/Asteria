@@ -32,15 +32,34 @@ interface AsteriaModule {
 /**
  * Per-lifecycle view passed to modules.
  *
- * The context exposes application metadata and the shared [ServiceRegistry]. Modules should
- * communicate through registered services instead of depending on concrete module instances.
+ * The context is intentionally based on [NodeRuntime] rather than [AsteriaApplication], so applications with their
+ * own node implementation can still reuse framework modules. Modules should communicate through registered services
+ * instead of depending on concrete module instances.
  */
-class ModuleContext internal constructor(
-    val application: AsteriaApplication,
-    val services: ServiceRegistry,
+class ModuleContext(
+    val runtime: NodeRuntime,
+    val services: ServiceRegistry = runtime.services,
+    val topology: RuntimeTopology = RuntimeTopology.Empty,
 ) {
-    val name: String get() = application.name
-    val declaredRoles: Set<RoleKey> get() = application.declaredRoles
-    val entities: List<EntitySpec<*>> get() = application.entities
-    val singletons: List<SingletonSpec> get() = application.singletons
+    val name: String get() = runtime.name
+    val roles: Set<RoleKey> get() = runtime.roles
+    val declaredRoles: Set<RoleKey> get() = topology.declaredRoles
+    val entities: List<EntitySpec<*>> get() = topology.entities
+    val singletons: List<SingletonSpec> get() = topology.singletons
+}
+
+/**
+ * Static runtime topology declared before node startup.
+ *
+ * This is separate from [NodeRuntime] because custom node implementations often own their concrete roles and state
+ * directly, while sharded entities and singleton specs are optional metadata used only by cluster modules.
+ */
+data class RuntimeTopology(
+    val declaredRoles: Set<RoleKey> = emptySet(),
+    val entities: List<EntitySpec<*>> = emptyList(),
+    val singletons: List<SingletonSpec> = emptyList(),
+) {
+    companion object {
+        val Empty = RuntimeTopology()
+    }
 }

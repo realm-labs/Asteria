@@ -96,7 +96,7 @@ class AsteriaApplication internal constructor(
             )
             changeState(NodeState.Starting)
             try {
-                val context = ModuleContext(this, services)
+                val context = moduleContext()
                 modules.forEach { it.install(context) }
                 modules.forEach { it.start(context) }
                 changeState(NodeState.Started)
@@ -124,7 +124,7 @@ class AsteriaApplication internal constructor(
             logger.info("stopping application {}", name)
             changeState(NodeState.Stopping)
             try {
-                val context = ModuleContext(this, services)
+                val context = moduleContext()
                 modules.asReversed().forEach { it.stop(context) }
                 changeState(NodeState.Stopped)
                 logger.info(
@@ -142,6 +142,18 @@ class AsteriaApplication internal constructor(
     private suspend fun changeState(newState: NodeState) {
         state = newState
         stateListeners[newState].orEmpty().forEach { it() }
+    }
+
+    private fun moduleContext(): ModuleContext {
+        return ModuleContext(
+            runtime = this,
+            services = services,
+            topology = RuntimeTopology(
+                declaredRoles = declaredRoles,
+                entities = entities,
+                singletons = singletons,
+            ),
+        )
     }
 }
 

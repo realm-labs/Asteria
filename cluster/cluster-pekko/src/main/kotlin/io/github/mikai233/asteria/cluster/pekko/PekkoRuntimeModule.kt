@@ -3,6 +3,7 @@ package io.github.mikai233.asteria.cluster.pekko
 import io.github.mikai233.asteria.cluster.config.ClusterTopology
 import io.github.mikai233.asteria.cluster.config.RuntimeNodeConfig
 import io.github.mikai233.asteria.core.AsteriaModule
+import io.github.mikai233.asteria.core.AsteriaApplication
 import io.github.mikai233.asteria.core.EntitySpec
 import io.github.mikai233.asteria.core.ModuleContext
 import io.github.mikai233.asteria.core.RoleKey
@@ -26,7 +27,7 @@ class PekkoRuntimeModule(
         val plan = startup.resolve(context)
         val system = ActorSystem.create(context.name, plan.config)
         try {
-            context.application.setNodeRoles(plan.roles)
+            (context.runtime as? AsteriaApplication)?.setNodeRoles(plan.roles)
             startup.afterActorSystemCreated(context, system, plan)
             applyJoin(plan.join, system)
             val pekkoRuntime = PekkoRuntime(system, plan.node, plan.topology)
@@ -62,8 +63,8 @@ class PekkoRuntimeModule(
 
     override suspend fun start(context: ModuleContext) {
         val system = context.services.get<ActorSystem>()
-        startEntities(context, system, context.application.roles)
-        startSingletons(context, system, context.application.roles)
+        startEntities(context, system, context.roles)
+        startSingletons(context, system, context.roles)
     }
 
     override suspend fun stop(context: ModuleContext) {
@@ -114,7 +115,7 @@ class PekkoRuntimeModule(
         val strategy = spec.allocationStrategy() ?: ShardCoordinator.LeastShardAllocationStrategy(1, 10)
         return system.startAsteriaSharding(
             spec = spec,
-            props = propsFactory(context.application, spec),
+            props = propsFactory(context.runtime, spec),
             extractor = extractor,
             strategy = strategy,
         )
@@ -164,7 +165,7 @@ class PekkoRuntimeModule(
         spec: SingletonSpec,
     ): ActorRef {
         val propsFactory = spec.propsFactory() ?: error("singleton ${spec.name} requires actor props to start host")
-        return system.startAsteriaSingleton(spec, propsFactory(context.application, spec))
+        return system.startAsteriaSingleton(spec, propsFactory(context.runtime, spec))
     }
 
     private fun startSingletonProxy(

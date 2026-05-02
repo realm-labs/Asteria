@@ -91,7 +91,7 @@ class GameServerStartupSummaryModule(
                 nodeId = node?.nodeId,
                 host = node?.host,
                 port = node?.port,
-                roles = context.application.roles.mapTo(linkedSetOf(), RoleKey::value),
+                roles = context.roles.mapTo(linkedSetOf(), RoleKey::value),
                 seedNodes = topology?.seedNodes.orEmpty().map { it.nodeId },
                 topologyNodes = topology?.nodes.orEmpty().map { it.nodeId },
                 entities = context.entities.map { it.kind.value }.sorted(),
