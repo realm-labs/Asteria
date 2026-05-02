@@ -266,38 +266,15 @@ private class AsteriaMongoEntitySymbolProcessor(
     private fun validateScanListKey(
         owner: KSClassDeclaration,
         property: MongoEntityPropertyModel,
-        type: KSType,
+        @Suppress("UNUSED_PARAMETER") type: KSType,
     ): Boolean {
         val keyName = property.scanListKey ?: return true
-        if (property.kind != MongoEntityPropertyKind.List) {
-            logger.error(
-                "@AsteriaMongoScanListById can only be used on List properties: " +
-                        "${owner.simpleName.asString()}.${property.name}",
-            )
-            return false
-        }
-        if (property.scanWholeField) {
-            logger.error(
-                "@AsteriaMongoScanListById cannot be combined with @AsteriaMongoScanWholeField: " +
-                        "${owner.simpleName.asString()}.${property.name}",
-            )
-            return false
-        }
-        val elementType = type.arguments.getOrNull(0)?.type?.resolve()
-        val elementDeclaration = elementType?.declaration as? KSClassDeclaration
-        if (elementDeclaration == null) {
-            logger.error("@AsteriaMongoScanListById requires a resolvable list element type", owner)
-            return false
-        }
-        val keyProperty = elementDeclaration.property(keyName)
-        if (keyProperty == null) {
-            logger.error(
-                "@AsteriaMongoScanListById key $keyName was not found on " +
-                        "${elementDeclaration.qualifiedName?.asString() ?: elementDeclaration.simpleName.asString()}",
-            )
-            return false
-        }
-        return validateMongoMapKeyType(keyProperty.type.resolve(), "@AsteriaMongoScanListById key $keyName")
+        logger.error(
+            "@AsteriaMongoScanListById is not supported for scan-based Mongo tracking: " +
+                    "${owner.simpleName.asString()}.${property.name} uses key $keyName. " +
+                    "Use Map<ID, Value> when elements need independent set/unset updates.",
+        )
+        return false
     }
 
     private fun validateMongoType(

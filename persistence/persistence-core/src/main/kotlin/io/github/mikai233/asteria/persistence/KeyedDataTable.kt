@@ -83,6 +83,18 @@ abstract class KeyedDataTable<K : Any, R : Any>(
 
     protected open suspend fun flushRow(row: R): Boolean = true
 
+    /**
+     * Adds an already-created row to this table's loaded cache.
+     *
+     * This is intended for storage implementations that create a new row in memory first and then flush it through the
+     * normal row lifecycle. The row must not already be loaded.
+     */
+    protected fun addLoaded(row: R) {
+        val key = keyOf(row)
+        require(key !in rows) { "row $key is already loaded" }
+        rows[key] = bindRow(key, row)
+    }
+
     protected fun dropLoaded(key: K): R? {
         val loaded = rows.remove(key) ?: return null
         loaded.lease.invalidate()

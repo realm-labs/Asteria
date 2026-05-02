@@ -48,7 +48,14 @@ fun <E : Any> mongoScannedMapField(
 
 /**
  * Tracks one list-like field by a stable element key.
+ *
+ * This helper is intentionally disabled for now. Mongo array update paths are positional, so keyed-list semantics need a
+ * dedicated storage shape instead of encoding element ids as path parts. Use `Map<ID, Value>` for keyed collections.
  */
+@Deprecated(
+    message = "Keyed list scan is not supported. Use Map<ID, Value> for keyed collections.",
+    level = DeprecationLevel.ERROR,
+)
 fun <E : Any, V : Any> mongoScannedListByKeyField(
     fieldName: String,
     value: (E) -> Iterable<V>?,

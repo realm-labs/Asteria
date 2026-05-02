@@ -168,12 +168,14 @@ Use scan-based tracking when business code should keep mutating the raw entity:
 - the generated helper exposes `SCAN_PLAN` and `scannedTable(...)`;
 - scans compare stable Mongo-oriented hashes and enqueue only changed fields;
 - `Map` fields are scanned by key by default;
-- `List` fields are written as a whole field by default, or by stable element key with `@AsteriaMongoScanListById`;
+- `List` fields are written as a whole field by default; use `Map<ID, Value>` for keyed collections that need per-key
+  updates;
 - `Set` fields remain whole-field values because mutable set elements make `hashCode` / `equals` unsafe.
 
 For scan-based tables, a scan snapshot means "this state has already been converted into the pending write queue", not
 "this state has reached Mongo". If a flush fails, the pending write queue requeues the write and retries later.
-Creation is currently `setAll + upsert`; use an explicit existence check when insert-only behavior is required.
+Creation is currently `setAll + upsert`; scanned row tables expose `createLoaded(row)` for new in-memory rows. Use an
+explicit existence check when insert-only behavior is required.
 
 Business data that owns scanned tables can opt into normal `DataManager.tick()` scheduling with `MongoScannedTableData`:
 

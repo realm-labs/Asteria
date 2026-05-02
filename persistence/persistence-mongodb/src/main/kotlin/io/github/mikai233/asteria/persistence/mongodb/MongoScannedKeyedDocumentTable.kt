@@ -169,6 +169,31 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         return MongoFlushProgress(attemptedRows, flushedRows, failedRows)
     }
 
+    /**
+     * Adds a new row to the loaded cache and enqueues all scanned fields as an upsert.
+     *
+     * This does not perform an insert-only existence check. Callers that need strict create semantics should query the
+     * database or the owning business index before creating the row.
+     */
+    fun createLoaded(row: E): E {
+        val key = row.id
+        require(key !in rowsById && key !in loadedKeys()) { "scanned row $collectionName:$key is already loaded" }
+        val runtime = MongoScannedDocumentRuntime(
+            collectionName = collectionName,
+            documentId = key,
+            scanPlan = scanPlan,
+            database = database,
+            journal = journal,
+            metrics = metrics,
+            onDirty = { dirtyRows.markDirty(key) },
+        )
+        runtime.enqueueCreated(row)
+        runtimes[row] = runtime
+        rowsById[key] = row
+        addLoaded(row)
+        return row
+    }
+
     suspend fun deleteLoaded(key: ID): Boolean {
         val row = rowsById[key] ?: return true
         val runtime = runtime(row)

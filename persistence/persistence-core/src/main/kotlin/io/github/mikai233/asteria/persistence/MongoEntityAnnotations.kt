@@ -69,11 +69,11 @@ annotation class AsteriaMongoScanIgnore
 annotation class AsteriaMongoScanWholeField
 
 /**
- * Tracks a list field by a stable property on each element instead of replacing the whole list.
+ * Reserved for a future keyed-list storage model.
  *
- * This is intended for list-as-table data such as quest states. Element keys must be unique at scan time and must be
- * safe Mongo path keys. Insertions, removals, and element updates are emitted as per-key set/unset operations under the
- * list field path.
+ * This annotation is currently rejected by the Mongo KSP processor. Mongo array paths are positional, so writing
+ * `field.<element id>` would not mean "the list element whose id is `<element id>`". Model keyed, independently updated
+ * collections as `Map<ID, Value>` for scan-based dirty tracking.
  */
 @Target(AnnotationTarget.PROPERTY)
 @Retention(AnnotationRetention.BINARY)

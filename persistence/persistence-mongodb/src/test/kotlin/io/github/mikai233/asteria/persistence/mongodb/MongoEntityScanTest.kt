@@ -53,13 +53,9 @@ class MongoEntityScanTest {
     }
 
     @Test
-    fun `generated mongo scan helpers detect list element changes by key`() {
+    fun `generated mongo scan helpers detect list field changes as whole value`() {
         val plan = mongoScanPlan(
-            mongoScannedListByKeyField(
-                fieldName = "quests",
-                value = { entity: QuestEntity -> entity.quests },
-                key = { quest -> quest.questId },
-            ),
+            mongoScannedField<QuestEntity>("quests") { entity -> entity.quests },
         )
         val before = QuestEntity(listOf(QuestState(1, 1), QuestState(2, 1)))
         val after = QuestEntity(listOf(QuestState(1, 2), QuestState(3, 1)))
@@ -68,9 +64,7 @@ class MongoEntityScanTest {
 
         assertEquals(
             listOf(
-                FieldChange.Unset(FieldPath.of("quests").child(2)),
-                FieldChange.Set(FieldPath.of("quests").child(1), QuestState(1, 2)),
-                FieldChange.Set(FieldPath.of("quests").child(3), QuestState(3, 1)),
+                FieldChange.Set(FieldPath.of("quests"), after.quests),
             ),
             changes,
         )

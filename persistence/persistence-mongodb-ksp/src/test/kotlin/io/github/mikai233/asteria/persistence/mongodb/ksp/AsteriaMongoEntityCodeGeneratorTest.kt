@@ -4,6 +4,7 @@ import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertFailsWith
 
 class AsteriaMongoEntityCodeGeneratorTest {
     @Test
@@ -42,7 +43,6 @@ class AsteriaMongoEntityCodeGeneratorTest {
                         MongoEntityPropertyKind.List,
                         MUTABLE_LIST.parameterizedBy(TRACKED_QUEST_STATE),
                         MongoEntityPropertyKind.Object,
-                        scanListKey = "questId",
                     ),
                 ),
                 nestedObjects = listOf(
@@ -125,13 +125,43 @@ class AsteriaMongoEntityCodeGeneratorTest {
         assertContains(code, "trackedPlayerProfileMongoValue(entity.profile)")
         assertContains(
             code,
-            "mongoScannedListByKeyField(fieldName = \"quests\", value = { entity: PlayerEntity -> entity.quests }, key = { value -> value.questId }, persistentValue = { value -> trackedQuestStateMongoValue(value) })"
+            "mongoScannedField(\"quests\") { entity: PlayerEntity -> entity.quests.map { value -> trackedQuestStateMongoValue(value) } }"
         )
         assertContains(code, "fun table(")
         assertContains(code, "MongoKeyedDocumentTable<Long, PlayerEntity, TrackedPlayerEntity>")
         assertContains(code, "fun scannedTable(")
         assertContains(code, "MongoScannedKeyedDocumentTable<Long, PlayerEntity>")
         assertContains(code, "metrics: Metrics = NoopMetrics")
+    }
+
+    @Test
+    fun `rejects keyed list scan codegen models`() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            AsteriaMongoEntityCodeGenerator.buildFile(
+                MongoEntityCodegenModel(
+                    packageName = "com.example.player",
+                    entityType = PLAYER_ENTITY,
+                    wrapperName = "TrackedPlayerEntity",
+                    helperName = "PlayerEntityMongo",
+                    collectionName = "players",
+                    id = MongoEntityPropertyModel("id", "_id", LONG),
+                    properties = listOf(
+                        MongoEntityPropertyModel("id", "_id", LONG),
+                        MongoEntityPropertyModel(
+                            "quests",
+                            "quests",
+                            MUTABLE_LIST.parameterizedBy(QUEST_STATE),
+                            MongoEntityPropertyKind.List,
+                            MUTABLE_LIST.parameterizedBy(TRACKED_QUEST_STATE),
+                            MongoEntityPropertyKind.Object,
+                            scanListKey = "questId",
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        assertContains(error.message.orEmpty(), "@AsteriaMongoScanListById is not supported")
     }
 
     private companion object {

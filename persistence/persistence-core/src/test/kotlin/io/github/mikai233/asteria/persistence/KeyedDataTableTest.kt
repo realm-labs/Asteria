@@ -159,6 +159,18 @@ class KeyedDataTableTest {
     }
 
     @Test
+    fun `subclass can add created row to loaded cache`() = runBlocking {
+        val table = TestTable(rows = emptyList())
+
+        table.createLoaded(TestRow(1, "alice"))
+        table.use(1) { row -> row.rename("bob") }
+
+        assertEquals(setOf(1), table.loadedKeys())
+        assertTrue(table.flush())
+        assertEquals("bob", table.source.getValue(1).name)
+    }
+
+    @Test
     fun `flush writes loaded rows without unloading`() = runBlocking {
         val table = TestTable(rows = listOf(TestRow(1, "alice"), TestRow(2, "bob")))
 
@@ -227,6 +239,10 @@ private class TestTable(
             source[row.id] = row.copy()
         }
         return flushResult
+    }
+
+    fun createLoaded(row: TestRow) {
+        addLoaded(row)
     }
 
     fun queryKeys(predicate: (TestRow) -> Boolean): List<Int> {
