@@ -230,8 +230,9 @@ data class PlayerEntity(
 ```
 
 The generator accepts Mongo-safe scalar values, enums, arrays, `Map` / `List` / `Set`, and project data classes whose
-properties are also Mongo-safe. Direct data-class fields and `Map` / `List` data-class elements receive generated nested
-wrappers, so field mutations are still tracked:
+properties are also Mongo-safe. It fails compilation when a field cannot be proven safe to encode or safe to track.
+Direct data-class fields and `Map` / `List` data-class elements receive generated nested wrappers, so field mutations
+are still tracked:
 
 ```kotlin
 player.profile.nickname = "alice"
@@ -239,10 +240,11 @@ player.bag["1001"]!!.count += 1
 player.quests[0].status = QuestStatus.Done
 ```
 
-`Set<T>` stores data-class elements as whole values when the element type is immutable. The generator does not create
-mutable wrappers for set elements, because mutating an element can invalidate set hashing and equality. Use `List` /
-`Map` for tracked nested values, make set elements immutable, or mark the element type with `@AsteriaMongoValue` when it
-should be stored as one whole Mongo value.
+`Set<T>` is deliberately stricter than `List` and `Map`. Set elements must be stable whole values because JVM sets depend
+on element `equals` / `hashCode`. The generator does not create mutable wrappers for set elements, and it rejects nested
+containers such as `Set<List<T>>`, `Set<Map<K, V>>`, `Set<Set<T>>`, and `Set<Array<T>>`. Use `List` / `Map` for tracked
+nested values, make set elements immutable, or mark the element type with `@AsteriaMongoValue` when it should be stored
+as one whole Mongo value.
 
 Other project-defined or externally coded value objects must be explicitly registered:
 
@@ -255,7 +257,7 @@ For third-party types that cannot be annotated, pass a KSP option:
 
 ```kotlin
 ksp {
-    arg("asteria.mongodb.allowedTypes", "com.example.money.Money,com.example.geo.GeoPoint")
+    arg("asteria.mongodb.valueTypes", "com.example.money.Money,com.example.geo.GeoPoint")
 }
 ```
 

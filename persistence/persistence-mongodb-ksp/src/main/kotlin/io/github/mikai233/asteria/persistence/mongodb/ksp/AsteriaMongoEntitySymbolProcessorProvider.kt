@@ -36,7 +36,7 @@ private class AsteriaMongoEntitySymbolProcessor(
     options: Map<String, String>,
 ) : SymbolProcessor {
     private var generated = false
-    private val allowedTypes: Set<String> = options["asteria.mongodb.allowedTypes"]
+    private val valueTypes: Set<String> = options["asteria.mongodb.valueTypes"]
         ?.split(',')
         ?.map { it.trim() }
         ?.filter { it.isNotEmpty() }
@@ -171,22 +171,10 @@ private class AsteriaMongoEntitySymbolProcessor(
         } else {
             type.arguments.getOrNull(0)?.type?.resolve()
         } ?: return null
+        if (qualifiedName in SET_TYPES) {
+            return null
+        }
         val declaration = valueType.declaration as? KSClassDeclaration ?: return null
-        if (
-            qualifiedName in SET_TYPES &&
-            shouldGenerateNestedWrapper(declaration) &&
-            !isImmutableMongoValueClass(declaration, mutableSetOf())
-        ) {
-            logger.error(
-                "Mongo Set element ${declaration.qualifiedName?.asString()} would be mutable after wrapper generation. " +
-                    "Use List/Map for tracked nested values, make the data class immutable, or annotate the element type " +
-                    "with @AsteriaMongoValue to store it as a whole value.",
-            )
-            return null
-        }
-        if (qualifiedName in SET_TYPES && isImmutableMongoValueClass(declaration, mutableSetOf())) {
-            return null
-        }
         val nestedWrapperType = nestedWrapperType(valueType, generatedPackage, wrapperPrefix, nestedObjects, visiting)
         return nestedWrapperType
     }
@@ -277,10 +265,10 @@ private class AsteriaMongoEntitySymbolProcessor(
     ): Boolean {
         val declaration = type.declaration
         val qualifiedName = declaration.qualifiedName?.asString()
-        if (qualifiedName != null && qualifiedName in allowedTypes) {
+        if (qualifiedName != null && qualifiedName in valueTypes) {
             return true
         }
-        if (qualifiedName in BUILTIN_MONGO_VALUE_TYPES) {
+        if (qualifiedName in BUILTIN_MONGO_VALUE_TYPES || qualifiedName in BUILTIN_MONGO_ARRAY_TYPES) {
             return true
         }
         if (declaration is KSClassDeclaration) {
@@ -308,19 +296,8 @@ private class AsteriaMongoEntitySymbolProcessor(
                 logger.error("$label uses a Mongo collection with unresolved element type")
                 return false
             }
-            val elementDeclaration = elementType.declaration as? KSClassDeclaration
-            if (
-                qualifiedName in SET_TYPES &&
-                elementDeclaration != null &&
-                shouldGenerateNestedWrapper(elementDeclaration) &&
-                !isImmutableMongoValueClass(elementDeclaration, mutableSetOf())
-            ) {
-                logger.error(
-                    "$label uses a Set element type ${elementDeclaration.qualifiedName?.asString()} that would require a mutable tracked wrapper. " +
-                        "Use List/Map for tracked nested values, make the data class immutable, or annotate the element type " +
-                        "with @AsteriaMongoValue to store it as a whole value.",
-                )
-                return false
+            if (qualifiedName in SET_TYPES) {
+                return validateMongoSetElementType(elementType, "$label element", visiting)
             }
             return validateMongoType(elementType, "$label element", visiting)
         }
@@ -342,7 +319,54 @@ private class AsteriaMongoEntitySymbolProcessor(
         logger.error(
             "$label has unsupported Mongo value type ${qualifiedName ?: declaration.simpleName.asString()}. " +
                 "Use a supported scalar/collection/data class, annotate the type with @AsteriaMongoValue, or add it to " +
-                "the KSP option asteria.mongodb.allowedTypes.",
+                "the KSP option asteria.mongodb.valueTypes.",
+        )
+        return false
+    }
+
+    private fun validateMongoSetElementType(
+        type: KSType,
+        label: String,
+        visiting: MutableSet<String>,
+    ): Boolean {
+        val declaration = type.declaration
+        val qualifiedName = declaration.qualifiedName?.asString()
+        if (qualifiedName in MAP_TYPES || qualifiedName in LIST_OR_SET_TYPES || qualifiedName in BUILTIN_MONGO_ARRAY_TYPES) {
+            logger.error(
+                "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not supported in Mongo Set. " +
+                    "Set elements must be stable whole values because Set depends on element hashCode/equals. " +
+                    "Use List or Map when the element contains nested collection data.",
+            )
+            return false
+        }
+        if (qualifiedName in STABLE_MONGO_VALUE_TYPES) {
+            return true
+        }
+        if (qualifiedName != null && qualifiedName in valueTypes) {
+            return true
+        }
+        if (declaration is KSClassDeclaration) {
+            if (declaration.classKind == com.google.devtools.ksp.symbol.ClassKind.ENUM_CLASS) {
+                return true
+            }
+            if (declaration.hasAnnotation(AsteriaMongoValue::class.qualifiedName!!)) {
+                return true
+            }
+            if (Modifier.DATA in declaration.modifiers) {
+                val result = isImmutableMongoValueClass(declaration, visiting)
+                if (!result) {
+                    logger.error(
+                        "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not safe in Mongo Set. " +
+                            "Set data-class elements must be immutable whole values. Use List/Map for tracked nested values " +
+                            "or make the Set element a val-only Mongo value type.",
+                    )
+                }
+                return result
+            }
+        }
+        logger.error(
+            "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not safe in Mongo Set. " +
+                "Use a stable scalar, enum, immutable data class, @AsteriaMongoValue type, or asteria.mongodb.valueTypes.",
         )
         return false
     }
@@ -375,10 +399,13 @@ private class AsteriaMongoEntitySymbolProcessor(
         visiting: MutableSet<String>,
     ): Boolean {
         val qualifiedName = type.declaration.qualifiedName?.asString()
-        if (qualifiedName != null && qualifiedName in allowedTypes) {
+        if (qualifiedName in MAP_TYPES || qualifiedName in LIST_OR_SET_TYPES || qualifiedName in BUILTIN_MONGO_ARRAY_TYPES) {
+            return false
+        }
+        if (qualifiedName != null && qualifiedName in valueTypes) {
             return true
         }
-        if (qualifiedName in BUILTIN_MONGO_VALUE_TYPES) {
+        if (qualifiedName in STABLE_MONGO_VALUE_TYPES) {
             return true
         }
         val declaration = type.declaration as? KSClassDeclaration ?: return false
@@ -396,7 +423,7 @@ private class AsteriaMongoEntitySymbolProcessor(
         label: String,
     ): Boolean {
         val qualifiedName = type.declaration.qualifiedName?.asString()
-        if (qualifiedName in MONGO_MAP_KEY_TYPES || qualifiedName in allowedTypes) {
+        if (qualifiedName in MONGO_MAP_KEY_TYPES) {
             return true
         }
         val declaration = type.declaration
@@ -464,12 +491,6 @@ private class AsteriaMongoEntitySymbolProcessor(
             "kotlin.Long",
             "kotlin.Float",
             "kotlin.Double",
-            "kotlin.ByteArray",
-            "kotlin.IntArray",
-            "kotlin.LongArray",
-            "kotlin.BooleanArray",
-            "kotlin.FloatArray",
-            "kotlin.DoubleArray",
             "java.math.BigDecimal",
             "java.math.BigInteger",
             "java.time.Instant",
@@ -477,6 +498,30 @@ private class AsteriaMongoEntitySymbolProcessor(
             "java.time.LocalDateTime",
             "org.bson.types.ObjectId",
             "org.bson.Document",
+        )
+        val STABLE_MONGO_VALUE_TYPES = setOf(
+            "kotlin.String",
+            "kotlin.Boolean",
+            "kotlin.Byte",
+            "kotlin.Short",
+            "kotlin.Int",
+            "kotlin.Long",
+            "kotlin.Float",
+            "kotlin.Double",
+            "java.math.BigDecimal",
+            "java.math.BigInteger",
+            "java.time.Instant",
+            "java.time.LocalDate",
+            "java.time.LocalDateTime",
+            "org.bson.types.ObjectId",
+        )
+        val BUILTIN_MONGO_ARRAY_TYPES = setOf(
+            "kotlin.ByteArray",
+            "kotlin.IntArray",
+            "kotlin.LongArray",
+            "kotlin.BooleanArray",
+            "kotlin.FloatArray",
+            "kotlin.DoubleArray",
         )
         val MONGO_MAP_KEY_TYPES = setOf(
             "kotlin.String",
