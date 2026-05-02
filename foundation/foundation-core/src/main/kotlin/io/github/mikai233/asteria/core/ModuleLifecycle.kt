@@ -20,6 +20,7 @@ class AsteriaModuleLifecycle(
     private val logger = LoggerFactory.getLogger(AsteriaModuleLifecycle::class.java)
     private val modules: List<AsteriaModule> = modules.toList()
     private val stateListeners: MutableMap<NodeState, MutableList<suspend () -> Unit>> = linkedMapOf()
+    private val startedModuleIndexes: MutableSet<Int> = linkedSetOf()
     private val lifecycleLock = Mutex()
 
     @Volatile
@@ -49,8 +50,12 @@ class AsteriaModuleLifecycle(
             changeState(NodeState.Starting)
             try {
                 val context = moduleContext()
-                modules.forEach { it.install(context) }
-                modules.forEach { it.start(context) }
+                runtime.services.register(AsteriaModuleLifecycle::class, this)
+                modules.forEachIndexed { _, module -> module.install(context) }
+                modules.forEachIndexed { index, module ->
+                    module.start(context)
+                    startedModuleIndexes += index
+                }
                 changeState(NodeState.Started)
                 logger.info(
                     "runtime {} launched in {} ms",
@@ -74,7 +79,7 @@ class AsteriaModuleLifecycle(
             changeState(NodeState.Stopping)
             try {
                 val context = moduleContext()
-                modules.asReversed().forEach { it.stop(context) }
+                stopStartedModules(context, modules.indices.reversed())
                 changeState(NodeState.Stopped)
                 logger.info(
                     "runtime {} stopped in {} ms",
@@ -85,6 +90,31 @@ class AsteriaModuleLifecycle(
                 logger.error("runtime {} failed to stop", runtime.name, error)
                 throw error
             }
+        }
+    }
+
+    /**
+     * Stops modules that were declared after [moduleName], in reverse declaration order.
+     *
+     * This is intended for host runtimes with their own shutdown lifecycle. For example, a Pekko `CoordinatedShutdown`
+     * task can stop all application modules installed after `pekko-runtime` without recursively terminating the
+     * ActorSystem from inside its own shutdown.
+     */
+    suspend fun stopAfter(moduleName: String) {
+        require(moduleName.isNotBlank()) { "moduleName must not be blank" }
+        if (currentState == NodeState.Stopping || currentState == NodeState.Stopped) {
+            return
+        }
+        lifecycleLock.withLock {
+            if (currentState == NodeState.Stopping || currentState == NodeState.Stopped) {
+                return
+            }
+            val anchor = uniqueModuleIndex(moduleName)
+            if (anchor == modules.lastIndex) {
+                return
+            }
+            logger.info("stopping runtime {} modules after {}", runtime.name, moduleName)
+            stopStartedModules(moduleContext(), modules.lastIndex downTo anchor + 1)
         }
     }
 
@@ -100,5 +130,24 @@ class AsteriaModuleLifecycle(
             services = runtime.services,
             topology = topology,
         )
+    }
+
+    private suspend fun stopStartedModules(
+        context: ModuleContext,
+        indexes: IntProgression,
+    ) {
+        indexes.forEach { index ->
+            if (index in startedModuleIndexes) {
+                modules[index].stop(context)
+                startedModuleIndexes -= index
+            }
+        }
+    }
+
+    private fun uniqueModuleIndex(moduleName: String): Int {
+        val indexes = modules.indices.filter { modules[it].name == moduleName }
+        require(indexes.isNotEmpty()) { "module $moduleName not found in runtime ${runtime.name}" }
+        require(indexes.size == 1) { "module $moduleName is not unique in runtime ${runtime.name}" }
+        return indexes.single()
     }
 }

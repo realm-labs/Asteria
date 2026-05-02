@@ -5,16 +5,23 @@ import io.github.mikai233.asteria.cluster.config.RuntimeNodeConfig
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.AsteriaApplication
 import io.github.mikai233.asteria.core.EntitySpec
+import io.github.mikai233.asteria.core.AsteriaModuleLifecycle
 import io.github.mikai233.asteria.core.ModuleContext
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.SingletonSpec
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.runBlocking
+import org.apache.pekko.Done
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.actor.CoordinatedShutdown
 import org.apache.pekko.cluster.Cluster
 import org.apache.pekko.cluster.sharding.ShardCoordinator
 import org.apache.pekko.cluster.sharding.ShardRegion
 import scala.jdk.javaapi.FutureConverters
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
+import java.util.function.Supplier
 
 class PekkoRuntimeModule(
     private val startup: PekkoClusterStartup,
@@ -29,6 +36,7 @@ class PekkoRuntimeModule(
         try {
             (context.runtime as? AsteriaApplication)?.setNodeRoles(plan.roles)
             startup.afterActorSystemCreated(context, system, plan)
+            registerCoordinatedShutdown(context, system)
             applyJoin(plan.join, system)
             val pekkoRuntime = PekkoRuntime(system, plan.node, plan.topology)
             runtime = pekkoRuntime
@@ -41,6 +49,27 @@ class PekkoRuntimeModule(
         } catch (failure: Throwable) {
             FutureConverters.asJava(system.terminate()).await()
             throw failure
+        }
+    }
+
+    private fun registerCoordinatedShutdown(
+        context: ModuleContext,
+        system: ActorSystem,
+    ) {
+        val lifecycle = context.services.find<AsteriaModuleLifecycle>() ?: return
+        CoordinatedShutdown.get(system).addTask(
+            CoordinatedShutdown.PhaseBeforeActorSystemTerminate(),
+            "asteria-stop-modules-after-$name",
+            Supplier { stopApplicationModulesAfterPekkoRuntime(lifecycle) },
+        )
+    }
+
+    private fun stopApplicationModulesAfterPekkoRuntime(lifecycle: AsteriaModuleLifecycle): CompletionStage<Done> {
+        return CompletableFuture.supplyAsync {
+            runBlocking {
+                lifecycle.stopAfter(name)
+            }
+            Done.done()
         }
     }
 

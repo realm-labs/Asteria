@@ -3,11 +3,16 @@ package io.github.mikai233.asteria.cluster.pekko
 import io.github.mikai233.asteria.cluster.config.ClusterTopology
 import io.github.mikai233.asteria.cluster.config.RuntimeNodeConfig
 import io.github.mikai233.asteria.cluster.config.StaticClusterTopologyProvider
+import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.EntityKind
+import io.github.mikai233.asteria.core.ModuleContext
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.SingletonName
 import io.github.mikai233.asteria.core.gameApplication
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
+import org.apache.pekko.actor.ActorSystem
+import scala.jdk.javaapi.FutureConverters
 import java.net.ServerSocket
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -65,6 +70,24 @@ class PekkoRuntimeModuleClusterTest {
         assertEquals(setOf(RoleKey("player")), app.declaredRoles)
         assertEquals(listOf("seed"), runtime.system.settings().config().getStringList("pekko.cluster.roles"))
 
+        app.stop()
+    }
+
+    @Test
+    fun `coordinated shutdown stops modules after pekko runtime`() = runBlocking {
+        val events = mutableListOf<String>()
+        val app = gameApplication {
+            name = "asteria-cluster-shutdown-test-${System.nanoTime()}"
+            role("player")
+            install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
+            install(RecordingAsteriaModule("feature", events))
+        }
+
+        app.launch()
+        val system = app.services.get<ActorSystem>()
+        FutureConverters.asJava(system.terminate()).await()
+
+        assertEquals(listOf("install:feature", "start:feature", "stop:feature"), events)
         app.stop()
     }
 
@@ -150,5 +173,22 @@ class PekkoRuntimeModuleClusterTest {
 
     private fun freeTcpPort(): Int {
         return ServerSocket(0).use { it.localPort }
+    }
+}
+
+private class RecordingAsteriaModule(
+    override val name: String,
+    private val events: MutableList<String>,
+) : AsteriaModule {
+    override suspend fun install(context: ModuleContext) {
+        events += "install:$name"
+    }
+
+    override suspend fun start(context: ModuleContext) {
+        events += "start:$name"
+    }
+
+    override suspend fun stop(context: ModuleContext) {
+        events += "stop:$name"
     }
 }

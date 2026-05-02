@@ -56,6 +56,37 @@ class ModuleLifecycleTest {
             events,
         )
     }
+
+    @Test
+    fun `lifecycle can stop modules after an anchor module once`() = runBlocking {
+        val events = mutableListOf<String>()
+        val app = gameApplication {
+            name = "demo"
+            install(NamedRecordingModule("runtime", events))
+            install(NamedRecordingModule("feature-a", events))
+            install(NamedRecordingModule("feature-b", events))
+        }
+        val lifecycle = app.bind(TestPlayerNode())
+
+        lifecycle.launch()
+        lifecycle.stopAfter("runtime")
+        lifecycle.stop()
+
+        assertEquals(
+            listOf(
+                "install:runtime",
+                "install:feature-a",
+                "install:feature-b",
+                "start:runtime",
+                "start:feature-a",
+                "start:feature-b",
+                "stop:feature-b",
+                "stop:feature-a",
+                "stop:runtime",
+            ),
+            events,
+        )
+    }
 }
 
 private class TestPlayerNode : NodeRuntime {
@@ -80,5 +111,22 @@ private class RecordingModule(
 
     override suspend fun stop(context: ModuleContext) {
         events += "stop:${context.name}:${context.roles.joinToString { it.value }}:${context.entities.size}"
+    }
+}
+
+private class NamedRecordingModule(
+    override val name: String,
+    private val events: MutableList<String>,
+) : AsteriaModule {
+    override suspend fun install(context: ModuleContext) {
+        events += "install:$name"
+    }
+
+    override suspend fun start(context: ModuleContext) {
+        events += "start:$name"
+    }
+
+    override suspend fun stop(context: ModuleContext) {
+        events += "stop:$name"
     }
 }
