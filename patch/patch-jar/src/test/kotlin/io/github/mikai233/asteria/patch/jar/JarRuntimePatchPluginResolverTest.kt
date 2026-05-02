@@ -15,6 +15,7 @@ import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import java.util.jar.Manifest
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 class JarRuntimePatchPluginResolverTest {
@@ -67,6 +68,24 @@ class JarRuntimePatchPluginResolverTest {
         kotlin.test.assertEquals(2, store.loadCount)
     }
 
+    @Test
+    fun loadPolicyCanRejectPluginClass() = runBlocking {
+        val jar = jarWithPluginClass(TestPatchPlugin::class.java)
+        val artifact = PatchArtifact(
+            name = "test-patch.jar",
+            checksum = "sha256:${jar.sha256Hex()}",
+        )
+        val store = InMemoryPatchArtifactStore().also { it.put(artifact, jar) }
+        val resolver = JarRuntimePatchPluginResolver(
+            artifacts = store,
+            loadPolicy = RuntimePatchPluginLoadPolicy.packagePrefixes("not.allowed."),
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            resolver.resolve(patch(artifact))
+        }
+    }
+
     class TestPatchPlugin : RuntimePatchPlugin {
         override suspend fun install(context: PatchInstallContext) {
         }
@@ -88,6 +107,16 @@ class JarRuntimePatchPluginResolverTest {
             jar.closeEntry()
         }
         return output.toByteArray()
+    }
+
+    private fun patch(artifact: PatchArtifact): RuntimePatch {
+        return RuntimePatch(
+            id = PatchId("test"),
+            name = "test",
+            artifact = artifact,
+            compatibility = PatchCompatibility("game", setOf("1.0.0")),
+            sequence = 1,
+        )
     }
 
     private fun ByteArray.sha256Hex(): String {

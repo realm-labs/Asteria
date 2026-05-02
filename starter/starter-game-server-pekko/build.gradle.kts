@@ -15,4 +15,7 @@ dependencies {
     api(project(":gateway:gateway-netty"))
     api(project(":config:config-core"))
     api(project(":config:config-center"))
+    api(project(":patch:patch-core"))
+    api(project(":patch:patch-jar"))
+    api(project(":patch:patch-pekko"))
 }

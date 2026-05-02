@@ -47,6 +47,9 @@ class PekkoPatchControlModule(
     private var localActor: ActorRef? = null
 
     override suspend fun install(context: ModuleContext) {
+    }
+
+    override suspend fun start(context: ModuleContext) {
         val system = context.services.get<ActorSystem>()
         val nodeProvider = PekkoPatchNodeProvider(system, timeout)
         val nodeClient = PekkoPatchNodeClient(system, timeout)
@@ -65,11 +68,8 @@ class PekkoPatchControlModule(
                 PatchClusterApplicationService(repository, nodeProvider, nodeClient, results),
             )
         }
-    }
 
-    override suspend fun start(context: ModuleContext) {
         val service = context.services.find<PatchApplicationService>() ?: return
-        val system = context.services.get<ActorSystem>()
         val node = context.services.find<RuntimeNodeConfig>()
         localActor = system.actorOf(
             PekkoPatchControlActor.props(service, node),

@@ -19,6 +19,7 @@ class JarRuntimePatchPluginResolver(
     private val artifacts: PatchArtifactStore,
     private val parentClassLoader: ClassLoader = JarRuntimePatchPluginResolver::class.java.classLoader,
     private val cacheDirectory: Path? = null,
+    private val loadPolicy: RuntimePatchPluginLoadPolicy = RuntimePatchPluginLoadPolicy.AllowAll,
 ) : RuntimePatchPluginResolver {
     private val cache: MutableMap<PatchId, LoadedPatchPlugin> = ConcurrentHashMap()
 
@@ -49,18 +50,44 @@ class JarRuntimePatchPluginResolver(
         }
         val loader = URLClassLoader(arrayOf(jar.toUri().toURL()), parentClassLoader)
         return if (className != null) {
-            LoadedPatchPlugin(loader.loadClass(className), loader)
+            LoadedPatchPlugin(patch.allowed(loader.loadClass(className)), loader)
         } else {
             val pluginClass = ServiceLoader.load(RuntimePatchPlugin::class.java, loader)
                 .firstOrNull()
                 ?.javaClass
                 ?: error("patch jar ${patch.artifact.name} must declare $PATCH_CLASS_NAME or service provider")
-            LoadedPatchPlugin(pluginClass, loader)
+            LoadedPatchPlugin(patch.allowed(pluginClass), loader)
         }
+    }
+
+    private fun RuntimePatch.allowed(type: Class<*>): Class<*> {
+        require(loadPolicy.allow(this, type)) {
+            "patch ${id.value} plugin class ${type.name} is rejected by load policy"
+        }
+        return type
     }
 
     companion object {
         const val PATCH_CLASS_NAME: String = "Patch-Class"
+    }
+}
+
+fun interface RuntimePatchPluginLoadPolicy {
+    fun allow(
+        patch: RuntimePatch,
+        pluginClass: Class<*>,
+    ): Boolean
+
+    companion object {
+        val AllowAll: RuntimePatchPluginLoadPolicy = RuntimePatchPluginLoadPolicy { _, _ -> true }
+
+        fun packagePrefixes(vararg prefixes: String): RuntimePatchPluginLoadPolicy {
+            require(prefixes.isNotEmpty()) { "patch plugin package prefixes must not be empty" }
+            prefixes.forEach { require(it.isNotBlank()) { "patch plugin package prefix must not be blank" } }
+            return RuntimePatchPluginLoadPolicy { _, pluginClass ->
+                prefixes.any { prefix -> pluginClass.name.startsWith(prefix) }
+            }
+        }
     }
 }
 
