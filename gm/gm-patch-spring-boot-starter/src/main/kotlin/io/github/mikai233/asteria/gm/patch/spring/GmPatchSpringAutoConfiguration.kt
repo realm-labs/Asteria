@@ -4,13 +4,18 @@ import io.github.mikai233.asteria.gm.patch.DefaultGmPatchOperations
 import io.github.mikai233.asteria.gm.patch.GmPatchOperations
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import io.github.mikai233.asteria.gm.spring.GmSpringAutoConfiguration
+import io.github.mikai233.asteria.patch.LocalFilePatchArtifactStore
 import io.github.mikai233.asteria.patch.PatchApplicationService
 import io.github.mikai233.asteria.patch.RuntimePatchRepository
+import io.github.mikai233.asteria.patch.WritablePatchArtifactStore
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
+import java.nio.file.Path
 
 @AutoConfiguration(after = [GmSpringAutoConfiguration::class])
 @ConditionalOnProperty(
@@ -26,8 +31,21 @@ class GmPatchSpringAutoConfiguration {
     fun gmPatchOperations(
         repository: RuntimePatchRepository,
         applications: PatchApplicationService,
+        artifacts: ObjectProvider<WritablePatchArtifactStore>,
     ): GmPatchOperations {
-        return DefaultGmPatchOperations(repository, applications)
+        return DefaultGmPatchOperations(repository, applications, artifacts.getIfAvailable())
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(WritablePatchArtifactStore::class)
+    @ConditionalOnProperty(
+        prefix = "asteria.gm.patch.artifacts.local",
+        name = ["directory"],
+    )
+    fun gmPatchArtifactStore(
+        @Value($$"${asteria.gm.patch.artifacts.local.directory}") directory: String,
+    ): WritablePatchArtifactStore {
+        return LocalFilePatchArtifactStore(Path.of(directory))
     }
 
     @Bean

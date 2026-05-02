@@ -10,6 +10,7 @@ import io.github.mikai233.asteria.gm.core.GmRoute
 
 object GmPatchPermissions {
     val Read: GmPermissionKey = GmPermissionKey("gm.patch.read")
+    val Create: GmPermissionKey = GmPermissionKey("gm.patch.create")
     val Apply: GmPermissionKey = GmPermissionKey("gm.patch.apply")
     val Disable: GmPermissionKey = GmPermissionKey("gm.patch.disable")
 }
@@ -21,6 +22,7 @@ class GmPatchFeature : GmFeature {
         description = "Manage runtime patches applied to game server nodes.",
         permissions = listOf(
             GmPermission(GmPatchPermissions.Read, "Read runtime patches"),
+            GmPermission(GmPatchPermissions.Create, "Create runtime patches", highRisk = true),
             GmPermission(GmPatchPermissions.Apply, "Apply runtime patches", highRisk = true),
             GmPermission(GmPatchPermissions.Disable, "Disable runtime patches", highRisk = true),
         ),

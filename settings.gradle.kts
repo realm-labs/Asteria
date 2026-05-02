@@ -19,6 +19,7 @@ include(
     "observability:observability-core",
     "observability:observability-opentelemetry",
     "patch:patch-core",
+    "patch:patch-jar",
     "patch:patch-mongodb",
     "rpc:rpc-core",
     "rpc:rpc-protobuf",

@@ -8,13 +8,19 @@ import io.github.mikai233.asteria.patch.PatchId
 import io.github.mikai233.asteria.patch.PatchStatus
 import io.github.mikai233.asteria.patch.RuntimePatch
 import jakarta.servlet.http.HttpServletRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.multipart.MultipartFile
 
 @RestController
 @RequestMapping($$"${asteria.gm.api-prefix:/gm/api}/patches")
@@ -22,6 +28,57 @@ class GmPatchController(
     private val patches: GmPatchOperations,
     private val endpoints: GmEndpointSupport,
 ) {
+    @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    @ResponseStatus(HttpStatus.CREATED)
+    suspend fun create(
+        request: HttpServletRequest,
+        @RequestParam file: MultipartFile,
+        @RequestParam id: String,
+        @RequestParam name: String,
+        @RequestParam appName: String,
+        @RequestParam versions: List<String>,
+        @RequestParam artifactName: String? = null,
+        @RequestParam artifactVersion: String? = null,
+        @RequestParam targetType: String = "all-nodes",
+        @RequestParam roles: List<String> = emptyList(),
+        @RequestParam addresses: List<String> = emptyList(),
+        @RequestParam priority: Int = 0,
+        @RequestParam status: PatchStatus = PatchStatus.Draft,
+    ): RuntimePatch {
+        return endpoints.execute(
+            request = request,
+            permission = GmPatchPermissions.Create,
+            action = "gm.patch.create",
+            attributes = mapOf(
+                "patchId" to id,
+                "name" to name,
+                "appName" to appName,
+                "targetType" to targetType,
+                "status" to status.name,
+            ),
+        ) {
+            val bytes = withContext(Dispatchers.IO) {
+                file.bytes
+            }
+            patches.create(
+                GmPatchCreateHttpRequest(
+                    id = id,
+                    name = name,
+                    artifactName = artifactName ?: file.originalFilename ?: "$id.jar",
+                    artifactVersion = artifactVersion,
+                    appName = appName,
+                    versions = versions,
+                    targetType = targetType,
+                    roles = roles,
+                    addresses = addresses,
+                    priority = priority,
+                    status = status,
+                ).toRequest(),
+                bytes,
+            )
+        }
+    }
+
     @GetMapping
     suspend fun list(
         request: HttpServletRequest,

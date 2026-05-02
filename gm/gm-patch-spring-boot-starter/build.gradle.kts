@@ -5,4 +5,5 @@ plugins {
 dependencies {
     api(project(":gm:gm-patch"))
     api(project(":gm:gm-spring-boot-starter"))
+    implementation(libs.kotlinx.coroutines.core)
 }
