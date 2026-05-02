@@ -15,6 +15,7 @@ abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
 
     @get:Optional
     @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val metadataFile: RegularFileProperty
 
     @get:OutputDirectory
