@@ -33,18 +33,31 @@ class GatewayPipelineTransportHandler<P : Any>(
     private val sessionFactory: (GatewayConnection) -> GatewaySession,
     private val sessions: GatewaySessionRegistry,
     private val inbound: GatewayInboundPipeline<P>,
+    private val lifecycle: GatewaySessionLifecycle = NoopGatewaySessionLifecycle,
 ) : GatewayTransportHandler {
     override suspend fun connected(connection: GatewayConnection): GatewaySession {
         val session = sessionFactory(connection)
         sessions.register(session)
+        lifecycle.connected(GatewaySessionContext(session))
         return session
     }
 
     override suspend fun received(session: GatewaySession, frame: GatewayFrame) {
+        session.markRead()
         inbound.receive(GatewaySessionContext(session), frame)
     }
 
     override suspend fun disconnected(session: GatewaySession, cause: Throwable?) {
-        sessions.unregister(session.id)
+        val removed = sessions.unregister(session.id) ?: return
+        val reason = if (cause == null) {
+            GatewayCloseReason.TransportInactive
+        } else {
+            GatewayCloseReason.error(cause)
+        }
+        val context = GatewaySessionContext(removed)
+        lifecycle.beforeClose(context, reason)
+        removed.markClosed(reason)
+        lifecycle.disconnected(context, reason)
+        lifecycle.afterClose(context, reason)
     }
 }

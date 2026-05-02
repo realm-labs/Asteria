@@ -3,6 +3,8 @@ package io.github.mikai233.asteria.gateway
 import io.github.mikai233.asteria.message.RouteTarget
 import kotlinx.coroutines.runBlocking
 import java.net.SocketAddress
+import java.time.Duration
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -85,9 +87,11 @@ class GatewayCoreTest {
         val registry = LocalGatewaySessionRegistry()
         val connection = RecordingConnection()
         var forwarded: String? = null
+        val lifecycle = RecordingLifecycle()
         val handler = GatewayPipelineTransportHandler(
             sessionFactory = { GatewaySession(GatewaySessionId("s1"), it) },
             sessions = registry,
+            lifecycle = lifecycle,
             inbound = GatewayInboundPipeline(
                 packets = GatewayPacketPipeline(StringPacketCodec),
                 dispatcher = GatewayMessageDispatcher(
@@ -103,6 +107,17 @@ class GatewayCoreTest {
 
         assertEquals("hello", forwarded)
         assertEquals(null, registry.get(GatewaySessionId("s1")))
+        assertEquals(
+            listOf(
+                "connected:s1",
+                "beforeClose:s1:transport_inactive",
+                "disconnected:s1:transport_inactive",
+                "afterClose:s1:transport_inactive",
+            ),
+            lifecycle.events,
+        )
+        assertEquals(GatewaySessionState.CLOSED, session.state)
+        assertEquals(GatewayCloseReason.TransportInactive, session.closeReason)
     }
 
     @Test
@@ -136,6 +151,77 @@ class GatewayCoreTest {
 
         assertEquals(false, sent)
     }
+
+    @Test
+    fun `session write and close track state`() {
+        val connection = RecordingConnection()
+        val session = GatewaySession(GatewaySessionId("s1"), connection)
+        val firstWriteAt = session.lastWriteAt
+
+        session.write(GatewayFrame("hello".encodeToByteArray()))
+        val closed = session.close(GatewayCloseReason("test"))
+        val closedAgain = session.close(GatewayCloseReason("second"))
+
+        assertEquals(listOf(GatewayFrame("hello".encodeToByteArray())), connection.frames)
+        assertEquals(true, !session.lastWriteAt.isBefore(firstWriteAt))
+        assertEquals(true, closed)
+        assertEquals(false, closedAgain)
+        assertEquals(true, connection.closed)
+        assertEquals(GatewaySessionState.CLOSED, session.state)
+        assertEquals("test", session.closeReason?.code)
+        assertFailsWith<IllegalStateException> {
+            session.write(GatewayFrame("late".encodeToByteArray()))
+        }
+    }
+
+    @Test
+    fun `session controller closes and unregisters session with lifecycle`() = runBlocking {
+        val registry = LocalGatewaySessionRegistry()
+        val lifecycle = RecordingLifecycle()
+        val session = GatewaySession(GatewaySessionId("s1"), RecordingConnection())
+        registry.register(session)
+        val controller = GatewaySessionController(registry, lifecycle)
+
+        val closed = controller.close(GatewaySessionId("s1"), GatewayCloseReason.IdleTimeout)
+
+        assertEquals(true, closed)
+        assertEquals(null, registry.get(GatewaySessionId("s1")))
+        assertEquals(GatewaySessionState.CLOSED, session.state)
+        assertEquals(GatewayCloseReason.IdleTimeout, session.closeReason)
+        assertEquals(
+            listOf(
+                "beforeClose:s1:idle_timeout",
+                "disconnected:s1:idle_timeout",
+                "afterClose:s1:idle_timeout",
+            ),
+            lifecycle.events,
+        )
+    }
+
+    @Test
+    fun `idle detector reports idle sessions without applying policy`() {
+        val registry = LocalGatewaySessionRegistry()
+        val now = Instant.parse("2026-05-02T00:00:00Z")
+        val session = GatewaySession(GatewaySessionId("s1"), RecordingConnection(), createdAt = now.minusSeconds(60))
+        registry.register(session)
+        session.markRead(now.minusSeconds(20))
+
+        val detector = GatewayIdleDetector(
+            registry,
+            GatewayIdlePolicy(
+                readIdle = Duration.ofSeconds(10),
+                writeIdle = Duration.ofSeconds(30),
+                allIdle = Duration.ofSeconds(10),
+            ),
+        )
+
+        val detected = detector.detect(now)
+
+        assertEquals(
+            listOf(GatewayIdleKind.READ, GatewayIdleKind.WRITE, GatewayIdleKind.ALL),
+            detected.map { it.kind },
+        )
+    }
 }
 
 private object StringPacketCodec : GatewayPacketCodec<String> {
@@ -166,5 +252,25 @@ private class RecordingConnection : GatewayConnection {
 
     override fun close() {
         closed = true
+    }
+}
+
+private class RecordingLifecycle : GatewaySessionLifecycle {
+    val events: MutableList<String> = mutableListOf()
+
+    override suspend fun connected(context: GatewaySessionContext) {
+        events += "connected:${context.session.id.value}"
+    }
+
+    override suspend fun beforeClose(context: GatewaySessionContext, reason: GatewayCloseReason) {
+        events += "beforeClose:${context.session.id.value}:${reason.code}"
+    }
+
+    override suspend fun disconnected(context: GatewaySessionContext, reason: GatewayCloseReason) {
+        events += "disconnected:${context.session.id.value}:${reason.code}"
+    }
+
+    override suspend fun afterClose(context: GatewaySessionContext, reason: GatewayCloseReason) {
+        events += "afterClose:${context.session.id.value}:${reason.code}"
     }
 }
