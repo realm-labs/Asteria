@@ -8,8 +8,8 @@ import org.slf4j.LoggerFactory
 /**
  * Server-side transport adapter.
  *
- * TCP, KCP and WebSocket implementations should differ mostly here: how they bind, accept connections, and turn native
- * transport messages into complete [GatewayFrame] values.
+ * TCP, KCP and WebSocket implementations own their native pipeline shape. The core only models lifecycle and complete
+ * binary frame delivery for adapters that choose to use it.
  */
 interface GatewayServerTransport : AutoCloseable {
     val kind: GatewayTransportKind
@@ -31,17 +31,24 @@ interface GatewayTransportHandler {
     suspend fun disconnected(session: GatewaySession, cause: Throwable? = null)
 }
 
+fun interface GatewayFrameReceiver {
+    suspend fun receive(context: GatewaySessionContext, frame: GatewayFrame)
+}
+
 /**
- * Default transport handler that registers sessions and forwards frames into an inbound pipeline.
+ * Default transport handler that only owns session registration and lifecycle.
+ *
+ * Packet decoding and protocol routing are intentionally supplied by [receiver], because those details are usually owned
+ * by the concrete networking adapter or by game-specific protocol code.
  */
-class GatewayPipelineTransportHandler<P : Any>(
+class GatewaySessionTransportHandler(
     private val sessionFactory: (GatewayConnection) -> GatewaySession,
     private val sessions: GatewaySessionRegistry,
-    private val inbound: GatewayInboundPipeline<P>,
+    private val receiver: GatewayFrameReceiver,
     private val lifecycle: GatewaySessionLifecycle = NoopGatewaySessionLifecycle,
     private val metrics: Metrics = NoopMetrics,
 ) : GatewayTransportHandler {
-    private val logger = LoggerFactory.getLogger(GatewayPipelineTransportHandler::class.java)
+    private val logger = LoggerFactory.getLogger(GatewaySessionTransportHandler::class.java)
 
     override suspend fun connected(connection: GatewayConnection): GatewaySession {
         val tags = connection.metricTags()
@@ -65,7 +72,7 @@ class GatewayPipelineTransportHandler<P : Any>(
         metrics.counter("asteria.gateway.frame.received.total", tags).increment()
         session.markRead()
         try {
-            inbound.receive(GatewaySessionContext(session), frame)
+            receiver.receive(GatewaySessionContext(session), frame)
         } catch (error: Throwable) {
             metrics.counter("asteria.gateway.frame.failed.total", tags).increment()
             logger.error(

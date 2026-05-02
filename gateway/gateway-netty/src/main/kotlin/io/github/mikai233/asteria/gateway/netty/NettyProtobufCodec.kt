@@ -1,7 +1,6 @@
 package io.github.mikai233.asteria.gateway.netty
 
 import com.google.protobuf.GeneratedMessage
-import io.github.mikai233.asteria.gateway.BinaryGatewayPacket
 import io.github.mikai233.asteria.protocol.protobuf.ClientProtoEnvelope
 import io.github.mikai233.asteria.protocol.protobuf.ProtoFrame
 import io.github.mikai233.asteria.protocol.protobuf.ProtobufProtocolRegistry

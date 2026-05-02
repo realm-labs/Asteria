@@ -9,7 +9,6 @@ import io.github.mikai233.asteria.observability.MetricTags
 import io.github.mikai233.asteria.observability.Metrics
 import io.github.mikai233.asteria.observability.NoopMetrics
 import io.netty.buffer.ByteBuf
-import io.netty.channel.Channel
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +25,7 @@ class NettyGatewayFrameHandler(
         GatewayConnectionId(UUID.randomUUID().toString())
     },
     private val metrics: Metrics = NoopMetrics,
-    private val writer: (Channel, GatewayFrame) -> Unit,
+    private val writer: NettyGatewayFrameWriter,
 ) : SimpleChannelInboundHandler<ByteBuf>() {
     private var session: Deferred<GatewaySession>? = null
 

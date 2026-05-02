@@ -1,8 +1,5 @@
 package io.github.mikai233.asteria.gateway.netty
 
-import io.github.mikai233.asteria.gateway.BinaryGatewayPacket
-import io.github.mikai233.asteria.gateway.GatewayFrame
-import io.github.mikai233.asteria.gateway.IndexedBinaryGatewayPacketCodec
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
@@ -18,13 +15,13 @@ class PacketCodec : MessageToMessageCodec<ByteBuf, BinaryGatewayPacket>() {
     private val packets = IndexedBinaryGatewayPacketCodec()
 
     override fun encode(ctx: ChannelHandlerContext, msg: BinaryGatewayPacket, out: MutableList<Any>) {
-        out.add(Unpooled.wrappedBuffer(packets.encode(msg).bytes))
+        out.add(Unpooled.wrappedBuffer(packets.encode(msg)))
     }
 
     override fun decode(ctx: ChannelHandlerContext, msg: ByteBuf, out: MutableList<Any>) {
         val bytes = ByteArray(msg.readableBytes())
         msg.readBytes(bytes)
-        val packet = runCatching { packets.decode(GatewayFrame(bytes)) }.getOrElse {
+        val packet = runCatching { packets.decode(bytes) }.getOrElse {
             ctx.close()
             return
         }

@@ -1,6 +1,6 @@
 package io.github.mikai233.asteria.gateway.netty
 
-import io.github.mikai233.asteria.gateway.GatewayFrame
+import io.github.mikai233.asteria.gateway.GatewayConnectionId
 import io.github.mikai233.asteria.gateway.GatewayServerTransport
 import io.github.mikai233.asteria.gateway.GatewayTransportHandler
 import io.github.mikai233.asteria.gateway.GatewayTransportKind
@@ -8,7 +8,6 @@ import io.github.mikai233.asteria.observability.MetricTags
 import io.github.mikai233.asteria.observability.Metrics
 import io.github.mikai233.asteria.observability.NoopMetrics
 import io.netty.bootstrap.ServerBootstrap
-import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.ChannelOption
@@ -24,15 +23,10 @@ import io.netty.channel.kqueue.KQueueServerSocketChannel
 import io.netty.channel.nio.NioIoHandler
 import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioServerSocketChannel
-import io.netty.handler.codec.LengthFieldBasedFrameDecoder
-import io.netty.handler.codec.LengthFieldPrepender
-import io.netty.handler.codec.http.HttpObjectAggregator
-import io.netty.handler.codec.http.HttpServerCodec
-import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame
-import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.slf4j.LoggerFactory
+import java.util.UUID
 
 data class NettyGatewayServerOptions(
     val host: String = "0.0.0.0",
@@ -90,6 +84,10 @@ abstract class NettyGatewayServerTransport(
     protected val options: NettyGatewayServerOptions,
     protected val scope: CoroutineScope = CoroutineScope(Dispatchers.Default),
     protected val metrics: Metrics = NoopMetrics,
+    private val pipelineInstaller: NettyGatewayPipelineInstaller,
+    private val connectionIdFactory: () -> GatewayConnectionId = {
+        GatewayConnectionId(UUID.randomUUID().toString())
+    },
 ) : GatewayServerTransport {
     private val logger = LoggerFactory.getLogger(NettyGatewayServerTransport::class.java)
     private var bossGroup: EventLoopGroup? = null
@@ -168,7 +166,23 @@ abstract class NettyGatewayServerTransport(
         bossGroup?.shutdownGracefully()
     }
 
-    protected abstract fun initializer(handler: GatewayTransportHandler): ChannelInitializer<SocketChannel>
+    private fun initializer(handler: GatewayTransportHandler): ChannelInitializer<SocketChannel> {
+        return object : ChannelInitializer<SocketChannel>() {
+            override fun initChannel(ch: SocketChannel) {
+                pipelineInstaller.install(
+                    ch,
+                    NettyGatewayPipelineContext(
+                        transport = kind,
+                        options = options,
+                        scope = scope,
+                        handler = handler,
+                        metrics = metrics,
+                        connectionIdFactory = connectionIdFactory,
+                    ),
+                )
+            }
+        }
+    }
 
     protected fun metricTags(backend: NettyEventLoopBackend? = null): MetricTags {
         return MetricTags.of(
@@ -271,58 +285,32 @@ class NettyTcpGatewayServerTransport(
     options: NettyGatewayServerOptions,
     scope: CoroutineScope = CoroutineScope(Dispatchers.Default),
     metrics: Metrics = NoopMetrics,
-) : NettyGatewayServerTransport(GatewayTransportKind.TCP, options, scope, metrics) {
-    override fun initializer(handler: GatewayTransportHandler): ChannelInitializer<SocketChannel> {
-        return object : ChannelInitializer<SocketChannel>() {
-            override fun initChannel(ch: SocketChannel) {
-                ch.pipeline()
-                    .addLast(LengthFieldBasedFrameDecoder(options.maxFrameLength, 0, Int.SIZE_BYTES, 0, Int.SIZE_BYTES))
-                    .addLast(LengthFieldPrepender(Int.SIZE_BYTES))
-                    .addLast(
-                        NettyGatewayFrameHandler(
-                            transport = GatewayTransportKind.TCP,
-                            scope = scope,
-                            handler = handler,
-                            metrics = metrics,
-                            writer = ::writeByteBuf,
-                        ),
-                    )
-            }
-        }
-    }
-}
+    pipelineInstaller: NettyGatewayPipelineInstaller = NettyGatewayPipelineInstallers.lengthFieldTcp(),
+    connectionIdFactory: () -> GatewayConnectionId = {
+        GatewayConnectionId(UUID.randomUUID().toString())
+    },
+) : NettyGatewayServerTransport(
+    GatewayTransportKind.TCP,
+    options,
+    scope,
+    metrics,
+    pipelineInstaller,
+    connectionIdFactory,
+)
 
 class NettyWebSocketGatewayServerTransport(
     options: NettyGatewayServerOptions,
     scope: CoroutineScope = CoroutineScope(Dispatchers.Default),
     metrics: Metrics = NoopMetrics,
-) : NettyGatewayServerTransport(GatewayTransportKind.WEBSOCKET, options, scope, metrics) {
-    override fun initializer(handler: GatewayTransportHandler): ChannelInitializer<SocketChannel> {
-        return object : ChannelInitializer<SocketChannel>() {
-            override fun initChannel(ch: SocketChannel) {
-                ch.pipeline()
-                    .addLast(HttpServerCodec())
-                    .addLast(HttpObjectAggregator(options.maxFrameLength))
-                    .addLast(WebSocketServerProtocolHandler(options.websocketPath, null, true, options.maxFrameLength))
-                    .addLast(BinaryWebSocketFrameDecoder())
-                    .addLast(
-                        NettyGatewayFrameHandler(
-                            transport = GatewayTransportKind.WEBSOCKET,
-                            scope = scope,
-                            handler = handler,
-                            metrics = metrics,
-                            writer = ::writeWebSocketFrame,
-                        ),
-                    )
-            }
-        }
-    }
-}
-
-private fun writeByteBuf(channel: Channel, frame: GatewayFrame) {
-    channel.writeAndFlush(Unpooled.wrappedBuffer(frame.bytes))
-}
-
-private fun writeWebSocketFrame(channel: Channel, frame: GatewayFrame) {
-    channel.writeAndFlush(BinaryWebSocketFrame(Unpooled.wrappedBuffer(frame.bytes)))
-}
+    pipelineInstaller: NettyGatewayPipelineInstaller = NettyGatewayPipelineInstallers.webSocket(),
+    connectionIdFactory: () -> GatewayConnectionId = {
+        GatewayConnectionId(UUID.randomUUID().toString())
+    },
+) : NettyGatewayServerTransport(
+    GatewayTransportKind.WEBSOCKET,
+    options,
+    scope,
+    metrics,
+    pipelineInstaller,
+    connectionIdFactory,
+)

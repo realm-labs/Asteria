@@ -19,7 +19,7 @@ enum class GatewayTransportKind {
  * Transport-level connection exposed to gateway code.
  *
  * TCP, KCP and WebSocket implementations should adapt their native channel/session objects to this interface. Business
- * protocol details are intentionally not represented here; those live in [GatewayPacketCodec].
+ * protocol details are intentionally not represented here.
  */
 interface GatewayConnection {
     val id: GatewayConnectionId
@@ -34,8 +34,8 @@ interface GatewayConnection {
 /**
  * One complete binary frame ready to write to a transport.
  *
- * For TCP this usually means bytes after packet encoding but before length-field framing. For WebSocket this maps to one
- * binary message. For KCP this maps to one KCP payload.
+ * This is only a lowest-common-denominator escape hatch for adapters that choose a binary-frame boundary. Richer network
+ * stacks can keep their protocol objects in their own module and use [GatewaySession] only for shared session state.
  */
 data class GatewayFrame(
     val bytes: ByteArray,

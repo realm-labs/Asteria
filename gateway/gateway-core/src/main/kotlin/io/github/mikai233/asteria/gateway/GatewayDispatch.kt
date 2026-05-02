@@ -51,19 +51,6 @@ class GatewayMessageDispatcher<P : Any>(
     }
 }
 
-/**
- * Convenience adapter for a complete inbound frame -> packet -> route -> forward pipeline.
- */
-class GatewayInboundPipeline<P : Any>(
-    private val packets: GatewayPacketPipeline<P>,
-    private val dispatcher: GatewayMessageDispatcher<P>,
-) {
-    suspend fun receive(context: GatewaySessionContext, frame: GatewayFrame): GatewayRoute {
-        val packet = packets.decode(context, frame)
-        return dispatcher.dispatch(context, packet)
-    }
-}
-
 private fun GatewaySessionContext.metricTags(): MetricTags {
     return MetricTags.of("transport" to session.transport.name)
 }
