@@ -153,6 +153,49 @@ Standalone modules:
 - `:persistence:persistence-mongodb`: MongoDB tracked document, row cache, dirty patch, flush, and WAL support.
 - `:persistence:persistence-mongodb-ksp`: KSP processor that generates Mongo tracked wrappers from storage DTOs.
 
+## Persistence Dirty Tracking
+
+Mongo persistence supports two dirty tracking styles.
+
+Use generated wrappers when business code can mutate the generated tracked object:
+
+- writes are captured immediately as Mongo `$set` / `$unset` operations;
+- map/list wrapper operations keep precise paths;
+- this has the lowest scan cost, but business code must not bypass the wrapper and mutate the raw DTO.
+
+Use scan-based tracking when business code should keep mutating the raw entity:
+
+- the generated helper exposes `SCAN_PLAN` and `scannedTable(...)`;
+- scans compare stable Mongo-oriented hashes and enqueue only changed fields;
+- `Map` fields are scanned by key by default;
+- `List` fields are written as a whole field by default, or by stable element key with `@AsteriaMongoScanListById`;
+- `Set` fields remain whole-field values because mutable set elements make `hashCode` / `equals` unsafe.
+
+For scan-based tables, a scan snapshot means "this state has already been converted into the pending write queue", not
+"this state has reached Mongo". If a flush fails, the pending write queue requeues the write and retries later.
+Creation is currently `setAll + upsert`; use an explicit existence check when insert-only behavior is required.
+
+Business data that owns scanned tables can opt into normal `DataManager.tick()` scheduling with `MongoScannedTableData`:
+
+```kotlin
+class PlayerSummaryData(
+    database: MongoDatabase,
+) : MongoScannedTableData {
+    private val summaries = PlayerSummaryMongo.scannedTable(
+        database = database,
+        cachePolicy = RowCachePolicy(30.minutes),
+    )
+
+    override val scanFlushPolicy = MongoScanFlushPolicy(
+        scanBudget = MongoFlushBudget(maxRows = 256, maxDuration = 2.milliseconds),
+        flushBudget = MongoFlushBudget(maxRows = 64, maxDuration = 2.milliseconds),
+    )
+    override val scannedTables: Iterable<MongoScannedTable> = listOf(summaries)
+
+    override suspend fun load() = Unit
+}
+```
+
 ## Minimal Shape
 
 ```kotlin

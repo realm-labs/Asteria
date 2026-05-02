@@ -36,7 +36,7 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
     private val journal: MongoWriteJournal = NoopMongoWriteJournal,
     private val metrics: Metrics = NoopMetrics,
     clock: Clock = Clock.systemUTC(),
-) : KeyedDataTable<ID, E>(cachePolicy, clock) {
+) : KeyedDataTable<ID, E>(cachePolicy, clock), MongoScannedTable {
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
     private val database: MongoDatabase = database
     private val runtimes: MutableMap<E, MongoScannedDocumentRuntime<ID, E>> = IdentityHashMap()
@@ -130,7 +130,7 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         return MongoScanProgress(scannedRows, dirty, changedFields)
     }
 
-    suspend fun tick(policy: MongoScanFlushPolicy): MongoScanFlushProgress {
+    override suspend fun tick(policy: MongoScanFlushPolicy): MongoScanFlushProgress {
         return if (policy.scanBeforeFlush) {
             MongoScanFlushProgress(scanSome(policy.scanBudget), flushSome(policy.flushBudget))
         } else {
@@ -139,7 +139,7 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         }
     }
 
-    suspend fun flushAllScanned(): Boolean {
+    override suspend fun flushAllScanned(): Boolean {
         scanLoaded()
         return flush()
     }
