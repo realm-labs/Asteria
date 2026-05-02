@@ -14,9 +14,9 @@ import kotlin.test.assertNull
 
 class ConfigServiceTest {
     @Test
-    fun `reload loads typed tables and notifies listeners`() = runBlocking {
+    fun `reload loads typed tables builds components and notifies listeners`() = runBlocking {
         val loader = TestConfigLoader()
-        val service = ConfigService(loader)
+        val service = ConfigService(loader, componentBuilders = listOf(generatedTablesBuilder()))
         var notified: ConfigReloadResult? = null
         service.subscribe { result -> notified = result }
 
@@ -30,6 +30,34 @@ class ConfigServiceTest {
         assertEquals("project-configs", result.current.requireComponent<GeneratedTables>().name)
         assertEquals(result, notified)
         assertEquals(listOf("items"), result.diff.addedTables.map { it.name.value })
+    }
+
+    @Test
+    fun `reload rejects component build failure before publishing`() = runBlocking {
+        var version = 0
+        val service = ConfigService(
+            loader = ConfigLoader {
+                version += 1
+                snapshot("v$version")
+            },
+            componentBuilders = listOf(
+                configComponentBuilder<GeneratedTables>("generated-tables") { snapshot ->
+                    if (snapshot.revision.version == "v2") {
+                        error("component build failed")
+                    }
+                    GeneratedTables(snapshot.revision.version)
+                },
+            ),
+        )
+        service.load()
+
+        val error = assertFailsWith<IllegalStateException> {
+            service.reload()
+        }
+
+        assertEquals("component build failed", error.message)
+        assertEquals("v1", service.current().revision.version)
+        assertEquals("v1", service.current().requireComponent<GeneratedTables>().name)
     }
 
     @Test
@@ -180,6 +208,7 @@ class ConfigServiceTest {
             install(
                 ConfigModule {
                     loader(TestConfigLoader())
+                    component(generatedTablesBuilder())
                 },
             )
         }
@@ -190,6 +219,7 @@ class ConfigServiceTest {
         val monitor = app.services.get<ConfigReloadMonitor>()
         val items = service.current().requireTable<Int, ItemConfig>(ConfigTableName("items"))
         assertNotNull(items[1])
+        assertEquals("project-configs", service.current().requireComponent<GeneratedTables>().name)
         assertEquals("v1", monitor.status(service.current()).lastSuccess?.currentRevision?.version)
 
         app.stop()
@@ -219,8 +249,16 @@ class ConfigServiceTest {
                     ).associateBy { it.id },
                 ),
             ),
-            components = listOf(GeneratedTables("project-configs")),
         )
+    }
+
+    private fun generatedTablesBuilder(): ConfigComponentBuilder<GeneratedTables> {
+        return configComponentBuilder(
+            name = "generated-tables",
+            dependencies = setOf(ConfigTableName("items")),
+        ) {
+            GeneratedTables("project-configs")
+        }
     }
 
     private data class GeneratedTables(

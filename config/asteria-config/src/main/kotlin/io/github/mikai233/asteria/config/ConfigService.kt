@@ -49,6 +49,7 @@ data class ConfigReloadResult(
 class ConfigService(
     private val loader: ConfigLoader,
     private val validators: List<ConfigValidator> = emptyList(),
+    private val componentBuilders: List<ConfigComponentBuilder<*>> = emptyList(),
 ) {
     private val listeners: CopyOnWriteArrayList<ConfigReloadListener> = CopyOnWriteArrayList()
     private val reloadLock: Mutex = Mutex()
@@ -86,7 +87,8 @@ class ConfigService(
      */
     suspend fun reload(): ConfigReloadResult {
         return reloadLock.withLock {
-            val loaded = loader.load()
+            val raw = loader.load()
+            val loaded = buildComponents(raw)
             validate(loaded)
 
             val result = ConfigReloadResult(
@@ -101,6 +103,16 @@ class ConfigService(
 
             result
         }
+    }
+
+    private suspend fun buildComponents(snapshot: ConfigSnapshot): ConfigSnapshot {
+        if (componentBuilders.isEmpty()) {
+            return snapshot
+        }
+        val components = componentBuilders.map { builder ->
+            BuiltConfigComponent(builder.type, builder.build(snapshot))
+        }
+        return RuntimeComponentConfigSnapshot(snapshot, components)
     }
 
     /**
@@ -119,4 +131,60 @@ class ConfigService(
         val errors = validators.flatMap { it.validate(snapshot).errors }
         ConfigValidationResult(errors).throwIfFailed()
     }
+}
+
+private data class BuiltConfigComponent(
+    val type: kotlin.reflect.KClass<*>,
+    val value: Any,
+)
+
+private class RuntimeComponentConfigSnapshot(
+    private val base: ConfigSnapshot,
+    components: List<BuiltConfigComponent>,
+) : ConfigSnapshot {
+    private val componentsByType: Map<kotlin.reflect.KClass<*>, Any> = components.associateUniqueBy(
+        keyOf = { it.type },
+        errorOf = { "duplicate config component ${it.type.qualifiedName}" },
+    ).mapValues { it.value.value }
+
+    init {
+        for (type in componentsByType.keys) {
+            require(base.component(type) == null) {
+                "duplicate config component ${type.qualifiedName}"
+            }
+        }
+    }
+
+    override val revision: ConfigRevision
+        get() = base.revision
+
+    override fun table(name: ConfigTableName): ConfigTable<*, *>? {
+        return base.table(name)
+    }
+
+    override fun tables(): Collection<ConfigTable<*, *>> {
+        return base.tables()
+    }
+
+    override fun <T : Any> component(type: kotlin.reflect.KClass<T>): T? {
+        @Suppress("UNCHECKED_CAST")
+        return componentsByType[type] as T? ?: base.component(type)
+    }
+
+    override fun components(): Collection<Any> {
+        return base.components() + componentsByType.values
+    }
+}
+
+private fun <K : Any, V : Any> Iterable<V>.associateUniqueBy(
+    keyOf: (V) -> K,
+    errorOf: (V) -> String,
+): Map<K, V> {
+    val result = linkedMapOf<K, V>()
+    for (value in this) {
+        val key = keyOf(value)
+        require(!result.containsKey(key)) { errorOf(value) }
+        result[key] = value
+    }
+    return result
 }

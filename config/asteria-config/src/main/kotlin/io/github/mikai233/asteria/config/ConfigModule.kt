@@ -9,7 +9,7 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Application module that registers [ConfigService].
  *
- * Configure it with a [ConfigLoader] and optional validators. By default the first snapshot is
+ * Configure it with a [ConfigLoader], optional runtime components, and validators. By default the first snapshot is
  * loaded during application start.
  */
 class ConfigModule private constructor(
@@ -23,6 +23,7 @@ class ConfigModule private constructor(
         val service = ConfigService(
             loader = loader,
             validators = options.validators,
+            componentBuilders = options.componentBuilders,
         )
         service.subscribe(monitor)
         options.reloadListeners.forEach { listener ->
@@ -61,6 +62,7 @@ class ConfigModule private constructor(
 data class ConfigModuleOptions(
     val loader: ConfigLoader?,
     val validators: List<ConfigValidator>,
+    val componentBuilders: List<ConfigComponentBuilder<*>>,
     val reloadListeners: List<ConfigReloadListener>,
     val loadOnStart: Boolean,
     val hotReload: ConfigHotReloadOptions?,
@@ -85,6 +87,7 @@ class ConfigModuleBuilder {
     private var loader: ConfigLoader? = null
     private var hotReload: ConfigHotReloadOptions? = null
     private val validators: MutableList<ConfigValidator> = mutableListOf()
+    private val componentBuilders: MutableList<ConfigComponentBuilder<*>> = mutableListOf()
     private val reloadListeners: MutableList<ConfigReloadListener> = mutableListOf()
 
     /**
@@ -106,6 +109,26 @@ class ConfigModuleBuilder {
      */
     fun validator(validate: suspend ConfigValidationScope.(ConfigSnapshot) -> Unit) {
         validators += configValidator(validate)
+    }
+
+    /**
+     * Adds a runtime component builder.
+     *
+     * Builders run after raw tables are loaded and before a snapshot is validated and published.
+     */
+    fun component(builder: ConfigComponentBuilder<*>) {
+        componentBuilders += builder
+    }
+
+    /**
+     * Adds an inline runtime component builder.
+     */
+    inline fun <reified T : Any> component(
+        name: String,
+        dependencies: Set<ConfigTableName> = emptySet(),
+        noinline build: suspend (ConfigSnapshot) -> T,
+    ) {
+        component(configComponentBuilder(name, dependencies, build))
     }
 
     /**
@@ -133,6 +156,7 @@ class ConfigModuleBuilder {
         return ConfigModuleOptions(
             loader = loader,
             validators = validators.toList(),
+            componentBuilders = componentBuilders.toList(),
             reloadListeners = reloadListeners.toList(),
             loadOnStart = loadOnStart,
             hotReload = hotReload,

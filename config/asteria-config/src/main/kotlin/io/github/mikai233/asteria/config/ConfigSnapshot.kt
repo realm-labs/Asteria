@@ -21,8 +21,10 @@ data class ConfigRevision(
 /**
  * Immutable view of all loaded config data.
  *
- * A snapshot may contain named [ConfigTable] instances and arbitrary typed components. Components
- * are useful when a loader exposes generated aggregate APIs, such as Luban's `cfg.Tables`.
+ * A snapshot may contain named [ConfigTable] instances and arbitrary typed components.
+ *
+ * Tables are the raw config data. Components are process-local read models built from those tables before the snapshot
+ * is published, such as indexes, grouped lookups, timelines, or precomputed weight tables.
  */
 interface ConfigSnapshot {
     /**
@@ -41,12 +43,12 @@ interface ConfigSnapshot {
     fun tables(): Collection<ConfigTable<*, *>>
 
     /**
-     * Returns a typed component by exact [type].
+     * Returns a typed runtime component by exact [type].
      */
     fun <T : Any> component(type: KClass<T>): T?
 
     /**
-     * Returns all registered components.
+     * Returns all registered runtime components.
      */
     fun components(): Collection<Any>
 }
