@@ -1,12 +1,7 @@
 package io.github.mikai233.asteria.config.luban
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.github.mikai233.asteria.config.ConfigService
-import io.github.mikai233.asteria.config.ConfigSnapshot
-import io.github.mikai233.asteria.config.ConfigRevision
-import io.github.mikai233.asteria.config.ConfigValidationScope
-import io.github.mikai233.asteria.config.ConfigValidator
-import io.github.mikai233.asteria.config.configValidator
+import io.github.mikai233.asteria.config.*
 import io.github.mikai233.asteria.core.AsteriaDsl
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
@@ -32,6 +27,7 @@ class LubanConfigModule private constructor(
                 includeTableComponents = options.includeTableComponents,
                 revisionFactory = { report -> options.revisionFactory(report) },
             )
+
             LubanConfigFormat.Binary -> LubanBinaryConfigLoader(
                 tablesType = tablesType,
                 dataSource = dataSource,

@@ -1,13 +1,6 @@
 package io.github.mikai233.asteria.config.center.zookeeper
 
-import io.github.mikai233.asteria.config.center.ConfigEntry
-import io.github.mikai233.asteria.config.center.ConfigEvent
-import io.github.mikai233.asteria.config.center.ConfigPath
-import io.github.mikai233.asteria.config.center.ConfigRevision
-import io.github.mikai233.asteria.config.center.ConfigRevisionMismatchException
-import io.github.mikai233.asteria.config.center.ConfigStore
-import io.github.mikai233.asteria.config.center.ConfigWatch
-import io.github.mikai233.asteria.config.center.ConfigWatchMode
+import io.github.mikai233.asteria.config.center.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.future.await
@@ -134,11 +127,13 @@ class ZookeeperConfigStore(
             CuratorCacheListener.Type.NODE_CREATED,
             CuratorCacheListener.Type.NODE_CHANGED,
                 -> data?.toEntry()?.let { ConfigEvent.Upserted(it.path, it) }
+
             CuratorCacheListener.Type.NODE_DELETED -> {
                 val previous = oldData?.toEntry() ?: data?.toEntry()
                 val deletedPath = previous?.path ?: data?.path?.let(::ConfigPath) ?: oldData?.path?.let(::ConfigPath)
                 deletedPath?.let { ConfigEvent.Deleted(it, previous) }
             }
+
             null -> null
         }
     }

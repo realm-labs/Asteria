@@ -5,26 +5,11 @@ import io.github.mikai233.asteria.cluster.config.ClusterConfigNodeStatus
 import io.github.mikai233.asteria.cluster.config.ClusterConfigReloadResult
 import io.github.mikai233.asteria.cluster.config.ClusterConfigRevisionConsistency
 import io.github.mikai233.asteria.config.ConfigTableName
-import io.github.mikai233.asteria.gm.config.GmConfigInspector
-import io.github.mikai233.asteria.gm.config.GmConfigMetadata
-import io.github.mikai233.asteria.gm.config.GmConfigPermissions
-import io.github.mikai233.asteria.gm.config.GmConfigReloadRecord
-import io.github.mikai233.asteria.gm.config.GmConfigReloadStatus
-import io.github.mikai233.asteria.gm.config.GmConfigRow
-import io.github.mikai233.asteria.gm.config.GmConfigRowPage
-import io.github.mikai233.asteria.gm.config.GmConfigRowQuery
-import io.github.mikai233.asteria.gm.config.GmConfigTableDescriptor
-import io.github.mikai233.asteria.gm.config.GmConfigTableSummary
+import io.github.mikai233.asteria.gm.config.*
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 
 /**
  * HTTP API for browsing the config snapshot currently used by the running server.

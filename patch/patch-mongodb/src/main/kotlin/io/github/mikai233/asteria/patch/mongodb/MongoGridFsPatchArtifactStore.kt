@@ -12,12 +12,12 @@ import io.github.mikai233.asteria.patch.PatchArtifact
 import io.github.mikai233.asteria.patch.WritablePatchArtifactStore
 import io.github.mikai233.asteria.patch.patchArtifactSha256Checksum
 import io.github.mikai233.asteria.patch.verifyPatchArtifactChecksum
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bson.Document
 import org.slf4j.LoggerFactory
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 
 class MongoGridFsPatchArtifactStore(
     database: MongoDatabase,

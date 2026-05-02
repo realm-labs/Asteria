@@ -1,7 +1,7 @@
 package io.github.mikai233.asteria.config
 
 import java.time.Instant
-import java.util.ArrayDeque
+import java.util.*
 import java.util.concurrent.atomic.AtomicLong
 
 /**

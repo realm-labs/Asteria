@@ -1,13 +1,8 @@
 package io.github.mikai233.asteria.patch.mongodb
 
+import com.mongodb.client.model.*
 import com.mongodb.client.model.Filters.and
 import com.mongodb.client.model.Filters.eq
-import com.mongodb.client.model.FindOneAndUpdateOptions
-import com.mongodb.client.model.IndexOptions
-import com.mongodb.client.model.Indexes
-import com.mongodb.client.model.ReplaceOptions
-import com.mongodb.client.model.ReturnDocument
-import com.mongodb.client.model.Sorts
 import com.mongodb.client.model.Updates.inc
 import com.mongodb.client.model.Updates.set
 import com.mongodb.kotlin.client.coroutine.MongoCollection
@@ -16,14 +11,7 @@ import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.observability.MetricTags
 import io.github.mikai233.asteria.observability.Metrics
 import io.github.mikai233.asteria.observability.NoopMetrics
-import io.github.mikai233.asteria.patch.PatchArtifact
-import io.github.mikai233.asteria.patch.PatchCompatibility
-import io.github.mikai233.asteria.patch.PatchId
-import io.github.mikai233.asteria.patch.PatchStatus
-import io.github.mikai233.asteria.patch.PatchTarget
-import io.github.mikai233.asteria.patch.RuntimePatch
-import io.github.mikai233.asteria.patch.RuntimePatchQuery
-import io.github.mikai233.asteria.patch.RuntimePatchRepository
+import io.github.mikai233.asteria.patch.*
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.toList
 import org.bson.Document
@@ -43,7 +31,12 @@ class MongoRuntimePatchRepository(
     suspend fun ensureIndexes() {
         measured("ensure_indexes") {
             patches.createIndex(Indexes.ascending("status"))
-            patches.createIndex(Indexes.compoundIndex(Indexes.ascending("compatibility.appName"), Indexes.ascending("status")))
+            patches.createIndex(
+                Indexes.compoundIndex(
+                    Indexes.ascending("compatibility.appName"),
+                    Indexes.ascending("status")
+                )
+            )
             patches.createIndex(
                 Indexes.compoundIndex(
                     Indexes.ascending("priority"),

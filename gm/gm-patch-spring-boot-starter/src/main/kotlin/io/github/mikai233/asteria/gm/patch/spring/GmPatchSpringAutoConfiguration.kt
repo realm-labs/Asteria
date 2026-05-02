@@ -4,12 +4,7 @@ import io.github.mikai233.asteria.gm.patch.DefaultGmPatchOperations
 import io.github.mikai233.asteria.gm.patch.GmPatchOperations
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import io.github.mikai233.asteria.gm.spring.GmSpringAutoConfiguration
-import io.github.mikai233.asteria.patch.LocalFilePatchArtifactStore
-import io.github.mikai233.asteria.patch.PatchClusterApplicationService
-import io.github.mikai233.asteria.patch.PatchApplicationService
-import io.github.mikai233.asteria.patch.PatchNodeProvider
-import io.github.mikai233.asteria.patch.RuntimePatchRepository
-import io.github.mikai233.asteria.patch.WritablePatchArtifactStore
+import io.github.mikai233.asteria.patch.*
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.AutoConfiguration

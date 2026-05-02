@@ -1,11 +1,7 @@
 package io.github.mikai233.asteria.script.pekko
 
 import io.github.mikai233.asteria.core.EntityKind
-import io.github.mikai233.asteria.script.ScriptArtifact
-import io.github.mikai233.asteria.script.ScriptExecutionCommand
-import io.github.mikai233.asteria.script.ScriptExecutionMetadata
-import io.github.mikai233.asteria.script.ScriptExecutionResult
-import io.github.mikai233.asteria.script.ScriptTarget
+import io.github.mikai233.asteria.script.*
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
 import org.apache.pekko.actor.ActorSystem
@@ -36,9 +32,11 @@ class PekkoScriptSerializerTest {
                 error = "denied",
             )
             val nodeCommand = ExecuteNodeScript(command, originNodeAddress = "pekko://game@127.0.0.1:25520")
-            val actorCommand = ExecuteActorScript("script-2", artifact(), ScriptTarget.ActorPath(listOf("/user/player")), metadata())
+            val actorCommand =
+                ExecuteActorScript("script-2", artifact(), ScriptTarget.ActorPath(listOf("/user/player")), metadata())
             val entityCommand = ExecuteEntityActorScript("10001", "script-3", artifact(), command.target, metadata())
-            val multiEntityCommand = command.copy(target = ScriptTarget.Entity(EntityKind("player"), listOf("10001", "10002")))
+            val multiEntityCommand =
+                command.copy(target = ScriptTarget.Entity(EntityKind("player"), listOf("10001", "10002")))
 
             assertRoundTrip(serializer, command)
             assertRoundTrip(serializer, multiEntityCommand)

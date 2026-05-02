@@ -1,15 +1,10 @@
 package io.github.mikai233.asteria.patch
 
-import io.github.mikai233.asteria.observability.MetricTags
-import io.github.mikai233.asteria.observability.Metrics
-import io.github.mikai233.asteria.observability.NoopMetrics
-import io.github.mikai233.asteria.observability.NoopTracer
-import io.github.mikai233.asteria.observability.TraceAttributes
-import io.github.mikai233.asteria.observability.Tracer
-import java.io.Serializable
+import io.github.mikai233.asteria.observability.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
+import java.io.Serializable
 
 /**
  * Runtime patch unit loaded and applied by a node.
@@ -100,8 +95,16 @@ class PatchRuntime(
             metrics.timer("asteria.patch.apply.duration", patch.metricTags()).record {
                 lock.withLock {
                     val result = when {
-                        patch.id in applied -> PatchApplyResult.Ignored(patch.id, "patch ${patch.id} is already applied")
-                        patch.status != PatchStatus.Enabled -> PatchApplyResult.Ignored(patch.id, "patch ${patch.id} is ${patch.status}")
+                        patch.id in applied -> PatchApplyResult.Ignored(
+                            patch.id,
+                            "patch ${patch.id} is already applied"
+                        )
+
+                        patch.status != PatchStatus.Enabled -> PatchApplyResult.Ignored(
+                            patch.id,
+                            "patch ${patch.id} is ${patch.status}"
+                        )
+
                         !patch.compatibility.matches(environment) -> PatchApplyResult.Ignored(
                             patch.id,
                             "patch ${patch.id} is not compatible with ${environment.appName}:${environment.version}",

@@ -82,6 +82,7 @@ class ReflectionConfigRowProjector(
             is Map<*, *> -> value.entries.associate { (key, entryValue) ->
                 key.toString() to projectObject(entryValue, depth + 1)
             }
+
             else -> value.projectBean(depth)
         }
     }
@@ -105,11 +106,11 @@ class ReflectionConfigRowProjector(
 
     private fun Any.isScalar(): Boolean {
         return this is String ||
-            this is Number ||
-            this is Boolean ||
-            this is Char ||
-            this is BigInteger ||
-            this is BigDecimal
+                this is Number ||
+                this is Boolean ||
+                this is Char ||
+                this is BigInteger ||
+                this is BigDecimal
     }
 }
 

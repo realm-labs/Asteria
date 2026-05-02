@@ -77,7 +77,8 @@ data class ClusterConfigReloadResult(
     val requestedAt: Instant,
     val results: List<ClusterConfigNodeReloadResult>,
 ) : Serializable {
-    val succeeded: Boolean = results.isNotEmpty() && results.all { it.status == ClusterConfigNodeReloadStatus.Succeeded }
+    val succeeded: Boolean =
+        results.isNotEmpty() && results.all { it.status == ClusterConfigNodeReloadStatus.Succeeded }
 }
 
 data class ClusterConfigNodeReloadResult(
@@ -116,8 +117,8 @@ data class ClusterConfigRevisionConsistency(
         .sortedBy { it.revision?.version.orEmpty() }
 
     val consistent: Boolean = statuses.isNotEmpty() &&
-        statuses.all { it.reachable } &&
-        revisionGroups.size <= 1
+            statuses.all { it.reachable } &&
+            revisionGroups.size <= 1
 }
 
 data class ClusterConfigRevisionGroup(

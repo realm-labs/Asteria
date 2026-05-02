@@ -2,7 +2,7 @@ package io.github.mikai233.asteria.gm.script.spring
 
 import io.github.mikai233.asteria.script.ScriptTarget
 import io.github.mikai233.asteria.script.job.ScriptJobExecutionAttributes
-import java.util.Base64
+import java.util.*
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals

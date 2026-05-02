@@ -2,17 +2,12 @@ package io.github.mikai233.asteria.rpc.protobuf.generator
 
 import com.google.protobuf.DescriptorProtos
 import com.google.protobuf.ExtensionRegistry
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.*
 import io.github.mikai233.asteria.rpc.RpcProtocolProvider
 import io.github.mikai233.asteria.rpc.protobuf.AsteriaRpcOptionsProto
 import io.github.mikai233.asteria.rpc.protobuf.GeneratedProtobufRpcProtocol
-import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcProtocolContributor
 import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcProtocolBuilder
+import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcProtocolContributor
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.Path
@@ -46,7 +41,8 @@ object ProtobufRpcEntityIdGenerator {
 
     private fun entityIdsInFile(file: DescriptorProtos.FileDescriptorProto): List<MessageEntityId> {
         val javaPackage = file.options.javaPackage.takeIf { it.isNotBlank() } ?: file.`package`
-        val outerClassName = file.options.javaOuterClassname.takeIf { it.isNotBlank() } ?: defaultOuterClassName(file.name)
+        val outerClassName =
+            file.options.javaOuterClassname.takeIf { it.isNotBlank() } ?: defaultOuterClassName(file.name)
         val multipleFiles = file.options.javaMultipleFiles
         return file.messageTypeList.flatMap { message ->
             entityIdsInMessage(

@@ -1,11 +1,6 @@
 package io.github.mikai233.asteria.patch
 
-import io.github.mikai233.asteria.observability.MetricTags
-import io.github.mikai233.asteria.observability.Metrics
-import io.github.mikai233.asteria.observability.NoopMetrics
-import io.github.mikai233.asteria.observability.NoopTracer
-import io.github.mikai233.asteria.observability.TraceAttributes
-import io.github.mikai233.asteria.observability.Tracer
+import io.github.mikai233.asteria.observability.*
 import org.slf4j.LoggerFactory
 
 interface RuntimePatchPluginResolver {
@@ -66,7 +61,8 @@ class PatchApplicationService(
                     version = runtime.environment.version,
                 ),
             ).filter { it.canApplyTo(runtime.environment) }
-            metrics.counter("asteria.patch.enabled.loaded.total", environment.metricTags()).increment(patches.size.toLong())
+            metrics.counter("asteria.patch.enabled.loaded.total", environment.metricTags())
+                .increment(patches.size.toLong())
             applyPatches(patches)
         }
     }

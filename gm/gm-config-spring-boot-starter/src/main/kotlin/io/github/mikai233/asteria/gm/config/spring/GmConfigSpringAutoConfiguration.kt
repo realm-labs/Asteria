@@ -1,8 +1,8 @@
 package io.github.mikai233.asteria.gm.config.spring
 
 import io.github.mikai233.asteria.cluster.config.ClusterConfigControlService
-import io.github.mikai233.asteria.config.ConfigService
 import io.github.mikai233.asteria.config.ConfigReloadMonitor
+import io.github.mikai233.asteria.config.ConfigService
 import io.github.mikai233.asteria.gm.config.ConfigRowProjector
 import io.github.mikai233.asteria.gm.config.GmConfigInspector
 import io.github.mikai233.asteria.gm.config.ReflectionConfigRowProjector

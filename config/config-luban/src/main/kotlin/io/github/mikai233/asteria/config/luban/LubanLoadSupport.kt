@@ -1,5 +1,8 @@
 package io.github.mikai233.asteria.config.luban
 
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
@@ -8,13 +11,6 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withContext
 import kotlin.io.path.name
 import kotlin.reflect.KClass
 
@@ -129,10 +125,10 @@ internal fun extractTableComponents(tables: Any): List<Any> {
         .asSequence()
         .filter { method ->
             Modifier.isPublic(method.modifiers) &&
-                method.parameterCount == 0 &&
-                method.name.startsWith("getTb") &&
-                method.returnType != Void.TYPE &&
-                method.declaringClass != Any::class.java
+                    method.parameterCount == 0 &&
+                    method.name.startsWith("getTb") &&
+                    method.returnType != Void.TYPE &&
+                    method.declaringClass != Any::class.java
         }
         .mapNotNull { method -> method.invoke(tables) }
         .toList()
@@ -172,6 +168,6 @@ internal fun normalizeLubanFileName(file: String): String {
 
 private fun Method.isLoadMethod(): Boolean {
     return name == "load" &&
-        parameterCount == 1 &&
-        parameterTypes.single() == String::class.java
+            parameterCount == 1 &&
+            parameterTypes.single() == String::class.java
 }

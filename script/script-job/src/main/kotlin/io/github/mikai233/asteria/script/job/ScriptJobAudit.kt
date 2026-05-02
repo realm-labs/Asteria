@@ -3,7 +3,7 @@ package io.github.mikai233.asteria.script.job
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionResult
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 
 enum class ScriptJobAuditEventType {
     JobSubmitted,

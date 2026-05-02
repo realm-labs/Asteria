@@ -4,27 +4,14 @@ import io.github.mikai233.asteria.actor.actorLogger
 import io.github.mikai233.asteria.cluster.pekko.EntityShardRegistry
 import io.github.mikai233.asteria.cluster.pekko.SingletonActorRegistry
 import io.github.mikai233.asteria.core.NodeRuntime
-import io.github.mikai233.asteria.script.NodeScriptContext
-import io.github.mikai233.asteria.script.ScriptExecutionCommand
-import io.github.mikai233.asteria.script.ScriptExecutionRequest
-import io.github.mikai233.asteria.script.ScriptExecutionResult
-import io.github.mikai233.asteria.script.ScriptExecutionScope
-import io.github.mikai233.asteria.script.ScriptRunner
-import io.github.mikai233.asteria.script.ScriptTarget
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.launch
+import io.github.mikai233.asteria.script.*
+import kotlinx.coroutines.*
 import org.apache.pekko.actor.AbstractActor
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.Props
 import org.apache.pekko.cluster.Cluster
 import org.apache.pekko.cluster.pubsub.DistributedPubSub
-import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator
-import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.Publish
-import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.Subscribe
-import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.SubscribeAck
+import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.*
 
 class ScriptRuntimeActor(
     private val runtime: NodeRuntime,
@@ -79,7 +66,8 @@ class ScriptRuntimeActor(
             is ScriptTarget.ActorPath -> {
                 target.paths.forEach { path ->
                     val singleTarget = ScriptTarget.ActorPath(listOf(path))
-                    context.actorSelection(path).tell(actorCommand(command.copy(target = singleTarget), singleTarget), replyTo)
+                    context.actorSelection(path)
+                        .tell(actorCommand(command.copy(target = singleTarget), singleTarget), replyTo)
                 }
             }
 
@@ -131,7 +119,7 @@ class ScriptRuntimeActor(
             is ScriptTarget.ActorPath,
             is ScriptTarget.Entity,
             is ScriptTarget.Singleton,
-            -> handleCommand(command)
+                -> handleCommand(command)
         }
     }
 
@@ -155,8 +143,8 @@ class ScriptRuntimeActor(
                 context = NodeScriptContext(runtime, request),
                 defaultResult = { success(command, target = selfAddress()) },
                 failureResult = {
-                logger.error(it, "script {} failed on node {}", command.executionId, selfAddress())
-                failure(command, it, target = selfAddress())
+                    logger.error(it, "script {} failed on node {}", command.executionId, selfAddress())
+                    failure(command, it, target = selfAddress())
                 },
             )
             replyTo.tell(result, self)

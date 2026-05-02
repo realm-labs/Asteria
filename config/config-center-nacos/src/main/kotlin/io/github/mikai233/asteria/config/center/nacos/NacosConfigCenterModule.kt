@@ -10,7 +10,7 @@ import io.github.mikai233.asteria.config.center.RuntimeConfigRepository
 import io.github.mikai233.asteria.core.AsteriaDsl
 import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
-import java.util.Properties
+import java.util.*
 
 class NacosConfigCenterModule private constructor(
     private val options: NacosConfigCenterModuleOptions,

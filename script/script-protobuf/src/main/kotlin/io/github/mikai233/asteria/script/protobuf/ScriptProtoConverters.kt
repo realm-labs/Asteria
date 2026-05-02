@@ -4,12 +4,12 @@ import com.google.protobuf.ByteString
 import io.github.mikai233.asteria.core.EntityKind
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.SingletonName
+import io.github.mikai233.asteria.script.ScriptArtifact as ModelScriptArtifact
 import io.github.mikai233.asteria.script.ScriptExecutionCommand as ModelScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionMetadata as ModelScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult as ModelScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptResourceRef as ModelScriptResourceRef
 import io.github.mikai233.asteria.script.ScriptTarget as ModelScriptTarget
-import io.github.mikai233.asteria.script.ScriptArtifact as ModelScriptArtifact
 
 fun ModelScriptArtifact.toProto(): ScriptArtifact {
     val builder = ScriptArtifact.newBuilder()
@@ -54,7 +54,7 @@ fun ScriptTarget.toModel(): ModelScriptTarget {
         ScriptTarget.TargetCase.SINGLETON -> ModelScriptTarget.Singleton(SingletonName(singleton.name))
         ScriptTarget.TargetCase.TARGET_NOT_SET,
         null,
-        -> error("script target is not set")
+            -> error("script target is not set")
     }
 }
 

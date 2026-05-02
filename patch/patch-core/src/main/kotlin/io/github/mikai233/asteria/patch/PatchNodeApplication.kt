@@ -1,13 +1,13 @@
 package io.github.mikai233.asteria.patch
 
 import io.github.mikai233.asteria.core.RoleKey
-import java.io.Serializable
-import java.time.Instant
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.Serializable
+import java.time.Instant
 
 data class PatchNode(
     val nodeId: String?,
@@ -130,7 +130,8 @@ class InMemoryRuntimePatchNodeResultRepository : RuntimePatchNodeResultRepositor
                 .filter { query.patchId == null || it.patchId == query.patchId }
                 .filter { query.address == null || it.address == query.address }
                 .filter { query.status == null || it.status == query.status }
-                .sortedWith(compareBy<RuntimePatchNodeResult> { it.patchId.value }.thenBy { it.address }.thenBy { it.attempt })
+                .sortedWith(compareBy<RuntimePatchNodeResult> { it.patchId.value }.thenBy { it.address }
+                    .thenBy { it.attempt })
                 .toList()
         }
     }
@@ -202,7 +203,8 @@ class PatchClusterApplicationService(
 
     suspend fun disable(id: PatchId): PatchClusterApplyResult {
         val patch = requireNotNull(repository.find(id)) { "patch $id not found" }
-        val selected = nodes.nodes().filter { patch.compatibility.matches(it.environment()) && patch.target.matches(it.environment()) }
+        val selected = nodes.nodes()
+            .filter { patch.compatibility.matches(it.environment()) && patch.target.matches(it.environment()) }
         val requestedAt = Instant.now()
         val nodeResults = coroutineScope {
             selected.map { node ->

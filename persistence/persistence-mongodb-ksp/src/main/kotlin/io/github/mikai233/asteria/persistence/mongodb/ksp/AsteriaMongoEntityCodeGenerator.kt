@@ -1,16 +1,7 @@
 package io.github.mikai233.asteria.persistence.mongodb.ksp
 
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.MemberName
-import com.squareup.kotlinpoet.ParameterSpec
+import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.PropertySpec
-import com.squareup.kotlinpoet.TypeName
-import com.squareup.kotlinpoet.TypeSpec
 
 data class MongoEntityCodegenModel(
     val packageName: String,
@@ -73,8 +64,8 @@ object AsteriaMongoEntityCodeGenerator {
         return TypeSpec.classBuilder(wrapperType)
             .addKdoc(
                 "Generated dirty-tracking wrapper for [%T].\n\n" +
-                    "Business code should mutate this wrapper inside the owning actor. Field writes are converted into " +
-                    "Mongo patch operations by the tracking runtime.\n",
+                        "Business code should mutate this wrapper inside the owning actor. Field writes are converted into " +
+                        "Mongo patch operations by the tracking runtime.\n",
                 model.entityType,
             )
             .primaryConstructor(
@@ -107,7 +98,11 @@ object AsteriaMongoEntityCodeGenerator {
                 .mutable(true)
                 .delegate(CodeBlock.of("ctx.trackedValue(%S, entity.%L)", property.fieldName, property.name))
 
-            MongoEntityPropertyKind.Object -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false), KModifier.PUBLIC)
+            MongoEntityPropertyKind.Object -> PropertySpec.builder(
+                property.name,
+                property.trackedType.copy(nullable = false),
+                KModifier.PUBLIC
+            )
                 .initializer(
                     "trackChild(%T(ctx.path(%S), entity.%L, ctx.queue, ::currentDirtyTarget))",
                     property.trackedType,
@@ -115,33 +110,57 @@ object AsteriaMongoEntityCodeGenerator {
                     property.name,
                 )
 
-            MongoEntityPropertyKind.Map -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false).asMutableCollection(), KModifier.PUBLIC)
+            MongoEntityPropertyKind.Map -> PropertySpec.builder(
+                property.name,
+                property.trackedType.copy(nullable = false).asMutableCollection(),
+                KModifier.PUBLIC
+            )
                 .delegate(
                     CodeBlock.builder()
                         .add(
                             "%M(path = ctx.path(%S), initialValue = %L, queue = ctx.queue, ",
                             MONGO_TRACKED_MAP,
                             property.fieldName,
-                            collectionInitialValueExpression(property, "ctx.path(${property.fieldName.toCodeString()})", "entity.${property.name}", "ctx.queue", "::currentDirtyTarget"),
+                            collectionInitialValueExpression(
+                                property,
+                                "ctx.path(${property.fieldName.toCodeString()})",
+                                "entity.${property.name}",
+                                "ctx.queue",
+                                "::currentDirtyTarget"
+                            ),
                         )
                         .add("dirtyTargetProvider = ::currentDirtyTarget)")
                         .build(),
                 )
 
-            MongoEntityPropertyKind.List -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false).asMutableCollection(), KModifier.PUBLIC)
+            MongoEntityPropertyKind.List -> PropertySpec.builder(
+                property.name,
+                property.trackedType.copy(nullable = false).asMutableCollection(),
+                KModifier.PUBLIC
+            )
                 .delegate(
                     CodeBlock.builder()
                         .add(
                             "%M(path = ctx.path(%S), initialValue = %L, queue = ctx.queue, ",
                             MONGO_TRACKED_LIST,
                             property.fieldName,
-                            collectionInitialValueExpression(property, "ctx.path(${property.fieldName.toCodeString()})", "entity.${property.name}", "ctx.queue", "::currentDirtyTarget"),
+                            collectionInitialValueExpression(
+                                property,
+                                "ctx.path(${property.fieldName.toCodeString()})",
+                                "entity.${property.name}",
+                                "ctx.queue",
+                                "::currentDirtyTarget"
+                            ),
                         )
                         .add("dirtyTargetProvider = ::currentDirtyTarget)")
                         .build(),
                 )
 
-            MongoEntityPropertyKind.Set -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false).asMutableCollection(), KModifier.PUBLIC)
+            MongoEntityPropertyKind.Set -> PropertySpec.builder(
+                property.name,
+                property.trackedType.copy(nullable = false).asMutableCollection(),
+                KModifier.PUBLIC
+            )
                 .delegate(
                     CodeBlock.builder()
                         .add(
@@ -239,10 +258,21 @@ object AsteriaMongoEntityCodeGenerator {
         return when (property.kind) {
             MongoEntityPropertyKind.Value -> PropertySpec.builder(property.name, property.type, KModifier.PUBLIC)
                 .mutable(true)
-                .delegate(CodeBlock.of("%M(path.child(%S), entity.%L, queue, dirtyTarget = ::effectiveDirtyTarget)", MONGO_TRACKED_VALUE, property.fieldName, property.name))
+                .delegate(
+                    CodeBlock.of(
+                        "%M(path.child(%S), entity.%L, queue, dirtyTarget = ::effectiveDirtyTarget)",
+                        MONGO_TRACKED_VALUE,
+                        property.fieldName,
+                        property.name
+                    )
+                )
                 .build()
 
-            MongoEntityPropertyKind.Object -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false), KModifier.PUBLIC)
+            MongoEntityPropertyKind.Object -> PropertySpec.builder(
+                property.name,
+                property.trackedType.copy(nullable = false),
+                KModifier.PUBLIC
+            )
                 .initializer(
                     "trackChild(%T(path.child(%S), entity.%L, queue, ::effectiveDirtyTarget))",
                     property.trackedType,
@@ -251,29 +281,53 @@ object AsteriaMongoEntityCodeGenerator {
                 )
                 .build()
 
-            MongoEntityPropertyKind.Map -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false).asMutableCollection(), KModifier.PUBLIC)
+            MongoEntityPropertyKind.Map -> PropertySpec.builder(
+                property.name,
+                property.trackedType.copy(nullable = false).asMutableCollection(),
+                KModifier.PUBLIC
+            )
                 .delegate(
                     CodeBlock.of(
                         "%M(path = path.child(%S), initialValue = %L, queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
                         MONGO_TRACKED_MAP,
                         property.fieldName,
-                        collectionInitialValueExpression(property, "path.child(${property.fieldName.toCodeString()})", "entity.${property.name}", "queue", "::effectiveDirtyTarget"),
+                        collectionInitialValueExpression(
+                            property,
+                            "path.child(${property.fieldName.toCodeString()})",
+                            "entity.${property.name}",
+                            "queue",
+                            "::effectiveDirtyTarget"
+                        ),
                     ),
                 )
                 .build()
 
-            MongoEntityPropertyKind.List -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false).asMutableCollection(), KModifier.PUBLIC)
+            MongoEntityPropertyKind.List -> PropertySpec.builder(
+                property.name,
+                property.trackedType.copy(nullable = false).asMutableCollection(),
+                KModifier.PUBLIC
+            )
                 .delegate(
                     CodeBlock.of(
                         "%M(path = path.child(%S), initialValue = %L, queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
                         MONGO_TRACKED_LIST,
                         property.fieldName,
-                        collectionInitialValueExpression(property, "path.child(${property.fieldName.toCodeString()})", "entity.${property.name}", "queue", "::effectiveDirtyTarget"),
+                        collectionInitialValueExpression(
+                            property,
+                            "path.child(${property.fieldName.toCodeString()})",
+                            "entity.${property.name}",
+                            "queue",
+                            "::effectiveDirtyTarget"
+                        ),
                     ),
                 )
                 .build()
 
-            MongoEntityPropertyKind.Set -> PropertySpec.builder(property.name, property.trackedType.copy(nullable = false).asMutableCollection(), KModifier.PUBLIC)
+            MongoEntityPropertyKind.Set -> PropertySpec.builder(
+                property.name,
+                property.trackedType.copy(nullable = false).asMutableCollection(),
+                KModifier.PUBLIC
+            )
                 .delegate(
                     CodeBlock.of(
                         "%M(path = path.child(%S), initialValue = entity.%L.toMutableSet(), queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
@@ -448,9 +502,19 @@ object AsteriaMongoEntityCodeGenerator {
                     .returns(tableType)
                     .addCode(
                         CodeBlock.builder()
-                            .add("return object : %T(COLLECTION, %T::class, cachePolicy, database, journal, clock) {\n", tableType, model.entityType)
+                            .add(
+                                "return object : %T(COLLECTION, %T::class, cachePolicy, database, journal, clock) {\n",
+                                tableType,
+                                model.entityType
+                            )
                             .indent()
-                            .add("override fun wrap(context: %T, entity: %T): %T = %T(context, entity)\n", contextType, model.entityType, wrapperType, wrapperType)
+                            .add(
+                                "override fun wrap(context: %T, entity: %T): %T = %T(context, entity)\n",
+                                contextType,
+                                model.entityType,
+                                wrapperType,
+                                wrapperType
+                            )
                             .unindent()
                             .add("}\n")
                             .build(),
@@ -466,15 +530,15 @@ object AsteriaMongoEntityCodeGenerator {
         val mutableRawType = when (rawType.canonicalName) {
             "kotlin.collections.Map",
             "kotlin.collections.MutableMap",
-            -> MUTABLE_MAP
+                -> MUTABLE_MAP
 
             "kotlin.collections.List",
             "kotlin.collections.MutableList",
-            -> MUTABLE_LIST
+                -> MUTABLE_LIST
 
             "kotlin.collections.Set",
             "kotlin.collections.MutableSet",
-            -> MUTABLE_SET
+                -> MUTABLE_SET
 
             else -> return this
         }

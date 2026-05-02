@@ -1,17 +1,12 @@
 package io.github.mikai233.asteria.config.gradle
 
 import groovy.json.JsonSlurper
-import java.io.File
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
-import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.Optional
-import org.gradle.api.tasks.OutputDirectory
-import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.*
+import java.io.File
 
 @CacheableTask
 abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
@@ -64,6 +59,7 @@ abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
             is List<*> -> root
             is Map<*, *> -> root["tables"] as? List<*>
                 ?: error("Luban config marker metadata must contain a tables array")
+
             else -> error("Luban config marker metadata must be a JSON object or array")
         }
         return tableValues.mapIndexed { index, value ->

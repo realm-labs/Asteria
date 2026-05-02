@@ -1,38 +1,15 @@
 package io.github.mikai233.asteria.gm.script.spring
 
-import io.github.mikai233.asteria.gm.script.GmScriptOperations
-import io.github.mikai233.asteria.gm.script.GmScriptPermissions
-import io.github.mikai233.asteria.gm.script.GmScriptMetadata
-import io.github.mikai233.asteria.gm.script.GmScriptMetadataProvider
-import io.github.mikai233.asteria.gm.script.GmScriptTargetValidationRequest
-import io.github.mikai233.asteria.gm.script.GmScriptTargetValidationResult
-import io.github.mikai233.asteria.gm.script.GmScriptTargetValidator
+import io.github.mikai233.asteria.gm.script.*
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
-import io.github.mikai233.asteria.script.job.ScriptJobCancellation
-import io.github.mikai233.asteria.script.job.ScriptJob
-import io.github.mikai233.asteria.script.job.ScriptJobId
-import io.github.mikai233.asteria.script.job.ScriptJobItem
-import io.github.mikai233.asteria.script.job.ScriptJobItemId
-import io.github.mikai233.asteria.script.job.ScriptJobItemPage
-import io.github.mikai233.asteria.script.job.ScriptJobItemQuery
-import io.github.mikai233.asteria.script.job.ScriptJobItemStatus
-import io.github.mikai233.asteria.script.job.ScriptJobPage
-import io.github.mikai233.asteria.script.job.ScriptJobQuery
-import io.github.mikai233.asteria.script.job.ScriptJobStatus
+import io.github.mikai233.asteria.script.job.*
 import jakarta.servlet.http.HttpServletRequest
-import org.springframework.http.HttpStatus
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.ResponseStatus
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ResponseStatusException
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -215,7 +192,12 @@ class GmScriptController(
         ) {
             val id = ScriptJobId(jobId)
             scripts.find(id) ?: return@execute ResponseEntity.notFound().build()
-            ResponseEntity.ok(scripts.listItems(id, ScriptJobItemQuery(status = status, offset = offset, limit = limit)))
+            ResponseEntity.ok(
+                scripts.listItems(
+                    id,
+                    ScriptJobItemQuery(status = status, offset = offset, limit = limit)
+                )
+            )
         }
     }
 

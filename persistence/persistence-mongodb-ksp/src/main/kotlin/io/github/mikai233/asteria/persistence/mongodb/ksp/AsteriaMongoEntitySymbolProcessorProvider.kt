@@ -1,28 +1,13 @@
 package io.github.mikai233.asteria.persistence.mongodb.ksp
 
-import com.google.devtools.ksp.processing.CodeGenerator
-import com.google.devtools.ksp.processing.Dependencies
-import com.google.devtools.ksp.processing.KSPLogger
-import com.google.devtools.ksp.processing.Resolver
-import com.google.devtools.ksp.processing.SymbolProcessor
-import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
-import com.google.devtools.ksp.processing.SymbolProcessorProvider
-import com.google.devtools.ksp.symbol.KSAnnotated
-import com.google.devtools.ksp.symbol.KSAnnotation
-import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.symbol.KSPropertyDeclaration
-import com.google.devtools.ksp.symbol.KSType
-import com.google.devtools.ksp.symbol.Modifier
+import com.google.devtools.ksp.processing.*
+import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
-import io.github.mikai233.asteria.persistence.AsteriaMongoEntity
-import io.github.mikai233.asteria.persistence.AsteriaMongoField
-import io.github.mikai233.asteria.persistence.AsteriaMongoId
-import io.github.mikai233.asteria.persistence.AsteriaMongoIgnore
-import io.github.mikai233.asteria.persistence.AsteriaMongoValue
+import io.github.mikai233.asteria.persistence.*
 
 class AsteriaMongoEntitySymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
@@ -96,7 +81,10 @@ private class AsteriaMongoEntitySymbolProcessor(
             }
 
             else -> properties.singleOrNull { it.name == "id" } ?: run {
-                logger.error("Mongo entity ${symbol.qualifiedName?.asString()} requires an id property or @AsteriaMongoId", symbol)
+                logger.error(
+                    "Mongo entity ${symbol.qualifiedName?.asString()} requires an id property or @AsteriaMongoId",
+                    symbol
+                )
                 return null
             }
         }
@@ -141,8 +129,10 @@ private class AsteriaMongoEntitySymbolProcessor(
     ): MongoEntityPropertyModel {
         val type = property.type.resolve()
         val nestedType = nestedWrapperType(type, generatedPackage, wrapperPrefix, nestedObjects, visiting)
-        val collectionNestedType = collectionValueWrapperType(type, generatedPackage, wrapperPrefix, nestedObjects, visiting)
-        val valueKind = if (collectionNestedType == null) MongoEntityPropertyKind.Value else MongoEntityPropertyKind.Object
+        val collectionNestedType =
+            collectionValueWrapperType(type, generatedPackage, wrapperPrefix, nestedObjects, visiting)
+        val valueKind =
+            if (collectionNestedType == null) MongoEntityPropertyKind.Value else MongoEntityPropertyKind.Object
         return MongoEntityPropertyModel(
             name = property.simpleName.asString(),
             fieldName = property.findAnnotation(AsteriaMongoField::class.qualifiedName!!)
@@ -244,7 +234,7 @@ private class AsteriaMongoEntitySymbolProcessor(
 
     private fun shouldGenerateNestedWrapper(declaration: KSClassDeclaration): Boolean {
         return Modifier.DATA in declaration.modifiers &&
-            !declaration.hasAnnotation(AsteriaMongoValue::class.qualifiedName!!)
+                !declaration.hasAnnotation(AsteriaMongoValue::class.qualifiedName!!)
     }
 
     private fun validateProperties(
@@ -318,8 +308,8 @@ private class AsteriaMongoEntitySymbolProcessor(
 
         logger.error(
             "$label has unsupported Mongo value type ${qualifiedName ?: declaration.simpleName.asString()}. " +
-                "Use a supported scalar/collection/data class, annotate the type with @AsteriaMongoValue, or add it to " +
-                "the KSP option asteria.mongodb.valueTypes.",
+                    "Use a supported scalar/collection/data class, annotate the type with @AsteriaMongoValue, or add it to " +
+                    "the KSP option asteria.mongodb.valueTypes.",
         )
         return false
     }
@@ -334,8 +324,8 @@ private class AsteriaMongoEntitySymbolProcessor(
         if (qualifiedName in MAP_TYPES || qualifiedName in LIST_OR_SET_TYPES || qualifiedName in BUILTIN_MONGO_ARRAY_TYPES) {
             logger.error(
                 "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not supported in Mongo Set. " +
-                    "Set elements must be stable whole values because Set depends on element hashCode/equals. " +
-                    "Use List or Map when the element contains nested collection data.",
+                        "Set elements must be stable whole values because Set depends on element hashCode/equals. " +
+                        "Use List or Map when the element contains nested collection data.",
             )
             return false
         }
@@ -357,8 +347,8 @@ private class AsteriaMongoEntitySymbolProcessor(
                 if (!result) {
                     logger.error(
                         "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not safe in Mongo Set. " +
-                            "Set data-class elements must be immutable whole values. Use List/Map for tracked nested values " +
-                            "or make the Set element a val-only Mongo value type.",
+                                "Set data-class elements must be immutable whole values. Use List/Map for tracked nested values " +
+                                "or make the Set element a val-only Mongo value type.",
                     )
                 }
                 return result
@@ -366,7 +356,7 @@ private class AsteriaMongoEntitySymbolProcessor(
         }
         logger.error(
             "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not safe in Mongo Set. " +
-                "Use a stable scalar, enum, immutable data class, @AsteriaMongoValue type, or asteria.mongodb.valueTypes.",
+                    "Use a stable scalar, enum, immutable data class, @AsteriaMongoValue type, or asteria.mongodb.valueTypes.",
         )
         return false
     }
@@ -439,15 +429,15 @@ private class AsteriaMongoEntitySymbolProcessor(
         return when (type.declaration.qualifiedName?.asString()) {
             "kotlin.collections.Map",
             "kotlin.collections.MutableMap",
-            -> MongoEntityPropertyKind.Map
+                -> MongoEntityPropertyKind.Map
 
             "kotlin.collections.List",
             "kotlin.collections.MutableList",
-            -> MongoEntityPropertyKind.List
+                -> MongoEntityPropertyKind.List
 
             "kotlin.collections.Set",
             "kotlin.collections.MutableSet",
-            -> MongoEntityPropertyKind.Set
+                -> MongoEntityPropertyKind.Set
 
             else -> MongoEntityPropertyKind.Value
         }

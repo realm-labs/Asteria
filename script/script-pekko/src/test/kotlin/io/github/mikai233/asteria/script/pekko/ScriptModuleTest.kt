@@ -3,21 +3,9 @@ package io.github.mikai233.asteria.script.pekko
 import io.github.mikai233.asteria.cluster.pekko.LocalPekkoClusterStartup
 import io.github.mikai233.asteria.cluster.pekko.PekkoRuntimeModule
 import io.github.mikai233.asteria.core.gameApplication
-import io.github.mikai233.asteria.script.CompiledScript
-import io.github.mikai233.asteria.script.ScriptAuditSink
-import io.github.mikai233.asteria.script.ScriptArtifact
-import io.github.mikai233.asteria.script.ScriptEngine
-import io.github.mikai233.asteria.script.ScriptExecutionCommand
-import io.github.mikai233.asteria.script.ScriptExecutionRequest
-import io.github.mikai233.asteria.script.ScriptExecutionResult
-import io.github.mikai233.asteria.script.ScriptRuntime
-import io.github.mikai233.asteria.script.ScriptTarget
+import io.github.mikai233.asteria.script.*
 import kotlinx.coroutines.runBlocking
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-import kotlin.test.assertNotNull
+import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -83,7 +71,10 @@ class ScriptModuleTest {
             val batch = scriptRuntime.executeAll(command, 200.milliseconds)
             assertEquals(command.executionId, batch.executionId)
             assertTrue(batch.success)
-            assertEquals(listOf(ScriptExecutionResult(command.executionId, success = true, target = "echo")), batch.results)
+            assertEquals(
+                listOf(ScriptExecutionResult(command.executionId, success = true, target = "echo")),
+                batch.results
+            )
         } finally {
             app.stop()
         }

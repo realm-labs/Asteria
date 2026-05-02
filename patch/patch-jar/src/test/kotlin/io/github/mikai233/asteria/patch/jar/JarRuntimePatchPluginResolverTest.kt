@@ -1,12 +1,6 @@
 package io.github.mikai233.asteria.patch.jar
 
-import io.github.mikai233.asteria.patch.InMemoryPatchArtifactStore
-import io.github.mikai233.asteria.patch.PatchArtifact
-import io.github.mikai233.asteria.patch.PatchCompatibility
-import io.github.mikai233.asteria.patch.PatchId
-import io.github.mikai233.asteria.patch.PatchInstallContext
-import io.github.mikai233.asteria.patch.RuntimePatch
-import io.github.mikai233.asteria.patch.RuntimePatchPlugin
+import io.github.mikai233.asteria.patch.*
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest

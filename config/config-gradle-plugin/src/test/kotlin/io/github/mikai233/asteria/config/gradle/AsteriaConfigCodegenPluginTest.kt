@@ -1,11 +1,11 @@
 package io.github.mikai233.asteria.config.gradle
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertContains
-import kotlin.test.assertNotNull
-import kotlin.io.path.Path
 import org.gradle.testfixtures.ProjectBuilder
+import kotlin.io.path.Path
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class AsteriaConfigCodegenPluginTest {
     @Test

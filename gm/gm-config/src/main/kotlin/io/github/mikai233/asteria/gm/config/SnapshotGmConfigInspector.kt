@@ -1,16 +1,6 @@
 package io.github.mikai233.asteria.gm.config
 
-import io.github.mikai233.asteria.config.ConfigRevision
-import io.github.mikai233.asteria.config.ConfigReloadMonitor
-import io.github.mikai233.asteria.config.ConfigReloadRecord
-import io.github.mikai233.asteria.config.ConfigReloadResult
-import io.github.mikai233.asteria.config.ConfigReloadStatus
-import io.github.mikai233.asteria.config.ConfigService
-import io.github.mikai233.asteria.config.ConfigSnapshot
-import io.github.mikai233.asteria.config.ConfigSnapshotDiff
-import io.github.mikai233.asteria.config.ConfigTableChange
-import io.github.mikai233.asteria.config.ConfigTable
-import io.github.mikai233.asteria.config.ConfigTableName
+import io.github.mikai233.asteria.config.*
 
 /**
  * [GmConfigInspector] backed by the currently loaded [ConfigSnapshot].
@@ -95,7 +85,8 @@ class SnapshotGmConfigInspector(
 
     private fun view(name: ConfigTableName): GmConfigTableView {
         val snapshot = configService.current()
-        val table = snapshot.table(name) ?: error("config table $name not found in revision ${snapshot.revision.version}")
+        val table =
+            snapshot.table(name) ?: error("config table $name not found in revision ${snapshot.revision.version}")
         return cache.view(snapshot.revision, table)
     }
 }
@@ -121,6 +112,7 @@ private fun ConfigReloadRecord.toGm(): GmConfigReloadRecord {
             removedTables = diff.removedTables.map { it.toGm() },
             changedTables = diff.changedTables.map { it.toGm() },
         )
+
         is ConfigReloadRecord.Failure -> GmConfigReloadRecord(
             id = id,
             status = GmConfigReloadRecordStatus.Failure,

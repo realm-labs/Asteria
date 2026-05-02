@@ -135,7 +135,8 @@ inline fun <reified T : Any> ConfigSnapshot.component(): T? {
  * Returns a component by reified type or throws with revision context.
  */
 inline fun <reified T : Any> ConfigSnapshot.requireComponent(): T {
-    return component<T>() ?: error("config component ${T::class.qualifiedName} not found in revision ${revision.version}")
+    return component<T>()
+        ?: error("config component ${T::class.qualifiedName} not found in revision ${revision.version}")
 }
 
 private fun <K : Any, V : Any> Iterable<V>.associateUniqueBy(

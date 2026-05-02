@@ -3,12 +3,7 @@ package io.github.mikai233.asteria.protocol.protobuf.generator
 import com.google.protobuf.DescriptorProtos
 import io.github.mikai233.asteria.protocol.protobuf.ProtobufGatewayProtocolContributor
 import io.github.mikai233.asteria.protocol.protobuf.ProtobufGatewayProtocolProvider
-import kotlin.io.path.Path
-import kotlin.io.path.createTempDirectory
-import kotlin.io.path.exists
-import kotlin.io.path.readText
-import kotlin.io.path.writeBytes
-import kotlin.io.path.writeText
+import kotlin.io.path.*
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertTrue

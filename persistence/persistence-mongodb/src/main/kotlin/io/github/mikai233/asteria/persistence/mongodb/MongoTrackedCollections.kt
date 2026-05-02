@@ -21,7 +21,15 @@ fun <K, V> mongoTrackedMap(
     dirtyTargetProvider: (() -> MongoDirtyTarget?)? = null,
 ): MongoTrackedMapDelegate<K, V> {
     return MongoTrackedMapDelegate(
-        MongoTrackedMutableMap(path, initialValue, queue, persistentValue, trackedValue, dirtyTarget, dirtyTargetProvider),
+        MongoTrackedMutableMap(
+            path,
+            initialValue,
+            queue,
+            persistentValue,
+            trackedValue,
+            dirtyTarget,
+            dirtyTargetProvider
+        ),
     )
 }
 
@@ -181,7 +189,15 @@ fun <E> mongoTrackedList(
     dirtyTargetProvider: (() -> MongoDirtyTarget?)? = null,
 ): MongoTrackedListDelegate<E> {
     return MongoTrackedListDelegate(
-        MongoTrackedMutableList(path, initialValue, queue, persistentValue, trackedValue, dirtyTarget, dirtyTargetProvider),
+        MongoTrackedMutableList(
+            path,
+            initialValue,
+            queue,
+            persistentValue,
+            trackedValue,
+            dirtyTarget,
+            dirtyTargetProvider
+        ),
     )
 }
 

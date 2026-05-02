@@ -4,11 +4,7 @@ import com.google.protobuf.GeneratedMessage
 import com.google.protobuf.Parser
 import io.github.mikai233.asteria.protobuf.ProtobufMessageRegistry
 import io.github.mikai233.asteria.protobuf.ProtobufMessageRegistryBuilder
-import io.github.mikai233.asteria.rpc.RpcMethod
-import io.github.mikai233.asteria.rpc.RpcMode
-import io.github.mikai233.asteria.rpc.RpcProtocol
-import io.github.mikai233.asteria.rpc.RpcTarget
-import io.github.mikai233.asteria.rpc.StaticRpcMethodRegistry
+import io.github.mikai233.asteria.rpc.*
 import kotlin.reflect.KClass
 
 class ProtobufRpcProtocol(

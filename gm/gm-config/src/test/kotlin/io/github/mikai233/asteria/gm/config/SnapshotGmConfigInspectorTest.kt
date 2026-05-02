@@ -1,19 +1,8 @@
 package io.github.mikai233.asteria.gm.config
 
-import io.github.mikai233.asteria.config.ConfigLoader
-import io.github.mikai233.asteria.config.ConfigReloadMonitor
-import io.github.mikai233.asteria.config.ConfigRevision
-import io.github.mikai233.asteria.config.ConfigService
-import io.github.mikai233.asteria.config.ConfigSnapshot
-import io.github.mikai233.asteria.config.ConfigTableName
-import io.github.mikai233.asteria.config.DefaultConfigSnapshot
-import io.github.mikai233.asteria.config.mapConfigTable
+import io.github.mikai233.asteria.config.*
 import kotlinx.coroutines.runBlocking
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class SnapshotGmConfigInspectorTest {
     @Test

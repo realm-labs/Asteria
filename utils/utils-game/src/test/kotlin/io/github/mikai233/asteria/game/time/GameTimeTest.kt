@@ -1,15 +1,10 @@
 package io.github.mikai233.asteria.game.time
 
+import java.time.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import java.time.DayOfWeek
-import java.time.Duration
-import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
-import java.time.ZoneId
 
 class GameTimeTest {
     private val rule = GameDayRule(

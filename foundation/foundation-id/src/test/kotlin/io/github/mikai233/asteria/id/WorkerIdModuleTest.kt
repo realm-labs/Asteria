@@ -1,8 +1,8 @@
 package io.github.mikai233.asteria.id
 
 import io.github.mikai233.asteria.core.gameApplication
-import java.time.Duration
 import kotlinx.coroutines.runBlocking
+import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals

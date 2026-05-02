@@ -8,9 +8,9 @@ import io.github.mikai233.asteria.script.CompiledScript
 import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptEngine
 import io.github.mikai233.asteria.script.toCompiledScript
+import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
-import org.slf4j.LoggerFactory
 
 class GroovyScriptEngine(
     override val name: String = "groovy",

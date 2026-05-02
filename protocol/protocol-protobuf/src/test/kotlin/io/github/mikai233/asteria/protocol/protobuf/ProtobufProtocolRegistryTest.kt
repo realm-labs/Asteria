@@ -4,13 +4,7 @@ import com.google.protobuf.BoolValue
 import com.google.protobuf.Int32Value
 import com.google.protobuf.StringValue
 import io.github.mikai233.asteria.core.EntityKind
-import io.github.mikai233.asteria.gateway.GatewayConnection
-import io.github.mikai233.asteria.gateway.GatewayConnectionId
-import io.github.mikai233.asteria.gateway.GatewayFrame
-import io.github.mikai233.asteria.gateway.GatewaySession
-import io.github.mikai233.asteria.gateway.GatewaySessionContext
-import io.github.mikai233.asteria.gateway.GatewaySessionId
-import io.github.mikai233.asteria.gateway.GatewayTransportKind
+import io.github.mikai233.asteria.gateway.*
 import io.github.mikai233.asteria.message.DynamicRouteRegistry
 import io.github.mikai233.asteria.message.ProtocolRoute
 import io.github.mikai233.asteria.message.RouteTarget

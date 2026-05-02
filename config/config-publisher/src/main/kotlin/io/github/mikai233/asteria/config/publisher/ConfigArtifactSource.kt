@@ -1,9 +1,9 @@
 package io.github.mikai233.asteria.config.publisher
 
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
@@ -63,7 +63,8 @@ class DirectoryConfigArtifactSource(
                     .sortedBy { it.toString() }
                     .map { path ->
                         ConfigPublicationArtifact(
-                            relativePath = path.relativeTo(root).normalize().toString().replace(path.fileSystem.separator, "/"),
+                            relativePath = path.relativeTo(root).normalize().toString()
+                                .replace(path.fileSystem.separator, "/"),
                             bytes = Files.readAllBytes(path),
                         )
                     }

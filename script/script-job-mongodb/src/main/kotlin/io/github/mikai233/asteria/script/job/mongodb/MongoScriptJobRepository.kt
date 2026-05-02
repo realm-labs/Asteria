@@ -1,14 +1,9 @@
 package io.github.mikai233.asteria.script.job.mongodb
 
-import com.mongodb.client.model.Filters.and
-import com.mongodb.client.model.Filters.eq
-import com.mongodb.client.model.Filters.lte
-import com.mongodb.client.model.Filters.or
+import com.mongodb.client.model.Filters.*
 import com.mongodb.client.model.IndexOptions
 import com.mongodb.client.model.Indexes
 import com.mongodb.client.model.Sorts
-import com.mongodb.client.model.Filters.size
-import com.mongodb.client.model.Filters.`in` as inFilter
 import com.mongodb.client.model.Updates.combine
 import com.mongodb.client.model.Updates.set
 import com.mongodb.kotlin.client.coroutine.MongoCollection
@@ -16,30 +11,14 @@ import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.mikai233.asteria.core.EntityKind
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.SingletonName
-import io.github.mikai233.asteria.script.ScriptArtifact
-import io.github.mikai233.asteria.script.ScriptExecutionCommand
-import io.github.mikai233.asteria.script.ScriptExecutionMetadata
-import io.github.mikai233.asteria.script.ScriptExecutionResult
-import io.github.mikai233.asteria.script.ScriptResourceRef
-import io.github.mikai233.asteria.script.ScriptTarget
-import io.github.mikai233.asteria.script.job.ScriptJob
-import io.github.mikai233.asteria.script.job.ScriptJobCancellation
-import io.github.mikai233.asteria.script.job.ScriptJobId
-import io.github.mikai233.asteria.script.job.ScriptJobItem
-import io.github.mikai233.asteria.script.job.ScriptJobItemAttempt
-import io.github.mikai233.asteria.script.job.ScriptJobItemId
-import io.github.mikai233.asteria.script.job.ScriptJobItemPage
-import io.github.mikai233.asteria.script.job.ScriptJobItemQuery
-import io.github.mikai233.asteria.script.job.ScriptJobPage
-import io.github.mikai233.asteria.script.job.ScriptJobQuery
-import io.github.mikai233.asteria.script.job.ScriptJobItemStatus
-import io.github.mikai233.asteria.script.job.ScriptJobRepository
-import io.github.mikai233.asteria.script.job.ScriptJobStatus
+import io.github.mikai233.asteria.script.*
+import io.github.mikai233.asteria.script.job.*
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.toList
 import org.bson.Document
 import org.bson.conversions.Bson
-import java.util.Base64
+import java.util.*
+import com.mongodb.client.model.Filters.`in` as inFilter
 
 /**
  * MongoDB implementation of [ScriptJobRepository].
@@ -497,7 +476,7 @@ private fun ScriptJobItem.cancel(cancellation: ScriptJobCancellation, now: Long)
         ScriptJobItemStatus.Completed,
         ScriptJobItemStatus.Failed,
         ScriptJobItemStatus.Cancelled,
-        -> this
+            -> this
     }
 }
 

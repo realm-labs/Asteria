@@ -60,7 +60,8 @@ class LocalFilePatchArtifactStore(
         bytes: ByteArray,
         version: String?,
     ): PatchArtifact {
-        val artifact = PatchArtifact(name = name.safeFileName(), checksum = patchArtifactSha256Checksum(bytes), version = version)
+        val artifact =
+            PatchArtifact(name = name.safeFileName(), checksum = patchArtifactSha256Checksum(bytes), version = version)
         withContext(Dispatchers.IO) {
             Files.createDirectories(directory)
             Files.write(directory.resolve(artifact.storageFileName()), bytes)

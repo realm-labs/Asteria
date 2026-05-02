@@ -7,12 +7,12 @@ import io.github.mikai233.asteria.script.CompiledScript
 import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptEngine
 import io.github.mikai233.asteria.script.toCompiledScript
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.net.URLClassLoader
 import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
 import kotlin.reflect.KClass
-import org.slf4j.LoggerFactory
 
 class JarScriptEngine(
     override val name: String = "jar",

@@ -4,20 +4,12 @@ import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import io.github.mikai233.asteria.protocol.protobuf.generator.ProtobufGatewayGeneratorConfig
 import io.github.mikai233.asteria.protocol.protobuf.generator.ProtobufGatewayProtocolGenerator
-import java.io.File
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
-import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.Optional
-import org.gradle.api.tasks.OutputDirectory
-import org.gradle.api.tasks.OutputFile
-import org.gradle.api.tasks.PathSensitive
-import org.gradle.api.tasks.PathSensitivity
-import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.*
+import java.io.File
 
 @CacheableTask
 abstract class AsteriaGenerateGatewayProtocolTask : DefaultTask() {
@@ -79,6 +71,7 @@ abstract class AsteriaGenerateGatewayProtocolTask : DefaultTask() {
         val messages = when (root) {
             is Map<*, *> -> root["messages"] as? List<*>
                 ?: error("gateway protocol metadata must contain a messages array")
+
             else -> error("gateway protocol metadata must be a JSON object")
         }
         val clientMessages = messages.mapIndexed { index, value ->

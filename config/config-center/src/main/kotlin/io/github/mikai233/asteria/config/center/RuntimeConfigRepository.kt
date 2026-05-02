@@ -146,7 +146,8 @@ class RuntimeConfigRepository(
             val watch = store.watch(path, mode)
             try {
                 watch.events.collect { event ->
-                    metrics.counter("asteria.config.center.watch.event.total", MetricTags.of("mode" to mode.name)).increment()
+                    metrics.counter("asteria.config.center.watch.event.total", MetricTags.of("mode" to mode.name))
+                        .increment()
                     emit(event)
                 }
             } catch (error: Throwable) {

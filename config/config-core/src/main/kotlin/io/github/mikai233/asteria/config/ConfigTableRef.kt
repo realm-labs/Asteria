@@ -66,11 +66,11 @@ fun <K : Any, R : Any> ConfigSnapshot.table(ref: ConfigTableRef<K, R>): ConfigTa
     val table = table(ref.name) ?: return null
     require(table.keyType == ref.keyType) {
         "config table ${ref.name} key type mismatch, expected ${ref.keyType.qualifiedName}, " +
-            "actual ${table.keyType.qualifiedName}"
+                "actual ${table.keyType.qualifiedName}"
     }
     require(table.rowType == ref.rowType) {
         "config table ${ref.name} row type mismatch, expected ${ref.rowType.qualifiedName}, " +
-            "actual ${table.rowType.qualifiedName}"
+                "actual ${table.rowType.qualifiedName}"
     }
     @Suppress("UNCHECKED_CAST")
     return table as ConfigTable<K, R>

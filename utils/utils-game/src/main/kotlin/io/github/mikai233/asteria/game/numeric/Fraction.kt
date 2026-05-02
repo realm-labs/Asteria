@@ -1,5 +1,8 @@
 package io.github.mikai233.asteria.game.numeric
 
+import io.github.mikai233.asteria.game.numeric.Fraction.Companion.fromBinary
+import io.github.mikai233.asteria.game.numeric.Fraction.Companion.fromDecimal
+import io.github.mikai233.asteria.game.numeric.Fraction.Companion.of
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.math.MathContext
@@ -149,8 +152,8 @@ class Fraction private constructor(
 
     override fun equals(other: Any?): Boolean {
         return other is Fraction &&
-            numerator == other.numerator &&
-            denominator == other.denominator
+                numerator == other.numerator &&
+                denominator == other.denominator
     }
 
     override fun hashCode(): Int {

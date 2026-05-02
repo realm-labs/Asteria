@@ -10,15 +10,7 @@ import io.etcd.jetcd.options.DeleteOption
 import io.etcd.jetcd.options.GetOption
 import io.etcd.jetcd.options.PutOption
 import io.etcd.jetcd.options.WatchOption
-import io.github.mikai233.asteria.config.center.ConfigEntry
-import io.github.mikai233.asteria.config.center.ConfigEvent
-import io.github.mikai233.asteria.config.center.ConfigPath
-import io.github.mikai233.asteria.config.center.ConfigRevision
-import io.github.mikai233.asteria.config.center.ConfigRevisionMismatchException
-import io.github.mikai233.asteria.config.center.ConfigStore
-import io.github.mikai233.asteria.config.center.ConfigWatch
-import io.github.mikai233.asteria.config.center.ConfigWatchMode
-import io.github.mikai233.asteria.config.center.configPath
+import io.github.mikai233.asteria.config.center.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.future.await
@@ -62,11 +54,13 @@ class EtcdConfigStore(
                 val configEvent = when (event.eventType) {
                     io.etcd.jetcd.watch.WatchEvent.EventType.PUT ->
                         event.keyValue.toEntryOrNull()?.let { ConfigEvent.Upserted(it.path, it) }
+
                     io.etcd.jetcd.watch.WatchEvent.EventType.DELETE -> {
                         val previous = event.prevKV.toEntryOrNull()
                         val deletedPath = previous?.path ?: event.keyValue.toPathOrNull()
                         deletedPath?.let { ConfigEvent.Deleted(it, previous) }
                     }
+
                     else -> null
                 }
                 if (configEvent != null && matches(path, mode, configEvent.path)) {

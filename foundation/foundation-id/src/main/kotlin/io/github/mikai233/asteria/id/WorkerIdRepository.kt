@@ -1,10 +1,10 @@
 package io.github.mikai233.asteria.id
 
-import java.time.Duration
-import java.time.Instant
-import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.time.Duration
+import java.time.Instant
+import java.util.*
 
 interface WorkerIdRepository {
     suspend fun acquire(

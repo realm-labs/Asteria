@@ -1,7 +1,7 @@
 package io.github.mikai233.asteria.gm.core
 
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 
 /**
  * Audit record for a GM operation.

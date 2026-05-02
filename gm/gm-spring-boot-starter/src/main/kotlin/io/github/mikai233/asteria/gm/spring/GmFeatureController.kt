@@ -1,10 +1,6 @@
 package io.github.mikai233.asteria.gm.spring
 
-import io.github.mikai233.asteria.gm.core.GmFeatureDescriptor
-import io.github.mikai233.asteria.gm.core.GmFeatureRegistry
-import io.github.mikai233.asteria.gm.core.GmMenuItem
-import io.github.mikai233.asteria.gm.core.GmPermission
-import io.github.mikai233.asteria.gm.core.GmRoute
+import io.github.mikai233.asteria.gm.core.*
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController

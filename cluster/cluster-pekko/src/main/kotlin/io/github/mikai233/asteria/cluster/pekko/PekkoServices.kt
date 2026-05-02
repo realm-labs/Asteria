@@ -1,9 +1,9 @@
 package io.github.mikai233.asteria.cluster.pekko
 
-import io.github.mikai233.asteria.core.EntityKind
-import io.github.mikai233.asteria.core.SingletonName
 import io.github.mikai233.asteria.cluster.config.ClusterTopology
 import io.github.mikai233.asteria.cluster.config.RuntimeNodeConfig
+import io.github.mikai233.asteria.core.EntityKind
+import io.github.mikai233.asteria.core.SingletonName
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSystem
 

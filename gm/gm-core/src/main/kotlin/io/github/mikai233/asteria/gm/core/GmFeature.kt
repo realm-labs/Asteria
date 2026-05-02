@@ -1,6 +1,6 @@
 package io.github.mikai233.asteria.gm.core
 
-import java.util.ServiceLoader
+import java.util.*
 
 /**
  * Stable identifier for one GM feature module.

@@ -1,24 +1,9 @@
 package io.github.mikai233.asteria.script.job
 
-import io.github.mikai233.asteria.observability.MetricTags
-import io.github.mikai233.asteria.observability.Metrics
-import io.github.mikai233.asteria.observability.NoopMetrics
-import io.github.mikai233.asteria.observability.NoopTracer
-import io.github.mikai233.asteria.observability.TraceAttributes
-import io.github.mikai233.asteria.observability.Tracer
-import io.github.mikai233.asteria.script.ScriptExecutionBatchResult
-import io.github.mikai233.asteria.script.ScriptExecutionCommand
-import io.github.mikai233.asteria.script.ScriptExecutionMetadata
-import io.github.mikai233.asteria.script.ScriptExecutionResult
-import io.github.mikai233.asteria.script.ScriptRuntime
-import io.github.mikai233.asteria.script.ScriptTarget
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
-import java.util.UUID
+import io.github.mikai233.asteria.observability.*
+import io.github.mikai233.asteria.script.*
+import kotlinx.coroutines.*
+import java.util.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -524,7 +509,7 @@ class ScriptJobService(
             ScriptJobItemStatus.Cancelled -> ScriptJobAuditEventType.ItemCancelled
             ScriptJobItemStatus.Pending,
             ScriptJobItemStatus.Running,
-            -> error("script job item status $this is not terminal")
+                -> error("script job item status $this is not terminal")
         }
     }
 

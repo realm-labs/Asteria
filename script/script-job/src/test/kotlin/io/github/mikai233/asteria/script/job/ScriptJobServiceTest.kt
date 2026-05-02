@@ -1,20 +1,8 @@
 package io.github.mikai233.asteria.script.job
 
-import io.github.mikai233.asteria.script.ScriptArtifact
-import io.github.mikai233.asteria.script.ScriptExecutionBatchResult
-import io.github.mikai233.asteria.script.ScriptExecutionCommand
-import io.github.mikai233.asteria.script.ScriptExecutionMetadata
-import io.github.mikai233.asteria.script.ScriptExecutionRequest
-import io.github.mikai233.asteria.script.ScriptExecutionResult
-import io.github.mikai233.asteria.script.ScriptExecutionScope
-import io.github.mikai233.asteria.script.ScriptRuntime
-import io.github.mikai233.asteria.script.ScriptTarget
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
-import java.util.Collections
+import io.github.mikai233.asteria.script.*
+import kotlinx.coroutines.*
+import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -116,9 +104,12 @@ class ScriptJobServiceTest {
             ),
         )
 
-        val first = repository.claimPendingItems(jobId, "worker-1", limit = 1, leaseUntilMillis = 2_000, nowMillis = 1_000)
-        val second = repository.claimPendingItems(jobId, "worker-2", limit = 2, leaseUntilMillis = 2_000, nowMillis = 1_000)
-        val expired = repository.claimPendingItems(jobId, "worker-3", limit = 1, leaseUntilMillis = 3_000, nowMillis = 2_001)
+        val first =
+            repository.claimPendingItems(jobId, "worker-1", limit = 1, leaseUntilMillis = 2_000, nowMillis = 1_000)
+        val second =
+            repository.claimPendingItems(jobId, "worker-2", limit = 2, leaseUntilMillis = 2_000, nowMillis = 1_000)
+        val expired =
+            repository.claimPendingItems(jobId, "worker-3", limit = 1, leaseUntilMillis = 3_000, nowMillis = 2_001)
 
         assertEquals(listOf(ScriptJobItemId("1")), first.map { it.id })
         assertEquals("worker-1", first.single().leaseOwner)

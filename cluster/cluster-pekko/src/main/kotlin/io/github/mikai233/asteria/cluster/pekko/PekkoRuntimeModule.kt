@@ -2,13 +2,7 @@ package io.github.mikai233.asteria.cluster.pekko
 
 import io.github.mikai233.asteria.cluster.config.ClusterTopology
 import io.github.mikai233.asteria.cluster.config.RuntimeNodeConfig
-import io.github.mikai233.asteria.core.AsteriaModule
-import io.github.mikai233.asteria.core.AsteriaApplication
-import io.github.mikai233.asteria.core.EntitySpec
-import io.github.mikai233.asteria.core.AsteriaModuleLifecycle
-import io.github.mikai233.asteria.core.ModuleContext
-import io.github.mikai233.asteria.core.RoleKey
-import io.github.mikai233.asteria.core.SingletonSpec
+import io.github.mikai233.asteria.core.*
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
 import org.apache.pekko.Done
@@ -86,7 +80,7 @@ class PekkoRuntimeModule(
             PekkoClusterJoin.SeedNodes,
             PekkoClusterJoin.Bootstrap,
             PekkoClusterJoin.External,
-            -> Unit
+                -> Unit
         }
     }
 
@@ -140,7 +134,8 @@ class PekkoRuntimeModule(
         spec: EntitySpec<*>,
         extractor: ShardRegion.MessageExtractor,
     ): ActorRef {
-        val propsFactory = spec.propsFactory() ?: error("entity ${spec.kind} requires actor props to start shard region")
+        val propsFactory =
+            spec.propsFactory() ?: error("entity ${spec.kind} requires actor props to start shard region")
         val strategy = spec.allocationStrategy() ?: ShardCoordinator.LeastShardAllocationStrategy(1, 10)
         return system.startAsteriaSharding(
             spec = spec,

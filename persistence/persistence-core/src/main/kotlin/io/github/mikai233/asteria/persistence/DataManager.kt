@@ -3,9 +3,9 @@ package io.github.mikai233.asteria.persistence
 import io.github.mikai233.asteria.observability.MetricTags
 import io.github.mikai233.asteria.observability.Metrics
 import io.github.mikai233.asteria.observability.NoopMetrics
+import org.slf4j.LoggerFactory
 import java.time.Clock
 import kotlin.reflect.KClass
-import org.slf4j.LoggerFactory
 
 class DataManager<ID : Any>(
     private val scope: DataScope<ID>,
@@ -149,16 +149,18 @@ class DataManager<ID : Any>(
         loadedData.lastAccessMillis = clock.millis()
     }
 
-    private suspend fun unload(loadedData: LoadedData<ID, out MemData>) = measured("unload", dataTags(loadedData.module)) {
-        val data = loadedData.data
-        if (data is AutoFlushMemData && !data.flush()) {
-            metrics.counter("asteria.persistence.data.unload.skipped.total", dataTags(loadedData.module)).increment()
-            loadedData.lastAccessMillis = clock.millis()
-            return@measured
+    private suspend fun unload(loadedData: LoadedData<ID, out MemData>) =
+        measured("unload", dataTags(loadedData.module)) {
+            val data = loadedData.data
+            if (data is AutoFlushMemData && !data.flush()) {
+                metrics.counter("asteria.persistence.data.unload.skipped.total", dataTags(loadedData.module))
+                    .increment()
+                loadedData.lastAccessMillis = clock.millis()
+                return@measured
+            }
+            loadedData.lease?.invalidate()
+            loadedDataByType.remove(loadedData.module.type)
         }
-        loadedData.lease?.invalidate()
-        loadedDataByType.remove(loadedData.module.type)
-    }
 
     private fun baseTags(): MetricTags {
         return MetricTags.of("entity_kind" to scope.entityKind.value)

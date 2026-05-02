@@ -131,9 +131,10 @@ class MongoTrackedValueTest {
     fun `deep mutable value is promoted to dirty boundary`() {
         val queue = MongoPendingWriteQueue()
         val root = MongoPath("player", 1001L, "data.inventory.items")
+
         @Suppress("UNCHECKED_CAST")
         val items = trackMongoMutableValue(root, mutableMapOf("1" to mutableMapOf("count" to 1)), queue)
-            as MutableMap<String, MutableMap<String, Int>>
+                as MutableMap<String, MutableMap<String, Int>>
 
         items.getValue("1")["count"] = 2
 
@@ -146,9 +147,10 @@ class MongoTrackedValueTest {
     fun `shallow nested mutable value writes nearest child boundary`() {
         val queue = MongoPendingWriteQueue()
         val root = MongoPath("player", 1001L, "bag")
+
         @Suppress("UNCHECKED_CAST")
         val bag = trackMongoMutableValue(root, mutableMapOf("1" to mutableMapOf("count" to 1)), queue)
-            as MutableMap<String, MutableMap<String, Int>>
+                as MutableMap<String, MutableMap<String, Int>>
 
         bag.getValue("1")["count"] = 2
 

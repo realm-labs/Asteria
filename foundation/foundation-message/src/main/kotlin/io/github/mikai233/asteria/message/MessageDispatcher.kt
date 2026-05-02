@@ -1,12 +1,8 @@
 package io.github.mikai233.asteria.message
 
-import io.github.mikai233.asteria.patch.PatchId
-import io.github.mikai233.asteria.patch.PatchInstallContext
-import io.github.mikai233.asteria.patch.PatchOrder
-import io.github.mikai233.asteria.patch.PatchSlotRegistry
-import io.github.mikai233.asteria.patch.PatchableRegistry
 import io.github.mikai233.asteria.observability.MetricTags
 import io.github.mikai233.asteria.observability.metricsOrNoop
+import io.github.mikai233.asteria.patch.*
 import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 

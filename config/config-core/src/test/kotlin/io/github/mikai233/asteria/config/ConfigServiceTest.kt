@@ -1,16 +1,12 @@
 package io.github.mikai233.asteria.config
 
 import io.github.mikai233.asteria.core.gameApplication
-import kotlin.time.Duration
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
+import kotlin.test.*
+import kotlin.time.Duration
 
 class ConfigServiceTest {
     @Test

@@ -7,11 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
-import kotlin.io.path.Path
-import kotlin.io.path.exists
-import kotlin.io.path.inputStream
-import kotlin.io.path.name
-import kotlin.io.path.outputStream
+import kotlin.io.path.*
 
 /**
  * External resource referenced by a script execution.
@@ -101,7 +97,7 @@ object UrlScriptResourceDownloader : ScriptResourceDownloader {
 object PresignedUrlScriptResourceDownloader : ScriptResourceDownloader {
     override suspend fun download(ref: ScriptResourceRef, destination: Path) {
         val url = ref.attributes["downloadUrl"] ?: ref.attributes["url"]
-            ?: error("script resource ${ref.name} requires a pre-signed downloadUrl attribute")
+        ?: error("script resource ${ref.name} requires a pre-signed downloadUrl attribute")
         downloadUrl(URI.create(url), destination)
     }
 }

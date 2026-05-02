@@ -4,15 +4,7 @@ import io.github.mikai233.asteria.core.NodeRuntime
 import io.github.mikai233.asteria.core.NodeState
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.ServiceRegistry
-import io.github.mikai233.asteria.patch.PatchApplyResult
-import io.github.mikai233.asteria.patch.PatchArtifact
-import io.github.mikai233.asteria.patch.PatchCompatibility
-import io.github.mikai233.asteria.patch.PatchEnvironment
-import io.github.mikai233.asteria.patch.PatchId
-import io.github.mikai233.asteria.patch.PatchInstallContext
-import io.github.mikai233.asteria.patch.PatchRuntime
-import io.github.mikai233.asteria.patch.RuntimePatch
-import io.github.mikai233.asteria.patch.RuntimePatchPlugin
+import io.github.mikai233.asteria.patch.*
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals

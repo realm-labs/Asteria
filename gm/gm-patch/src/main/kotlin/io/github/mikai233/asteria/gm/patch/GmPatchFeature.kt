@@ -1,12 +1,6 @@
 package io.github.mikai233.asteria.gm.patch
 
-import io.github.mikai233.asteria.gm.core.GmFeature
-import io.github.mikai233.asteria.gm.core.GmFeatureDescriptor
-import io.github.mikai233.asteria.gm.core.GmFeatureId
-import io.github.mikai233.asteria.gm.core.GmMenuItem
-import io.github.mikai233.asteria.gm.core.GmPermission
-import io.github.mikai233.asteria.gm.core.GmPermissionKey
-import io.github.mikai233.asteria.gm.core.GmRoute
+import io.github.mikai233.asteria.gm.core.*
 
 object GmPatchPermissions {
     val Read: GmPermissionKey = GmPermissionKey("gm.patch.read")

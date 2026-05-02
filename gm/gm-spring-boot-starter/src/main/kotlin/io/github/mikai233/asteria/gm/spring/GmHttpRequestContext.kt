@@ -1,7 +1,7 @@
 package io.github.mikai233.asteria.gm.spring
 
 import jakarta.servlet.http.HttpServletRequest
-import java.util.Enumeration
+import java.util.*
 
 /**
  * Servlet-independent request data used by GM authentication adapters.

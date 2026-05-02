@@ -1,9 +1,9 @@
 package io.github.mikai233.asteria.gm.script
 
+import io.github.mikai233.asteria.script.CompiledScript
+import io.github.mikai233.asteria.script.ScriptArtifact
 import io.github.mikai233.asteria.script.ScriptEngine
 import io.github.mikai233.asteria.script.ScriptEngineRegistry
-import io.github.mikai233.asteria.script.ScriptArtifact
-import io.github.mikai233.asteria.script.CompiledScript
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals

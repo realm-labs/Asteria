@@ -28,7 +28,7 @@ private class ScriptJobCancellationToken(
     override suspend fun isCancellationRequested(): Boolean {
         val item = repository.findItem(jobId, itemId) ?: return true
         return item.status == ScriptJobItemStatus.Cancelled ||
-            item.cancelRequestedAtMillis != null ||
-            item.attempts.lastOrNull()?.attempt != attempt
+                item.cancelRequestedAtMillis != null ||
+                item.attempts.lastOrNull()?.attempt != attempt
     }
 }

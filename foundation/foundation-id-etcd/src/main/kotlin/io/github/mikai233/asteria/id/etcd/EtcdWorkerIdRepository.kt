@@ -9,22 +9,16 @@ import io.etcd.jetcd.op.Op
 import io.etcd.jetcd.options.DeleteOption
 import io.etcd.jetcd.options.GetOption
 import io.etcd.jetcd.options.PutOption
-import io.github.mikai233.asteria.id.WorkerId
-import io.github.mikai233.asteria.id.WorkerIdLease
-import io.github.mikai233.asteria.id.WorkerIdOwner
-import io.github.mikai233.asteria.id.WorkerIdRange
-import io.github.mikai233.asteria.id.WorkerIdRepository
-import io.github.mikai233.asteria.id.WorkerIdUnavailableException
+import io.github.mikai233.asteria.id.*
 import io.github.mikai233.asteria.observability.MetricTags
 import io.github.mikai233.asteria.observability.Metrics
 import io.github.mikai233.asteria.observability.NoopMetrics
+import kotlinx.coroutines.future.await
+import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Duration
 import java.time.Instant
-import java.util.Base64
-import java.util.UUID
-import kotlinx.coroutines.future.await
-import org.slf4j.LoggerFactory
+import java.util.*
 
 class EtcdWorkerIdRepository(
     private val client: Client,

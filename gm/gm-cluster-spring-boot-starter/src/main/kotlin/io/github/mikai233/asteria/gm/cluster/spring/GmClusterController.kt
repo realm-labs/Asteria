@@ -1,22 +1,10 @@
 package io.github.mikai233.asteria.gm.cluster.spring
 
-import io.github.mikai233.asteria.gm.cluster.GmClusterPermissions
-import io.github.mikai233.asteria.gm.cluster.GmClusterControlService
-import io.github.mikai233.asteria.gm.cluster.GmClusterDownRequest
-import io.github.mikai233.asteria.gm.cluster.GmClusterJoinRequest
-import io.github.mikai233.asteria.gm.cluster.GmClusterLeaveRequest
-import io.github.mikai233.asteria.gm.cluster.GmClusterOperationResult
-import io.github.mikai233.asteria.gm.cluster.GmClusterRawStatusService
-import io.github.mikai233.asteria.gm.cluster.GmClusterStatus
-import io.github.mikai233.asteria.gm.cluster.GmClusterStatusService
+import io.github.mikai233.asteria.gm.cluster.*
 import io.github.mikai233.asteria.gm.core.GmResourceScope
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import jakarta.servlet.http.HttpServletRequest
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 
 /**
  * HTTP API for cluster GM tools.

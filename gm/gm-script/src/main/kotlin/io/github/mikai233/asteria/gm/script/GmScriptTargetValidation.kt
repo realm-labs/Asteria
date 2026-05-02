@@ -146,7 +146,7 @@ class BasicGmScriptTargetValidator(
             ScriptTarget.AllNodes,
             is ScriptTarget.Role,
             is ScriptTarget.Singleton,
-            -> emptyList()
+                -> emptyList()
 
             is ScriptTarget.ActorPath -> paths.duplicateReasons("actor paths")
             is ScriptTarget.Entity -> ids.duplicateReasons("entity ids")
@@ -158,7 +158,7 @@ class BasicGmScriptTargetValidator(
         val reasons = mutableListOf<String>()
         when (this) {
             ScriptTarget.AllNodes,
-            -> Unit
+                -> Unit
 
             is ScriptTarget.ActorPath -> Unit
             is ScriptTarget.Entity -> {

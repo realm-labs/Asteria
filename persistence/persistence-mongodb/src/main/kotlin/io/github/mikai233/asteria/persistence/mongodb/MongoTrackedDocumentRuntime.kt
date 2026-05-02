@@ -19,7 +19,8 @@ class MongoTrackedDocumentRuntime(
     onDirty: () -> Unit = {},
 ) : DataLeaseAware {
     val queue: MongoPendingWriteQueue = MongoPendingWriteQueue(journal = journal, onDirty = onDirty)
-    private val flusher: MongoPendingWriteFlusher = MongoPendingWriteFlusher(queue, database, journal, metrics = metrics)
+    private val flusher: MongoPendingWriteFlusher =
+        MongoPendingWriteFlusher(queue, database, journal, metrics = metrics)
     private var lease: DataLease? = null
 
     fun context(): MongoTrackContext {
@@ -37,7 +38,12 @@ class MongoTrackedDocumentRuntime(
         }
         persistentValue.entries.forEach { (fieldPath, fieldValue) ->
             if (fieldPath.toString() != "_id") {
-                queue.enqueue(MongoChangeOp.Set(MongoPath(collectionName, document.id, fieldPath.toString()), fieldValue))
+                queue.enqueue(
+                    MongoChangeOp.Set(
+                        MongoPath(collectionName, document.id, fieldPath.toString()),
+                        fieldValue
+                    )
+                )
             }
         }
     }

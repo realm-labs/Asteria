@@ -47,7 +47,10 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
         generatedKotlin: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
         generatedResources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
     ): org.gradle.api.tasks.TaskProvider<AsteriaGenerateGatewayProtocolTask> {
-        return project.tasks.register("generateAsteriaGatewayProtocol", AsteriaGenerateGatewayProtocolTask::class.java) {
+        return project.tasks.register(
+            "generateAsteriaGatewayProtocol",
+            AsteriaGenerateGatewayProtocolTask::class.java
+        ) {
             it.generationEnabled.set(extension.gateway.enabled)
             it.metadataFile.set(extension.gateway.metadataFile)
             it.descriptorSetFile.set(extension.gateway.descriptorSetFile)
@@ -105,7 +108,7 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
         if (project.configurations.findByName(configurationName) == null) {
             project.logger.warn(
                 "Asteria protobuf protocol codegen skipped dependency $dependencyNotation because configuration " +
-                    "$configurationName does not exist",
+                        "$configurationName does not exist",
             )
             return
         }

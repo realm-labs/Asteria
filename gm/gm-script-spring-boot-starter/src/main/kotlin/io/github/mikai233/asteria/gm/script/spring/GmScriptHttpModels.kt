@@ -3,14 +3,10 @@ package io.github.mikai233.asteria.gm.script.spring
 import io.github.mikai233.asteria.core.EntityKind
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.SingletonName
-import io.github.mikai233.asteria.script.ScriptArtifact
-import io.github.mikai233.asteria.script.ScriptExecutionCommand
-import io.github.mikai233.asteria.script.ScriptExecutionMetadata
-import io.github.mikai233.asteria.script.ScriptResourceRef
-import io.github.mikai233.asteria.script.ScriptTarget
+import io.github.mikai233.asteria.script.*
 import io.github.mikai233.asteria.script.job.ScriptJobExecutionAttributes
 import io.github.mikai233.asteria.script.job.ScriptJobRetryFailedItemsRequest
-import java.util.Base64
+import java.util.*
 
 /**
  * HTTP request for submitting a GM script job.
@@ -85,6 +81,7 @@ data class GmScriptTargetRequest(
                 kind = EntityKind(requireValue(kind, "kind")),
                 ids = requireValues(ids, "ids"),
             )
+
             "singleton" -> ScriptTarget.Singleton(SingletonName(requireValue(name, "name")))
             else -> error("unsupported GM script target type $type")
         }

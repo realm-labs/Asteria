@@ -1,15 +1,9 @@
 package io.github.mikai233.asteria.id
 
+import kotlinx.coroutines.runBlocking
 import java.time.Duration
 import java.time.Instant
-import kotlinx.coroutines.runBlocking
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class WorkerIdRepositoryTest {
     @Test

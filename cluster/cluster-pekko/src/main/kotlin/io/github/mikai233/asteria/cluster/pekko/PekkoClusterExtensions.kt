@@ -14,7 +14,7 @@ import org.apache.pekko.cluster.singleton.ClusterSingletonManager
 import org.apache.pekko.cluster.singleton.ClusterSingletonManagerSettings
 import org.apache.pekko.cluster.singleton.ClusterSingletonProxy
 import org.apache.pekko.cluster.singleton.ClusterSingletonProxySettings
-import java.util.Optional
+import java.util.*
 
 fun ActorSystem.startAsteriaSharding(
     spec: EntitySpec<*>,

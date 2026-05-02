@@ -24,6 +24,7 @@ data class GmClusterConfigReloadHttpRequest(
             "role" -> ClusterConfigReloadTarget.Role(
                 role ?: error("GM cluster config reload role target requires role"),
             )
+
             "nodes" -> ClusterConfigReloadTarget.Nodes(nodeIds)
             "addresses" -> ClusterConfigReloadTarget.Addresses(addresses)
             else -> error("unsupported GM cluster config reload target $target")

@@ -23,7 +23,8 @@ class MongoJournalRecovery(
         val startedAt = System.nanoTime()
         val entries = journal.recover()
         if (entries.isEmpty()) {
-            metrics.counter("asteria.persistence.mongodb.journal.recovery.total", MetricTags.of("empty" to "true")).increment()
+            metrics.counter("asteria.persistence.mongodb.journal.recovery.total", MetricTags.of("empty" to "true"))
+                .increment()
             return MongoJournalRecoveryResult()
         }
 
@@ -38,7 +39,8 @@ class MongoJournalRecovery(
             )
             metrics.counter("asteria.persistence.mongodb.journal.recovery.total", MetricTags.of("empty" to "false"))
                 .increment()
-            metrics.counter("asteria.persistence.mongodb.journal.recovery.entries.total").increment(entries.size.toLong())
+            metrics.counter("asteria.persistence.mongodb.journal.recovery.entries.total")
+                .increment(entries.size.toLong())
             logger.info(
                 "Mongo journal recovered entries={} documents={}",
                 result.entries,

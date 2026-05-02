@@ -440,7 +440,7 @@ private fun ScriptJobItem.cancel(cancellation: ScriptJobCancellation, now: Long)
         ScriptJobItemStatus.Completed,
         ScriptJobItemStatus.Failed,
         ScriptJobItemStatus.Cancelled,
-        -> this
+            -> this
     }
 }
 

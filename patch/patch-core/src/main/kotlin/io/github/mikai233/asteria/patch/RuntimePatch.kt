@@ -31,8 +31,8 @@ data class RuntimePatch(
 
     fun canApplyTo(environment: PatchEnvironment): Boolean {
         return status == PatchStatus.Enabled &&
-            compatibility.matches(environment) &&
-            target.matches(environment)
+                compatibility.matches(environment) &&
+                target.matches(environment)
     }
 }
 

@@ -35,7 +35,7 @@ value class ConfigPath(val value: String) {
 
     fun isDescendantOf(parent: ConfigPath): Boolean {
         return value != parent.value &&
-            (parent.value == "/" || value.startsWith("${parent.value}/"))
+                (parent.value == "/" || value.startsWith("${parent.value}/"))
     }
 
     override fun toString(): String = value

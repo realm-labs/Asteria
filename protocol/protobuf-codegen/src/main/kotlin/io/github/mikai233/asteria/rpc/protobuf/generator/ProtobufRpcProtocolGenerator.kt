@@ -5,12 +5,7 @@ import com.fasterxml.jackson.databind.MapperFeature
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.*
 import io.github.mikai233.asteria.rpc.RpcProtocolProvider
 import io.github.mikai233.asteria.rpc.protobuf.GeneratedProtobufRpcProtocol
 import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcProtocolBuilder

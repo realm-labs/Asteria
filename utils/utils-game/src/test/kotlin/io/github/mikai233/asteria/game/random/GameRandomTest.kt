@@ -1,11 +1,7 @@
 package io.github.mikai233.asteria.game.random
 
 import kotlin.random.Random
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class GameRandomTest {
     @Test

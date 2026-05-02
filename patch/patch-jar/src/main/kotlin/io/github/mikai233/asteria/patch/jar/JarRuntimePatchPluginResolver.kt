@@ -3,13 +3,10 @@ package io.github.mikai233.asteria.patch.jar
 import io.github.mikai233.asteria.observability.MetricTags
 import io.github.mikai233.asteria.observability.Metrics
 import io.github.mikai233.asteria.observability.NoopMetrics
-import io.github.mikai233.asteria.patch.PatchArtifactStore
-import io.github.mikai233.asteria.patch.PatchId
-import io.github.mikai233.asteria.patch.RuntimePatch
-import io.github.mikai233.asteria.patch.RuntimePatchPlugin
-import io.github.mikai233.asteria.patch.RuntimePatchPluginResolver
+import io.github.mikai233.asteria.patch.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
 import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -17,7 +14,6 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
 import kotlin.io.path.outputStream
-import org.slf4j.LoggerFactory
 
 class JarRuntimePatchPluginResolver(
     private val artifacts: PatchArtifactStore,

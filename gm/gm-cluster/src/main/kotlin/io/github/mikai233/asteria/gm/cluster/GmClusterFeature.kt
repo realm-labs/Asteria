@@ -1,12 +1,6 @@
 package io.github.mikai233.asteria.gm.cluster
 
-import io.github.mikai233.asteria.gm.core.GmFeature
-import io.github.mikai233.asteria.gm.core.GmFeatureDescriptor
-import io.github.mikai233.asteria.gm.core.GmFeatureId
-import io.github.mikai233.asteria.gm.core.GmMenuItem
-import io.github.mikai233.asteria.gm.core.GmPermission
-import io.github.mikai233.asteria.gm.core.GmPermissionKey
-import io.github.mikai233.asteria.gm.core.GmRoute
+import io.github.mikai233.asteria.gm.core.*
 
 /**
  * Permission keys contributed by the cluster GM feature.

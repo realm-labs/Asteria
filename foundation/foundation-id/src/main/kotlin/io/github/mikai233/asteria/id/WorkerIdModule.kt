@@ -4,19 +4,11 @@ import io.github.mikai233.asteria.core.AsteriaModule
 import io.github.mikai233.asteria.core.ModuleContext
 import io.github.mikai233.asteria.observability.MetricTags
 import io.github.mikai233.asteria.observability.metricsOrNoop
-import java.time.Duration
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicReference
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
+import java.time.Duration
+import java.util.*
+import java.util.concurrent.atomic.AtomicReference
 
 class WorkerIdModule(
     private val repository: WorkerIdRepository,
@@ -57,7 +49,8 @@ class WorkerIdModule(
                     delay(options.renewInterval.toMillis())
                     val renewed = repository.renew(current, options.ttl)
                     if (renewed == null) {
-                        metrics.counter("asteria.worker_id.renew.failed.total", current.metricTags(context.name)).increment()
+                        metrics.counter("asteria.worker_id.renew.failed.total", current.metricTags(context.name))
+                            .increment()
                         logger.error(
                             "worker id lease lost app={} id={} owner={}",
                             context.name,

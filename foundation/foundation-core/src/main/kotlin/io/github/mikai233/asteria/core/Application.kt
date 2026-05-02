@@ -16,6 +16,7 @@ annotation class AsteriaDsl
  */
 interface NodeRuntime {
     val name: String
+
     /**
      * Roles owned by this running node. Runtime modules should set this from the concrete node config.
      */
@@ -209,10 +210,12 @@ class EntitySpecBuilder<ID : Any> internal constructor(
      * Role that owns real shard regions for this entity. When absent, any node may host it.
      */
     var role: RoleKey? = null
+
     /**
      * Number of logical shards used by runtime adapters.
      */
     var shardCount: Int = 100
+
     /**
      * Message sent to entity actors during graceful shard handoff.
      */
@@ -253,6 +256,7 @@ class SingletonSpecBuilder internal constructor(
      * Role that may host the singleton manager.
      */
     var role: RoleKey = RoleKey(name.value)
+
     /**
      * Message sent to the singleton actor during graceful handoff.
      */

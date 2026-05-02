@@ -80,18 +80,30 @@ class AsteriaMongoEntityCodeGeneratorTest {
         assertContains(code, "var name: String by ctx.trackedValue(\"name\", entity.name)")
         assertContains(code, "var level: Int by ctx.trackedValue(\"lv\", entity.level)")
         assertContains(code, "public val profile: TrackedPlayerProfile =")
-        assertContains(code, "trackChild(TrackedPlayerProfile(ctx.path(\"profile\"), entity.profile, ctx.queue, ::currentDirtyTarget))")
+        assertContains(
+            code,
+            "trackChild(TrackedPlayerProfile(ctx.path(\"profile\"), entity.profile, ctx.queue, ::currentDirtyTarget))"
+        )
         assertContains(code, "public val bag: MutableMap<String, TrackedItemStack> by")
         assertContains(code, "mongoTrackedMap(path = ctx.path(\"bag\")")
-        assertContains(code, "entity.bag.mapValues { (key, value) -> trackChild(com.example.player.TrackedItemStack(ctx.path(\"bag\").child(key), value, ctx.queue, ::currentDirtyTarget)) }.toMutableMap()")
+        assertContains(
+            code,
+            "entity.bag.mapValues { (key, value) -> trackChild(com.example.player.TrackedItemStack(ctx.path(\"bag\").child(key), value, ctx.queue, ::currentDirtyTarget)) }.toMutableMap()"
+        )
         assertContains(code, "public val quests: MutableList<TrackedQuestState> by")
         assertContains(code, "mongoTrackedList(path = ctx.path(\"quests\")")
-        assertContains(code, "entity.quests.mapIndexed { index, value -> trackChild(com.example.player.TrackedQuestState(ctx.path(\"quests\").child(index), value, ctx.queue, ::currentDirtyTarget)) }.toMutableList()")
+        assertContains(
+            code,
+            "entity.quests.mapIndexed { index, value -> trackChild(com.example.player.TrackedQuestState(ctx.path(\"quests\").child(index), value, ctx.queue, ::currentDirtyTarget)) }.toMutableList()"
+        )
         assertContains(code, "class TrackedPlayerProfile(")
         assertContains(code, "class TrackedItemStack(")
         assertContains(code, "class TrackedQuestState(")
         assertContains(code, "public var nickname: String by")
-        assertContains(code, "mongoTrackedValue(path.child(\"nickname\"), entity.nickname, queue, dirtyTarget = ::effectiveDirtyTarget)")
+        assertContains(
+            code,
+            "mongoTrackedValue(path.child(\"nickname\"), entity.nickname, queue, dirtyTarget = ::effectiveDirtyTarget)"
+        )
         assertContains(code, "fun toEntity(): Profile")
         assertContains(code, "override fun toEntity(): PlayerEntity")
         assertContains(code, "profile = profile.toEntity()")

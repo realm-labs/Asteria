@@ -10,12 +10,24 @@ class FileMongoWriteJournalTest {
     @Test
     fun `journal recovers unacknowledged set and unset entries`() {
         val directory = createTempDirectory("asteria-mongo-journal")
-        FileMongoWriteJournal(MongoJournalPolicy(enabled = true, directory = directory, forceOnAppend = true)).use { journal ->
+        FileMongoWriteJournal(
+            MongoJournalPolicy(
+                enabled = true,
+                directory = directory,
+                forceOnAppend = true
+            )
+        ).use { journal ->
             journal.append(MongoChangeOp.Set(MongoPath("player", 1001L, "level"), 2))
             journal.append(MongoChangeOp.Unset(MongoPath("player", 1001L, "nickname")))
         }
 
-        FileMongoWriteJournal(MongoJournalPolicy(enabled = true, directory = directory, forceOnAppend = true)).use { journal ->
+        FileMongoWriteJournal(
+            MongoJournalPolicy(
+                enabled = true,
+                directory = directory,
+                forceOnAppend = true
+            )
+        ).use { journal ->
             val recovered = journal.recover()
 
             assertEquals(2, recovered.size)
@@ -27,7 +39,13 @@ class FileMongoWriteJournalTest {
     @Test
     fun `checkpoint only advances over contiguous acknowledged entries`() {
         val directory = createTempDirectory("asteria-mongo-journal")
-        FileMongoWriteJournal(MongoJournalPolicy(enabled = true, directory = directory, forceOnAppend = true)).use { journal ->
+        FileMongoWriteJournal(
+            MongoJournalPolicy(
+                enabled = true,
+                directory = directory,
+                forceOnAppend = true
+            )
+        ).use { journal ->
             val first = journal.append(MongoChangeOp.Set(MongoPath("player", 1001L, "level"), 2))
             val second = journal.append(MongoChangeOp.Set(MongoPath("player", 1002L, "level"), 3))
             journal.ack(listOf(second))
@@ -40,7 +58,13 @@ class FileMongoWriteJournalTest {
     @Test
     fun `queue records journal sequences and replay merges final write`() {
         val directory = createTempDirectory("asteria-mongo-journal")
-        FileMongoWriteJournal(MongoJournalPolicy(enabled = true, directory = directory, forceOnAppend = true)).use { journal ->
+        FileMongoWriteJournal(
+            MongoJournalPolicy(
+                enabled = true,
+                directory = directory,
+                forceOnAppend = true
+            )
+        ).use { journal ->
             val queue = MongoPendingWriteQueue(journal = journal)
             val root = MongoPath("player", 1001L, "profile")
 
@@ -52,7 +76,13 @@ class FileMongoWriteJournalTest {
             assertEquals(2, write.journalSequences.size)
         }
 
-        FileMongoWriteJournal(MongoJournalPolicy(enabled = true, directory = directory, forceOnAppend = true)).use { journal ->
+        FileMongoWriteJournal(
+            MongoJournalPolicy(
+                enabled = true,
+                directory = directory,
+                forceOnAppend = true
+            )
+        ).use { journal ->
             val recoveredQueue = MongoPendingWriteQueue(journal = NoopMongoWriteJournal)
             journal.recover().forEach(recoveredQueue::replay)
 

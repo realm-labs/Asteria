@@ -4,11 +4,7 @@ import io.github.mikai233.asteria.gm.cluster.GmClusterDownRequest
 import io.github.mikai233.asteria.gm.cluster.GmClusterJoinRequest
 import io.github.mikai233.asteria.gm.cluster.GmClusterLeaveRequest
 import kotlinx.coroutines.runBlocking
-import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class PekkoManagementGmClusterServicesTest {
     @Test

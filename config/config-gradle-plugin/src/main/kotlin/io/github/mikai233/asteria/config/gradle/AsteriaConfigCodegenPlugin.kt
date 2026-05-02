@@ -87,7 +87,7 @@ class AsteriaConfigCodegenPlugin : Plugin<Project> {
         if (project.configurations.findByName(configurationName) == null) {
             project.logger.warn(
                 "Asteria config codegen skipped dependency $dependencyNotation because configuration " +
-                    "$configurationName does not exist",
+                        "$configurationName does not exist",
             )
             return
         }

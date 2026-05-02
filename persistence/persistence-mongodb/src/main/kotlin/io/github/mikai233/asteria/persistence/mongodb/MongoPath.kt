@@ -1,5 +1,8 @@
 package io.github.mikai233.asteria.persistence.mongodb
 
+import io.github.mikai233.asteria.persistence.mongodb.MongoPath.Companion.encodePathPart
+
+
 /**
  * Mongo document key used by the dirty write queue.
  */

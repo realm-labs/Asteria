@@ -2,12 +2,7 @@ package io.github.mikai233.asteria.protocol.protobuf.gradle
 
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
-import kotlin.io.path.Path
-import kotlin.io.path.createDirectories
-import kotlin.io.path.createTempDirectory
-import kotlin.io.path.exists
-import kotlin.io.path.readText
-import kotlin.io.path.writeText
+import kotlin.io.path.*
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

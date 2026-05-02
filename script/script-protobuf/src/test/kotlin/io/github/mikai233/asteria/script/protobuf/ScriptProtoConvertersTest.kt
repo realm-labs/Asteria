@@ -1,8 +1,8 @@
 package io.github.mikai233.asteria.script.protobuf
 
 import io.github.mikai233.asteria.core.EntityKind
+import io.github.mikai233.asteria.script.*
 import io.github.mikai233.asteria.script.ScriptArtifact
-import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptExecutionMetadata
 import io.github.mikai233.asteria.script.ScriptExecutionResult
 import io.github.mikai233.asteria.script.ScriptResourceRef

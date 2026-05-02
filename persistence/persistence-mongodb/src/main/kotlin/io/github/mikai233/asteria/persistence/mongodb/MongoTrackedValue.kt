@@ -2,7 +2,7 @@ package io.github.mikai233.asteria.persistence.mongodb
 
 import io.github.mikai233.asteria.persistence.DataLease
 import io.github.mikai233.asteria.persistence.DataLeaseAware
-import java.util.Deque
+import java.util.*
 import kotlin.reflect.KProperty
 
 private const val DEFAULT_WRITE_BOUNDARY_DEPTH: Int = 2

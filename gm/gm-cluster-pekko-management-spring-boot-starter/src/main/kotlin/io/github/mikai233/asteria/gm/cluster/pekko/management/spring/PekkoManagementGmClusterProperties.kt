@@ -15,7 +15,12 @@ class PekkoManagementGmClusterProperties {
     fun toManagementEndpoints(): List<PekkoManagementEndpoint> {
         val configured = endpoints
             .filter { it.baseUrl.isNotBlank() }
-            .map { PekkoManagementEndpoint(baseUrl = it.baseUrl, nodeAddress = it.nodeAddress?.takeIf(String::isNotBlank)) }
+            .map {
+                PekkoManagementEndpoint(
+                    baseUrl = it.baseUrl,
+                    nodeAddress = it.nodeAddress?.takeIf(String::isNotBlank)
+                )
+            }
         if (configured.isNotEmpty()) {
             return configured
         }

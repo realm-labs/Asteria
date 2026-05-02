@@ -1,10 +1,10 @@
 package io.github.mikai233.asteria.config.gradle
 
-import javax.inject.Inject
 import org.gradle.api.Action
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
+import javax.inject.Inject
 
 /**
  * Gradle configuration for Asteria config table accessor generation.

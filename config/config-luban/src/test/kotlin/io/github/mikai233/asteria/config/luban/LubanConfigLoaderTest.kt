@@ -4,11 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode
 import io.github.mikai233.asteria.config.ConfigService
 import io.github.mikai233.asteria.config.requireComponent
 import io.github.mikai233.asteria.core.gameApplication
+import kotlinx.coroutines.runBlocking
 import java.io.IOException
 import java.nio.file.Files
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals

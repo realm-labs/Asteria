@@ -63,8 +63,8 @@ class SnowflakeIdGenerator(
         }
         lastTimestamp = timestamp
         return ((timestamp - options.epochMillis) shl timestampShift) or
-            (workerIdValue shl workerIdShift) or
-            sequence
+                (workerIdValue shl workerIdShift) or
+                sequence
     }
 
     private fun waitNextMillis(currentTimestamp: Long): Long {

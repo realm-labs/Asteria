@@ -4,11 +4,7 @@ import com.google.protobuf.DescriptorProtos
 import io.github.mikai233.asteria.rpc.RpcProtocolProvider
 import io.github.mikai233.asteria.rpc.protobuf.AsteriaRpcOptionsProto
 import io.github.mikai233.asteria.rpc.protobuf.ProtobufRpcProtocolContributor
-import kotlin.io.path.Path
-import kotlin.io.path.createTempDirectory
-import kotlin.io.path.exists
-import kotlin.io.path.readText
-import kotlin.io.path.writeBytes
+import kotlin.io.path.*
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertTrue

@@ -2,22 +2,14 @@ package io.github.mikai233.asteria.cluster.config
 
 import com.typesafe.config.ConfigFactory
 import io.github.mikai233.asteria.config.ConfigRevision
-import io.github.mikai233.asteria.config.center.ConfigCenterModule
-import io.github.mikai233.asteria.config.center.ConfigCodec
-import io.github.mikai233.asteria.config.center.InMemoryConfigStore
-import io.github.mikai233.asteria.config.center.RuntimeConfigRepository
-import io.github.mikai233.asteria.config.center.configPath
+import io.github.mikai233.asteria.config.center.*
 import io.github.mikai233.asteria.core.gameApplication
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.reflect.KClass
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class ClusterConfigTest {
     @Test
@@ -25,7 +17,10 @@ class ClusterConfigTest {
         val store = InMemoryConfigStore()
         val repository = RuntimeConfigRepository(store, NodeCodec)
         val layout = ClusterConfigLayout(configPath("/asteria/cluster"))
-        repository.put(layout.node("seed-1"), RuntimeNodeConfig("seed-1", "127.0.0.1", 2551, setOf("seed"), seed = true))
+        repository.put(
+            layout.node("seed-1"),
+            RuntimeNodeConfig("seed-1", "127.0.0.1", 2551, setOf("seed"), seed = true)
+        )
         repository.put(layout.node("player-1"), RuntimeNodeConfig("player-1", "127.0.0.2", 2552, setOf("player")))
 
         val provider = ConfigCenterClusterTopologyProvider(repository, layout)
@@ -111,8 +106,18 @@ class ClusterConfigTest {
     fun `revision consistency reports matching reachable revisions`() {
         val consistency = ClusterConfigRevisionConsistency(
             statuses = listOf(
-                ClusterConfigNodeStatus("player-1", "pekko://asteria@127.0.0.1:2551", setOf("player"), ConfigRevision("v1")),
-                ClusterConfigNodeStatus("world-1", "pekko://asteria@127.0.0.1:2552", setOf("world"), ConfigRevision("v1")),
+                ClusterConfigNodeStatus(
+                    "player-1",
+                    "pekko://asteria@127.0.0.1:2551",
+                    setOf("player"),
+                    ConfigRevision("v1")
+                ),
+                ClusterConfigNodeStatus(
+                    "world-1",
+                    "pekko://asteria@127.0.0.1:2552",
+                    setOf("world"),
+                    ConfigRevision("v1")
+                ),
             ),
         )
 

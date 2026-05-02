@@ -2,11 +2,7 @@ package io.github.mikai233.asteria.patch
 
 import io.github.mikai233.asteria.core.RoleKey
 import kotlinx.coroutines.runBlocking
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class PatchRuntimeTest {
     @Test

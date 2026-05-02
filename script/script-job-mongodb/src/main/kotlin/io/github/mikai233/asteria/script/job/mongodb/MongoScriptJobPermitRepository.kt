@@ -1,9 +1,7 @@
 package io.github.mikai233.asteria.script.job.mongodb
 
 import com.mongodb.MongoWriteException
-import com.mongodb.client.model.Filters.and
-import com.mongodb.client.model.Filters.eq
-import com.mongodb.client.model.Filters.lte
+import com.mongodb.client.model.Filters.*
 import com.mongodb.client.model.Indexes
 import com.mongodb.client.model.Updates.set
 import com.mongodb.kotlin.client.coroutine.MongoCollection
@@ -12,7 +10,7 @@ import io.github.mikai233.asteria.script.job.ScriptJobPermitLease
 import io.github.mikai233.asteria.script.job.ScriptJobPermitLeaseId
 import io.github.mikai233.asteria.script.job.ScriptJobPermitRepository
 import org.bson.Document
-import java.util.UUID
+import java.util.*
 
 /**
  * MongoDB-backed distributed permit repository.

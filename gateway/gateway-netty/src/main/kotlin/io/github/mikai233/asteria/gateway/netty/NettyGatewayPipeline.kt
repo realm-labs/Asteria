@@ -83,7 +83,15 @@ object NettyGatewayPipelineInstallers {
     fun lengthFieldTcp(): NettyGatewayPipelineInstaller {
         return NettyGatewayPipelineInstaller { channel, context ->
             channel.pipeline()
-                .addLast(LengthFieldBasedFrameDecoder(context.options.maxFrameLength, 0, Int.SIZE_BYTES, 0, Int.SIZE_BYTES))
+                .addLast(
+                    LengthFieldBasedFrameDecoder(
+                        context.options.maxFrameLength,
+                        0,
+                        Int.SIZE_BYTES,
+                        0,
+                        Int.SIZE_BYTES
+                    )
+                )
                 .addLast(LengthFieldPrepender(Int.SIZE_BYTES))
                 .addLast(context.gatewayFrameHandler(NettyGatewayFrameWriters.BYTE_BUF))
         }
@@ -94,7 +102,14 @@ object NettyGatewayPipelineInstallers {
             channel.pipeline()
                 .addLast(HttpServerCodec())
                 .addLast(HttpObjectAggregator(context.options.maxFrameLength))
-                .addLast(WebSocketServerProtocolHandler(context.options.websocketPath, null, true, context.options.maxFrameLength))
+                .addLast(
+                    WebSocketServerProtocolHandler(
+                        context.options.websocketPath,
+                        null,
+                        true,
+                        context.options.maxFrameLength
+                    )
+                )
                 .addLast(BinaryWebSocketFrameDecoder())
                 .addLast(context.gatewayFrameHandler(NettyGatewayFrameWriters.BINARY_WEBSOCKET_FRAME))
         }

@@ -25,18 +25,22 @@ interface ConfigTable<K : Any, R : Any> {
      * Table name used for lookup in a [ConfigSnapshot].
      */
     val name: ConfigTableName
+
     /**
      * Runtime key type used by typed lookup helpers to fail fast on mismatches.
      */
     val keyType: KClass<K>
+
     /**
      * Runtime row type used by typed lookup helpers to fail fast on mismatches.
      */
     val rowType: KClass<R>
+
     /**
      * Number of rows in this table.
      */
     val size: Int
+
     /**
      * All row ids.
      */

@@ -16,7 +16,10 @@ class ConfigCenterModule private constructor(
 
         val codec = options.codec
         context.services.register(ConfigCodec::class, codec)
-        context.services.register(RuntimeConfigRepository::class, RuntimeConfigRepository(store, codec, context.metricsOrNoop()))
+        context.services.register(
+            RuntimeConfigRepository::class,
+            RuntimeConfigRepository(store, codec, context.metricsOrNoop())
+        )
     }
 
     companion object {

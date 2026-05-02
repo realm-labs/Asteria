@@ -1,25 +1,20 @@
 package io.github.mikai233.asteria.protocol.protobuf.generator
 
-import com.google.protobuf.DescriptorProtos
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.MapperFeature
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.TypeSpec
+import com.google.protobuf.DescriptorProtos
+import com.squareup.kotlinpoet.*
 import io.github.mikai233.asteria.core.EntityKind
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.core.SingletonName
 import io.github.mikai233.asteria.message.RouteTarget
 import io.github.mikai233.asteria.protocol.protobuf.GeneratedProtobufGatewayProtocol
+import io.github.mikai233.asteria.protocol.protobuf.ProtobufGatewayProtocolBuilder
 import io.github.mikai233.asteria.protocol.protobuf.ProtobufGatewayProtocolContributor
 import io.github.mikai233.asteria.protocol.protobuf.ProtobufGatewayProtocolProvider
-import io.github.mikai233.asteria.protocol.protobuf.ProtobufGatewayProtocolBuilder
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.Path
@@ -136,12 +131,14 @@ object ProtobufGatewayProtocolGenerator {
                 EntityKind::class,
                 requireNotNull(target.name) { "entity route target requires name" },
             )
+
             GatewayRouteTargetType.SINGLETON -> CodeBlock.of(
                 "%T.Singleton(%T(%S))",
                 RouteTarget::class,
                 SingletonName::class,
                 requireNotNull(target.name) { "singleton route target requires name" },
             )
+
             GatewayRouteTargetType.SERVICE -> CodeBlock.of(
                 "%T.Service(%T(%S), %S)",
                 RouteTarget::class,
@@ -149,6 +146,7 @@ object ProtobufGatewayProtocolGenerator {
                 requireNotNull(target.role) { "service route target requires role" },
                 requireNotNull(target.path) { "service route target requires path" },
             )
+
             GatewayRouteTargetType.GATEWAY_LOCAL -> CodeBlock.of("%T.GatewayLocal", RouteTarget::class)
         }
     }
@@ -250,19 +248,21 @@ enum class GatewayMessageDirection {
 
 private val GatewayMessageDirection.serverOnly: Boolean
     get() = this == GatewayMessageDirection.SERVER ||
-        this == GatewayMessageDirection.S2C ||
-        this == GatewayMessageDirection.SERVER_TO_CLIENT
+            this == GatewayMessageDirection.S2C ||
+            this == GatewayMessageDirection.SERVER_TO_CLIENT
 
 private fun GatewayMessageDirection.builderFunctionName(): String {
     return when (this) {
         GatewayMessageDirection.CLIENT,
         GatewayMessageDirection.C2S,
         GatewayMessageDirection.CLIENT_TO_SERVER,
-        -> "clientMessage"
+            -> "clientMessage"
+
         GatewayMessageDirection.SERVER,
         GatewayMessageDirection.S2C,
         GatewayMessageDirection.SERVER_TO_CLIENT,
-        -> "serverMessage"
+            -> "serverMessage"
+
         GatewayMessageDirection.BIDIRECTIONAL -> "bidirectionalMessage"
     }
 }
@@ -293,7 +293,8 @@ private class ProtobufDescriptorIndex(
     private val messagesByJavaName: Map<String, DescriptorProtos.DescriptorProto> = buildMap {
         descriptorSet.fileList.forEach { file ->
             val javaPackage = file.options.javaPackage.takeIf { it.isNotBlank() } ?: file.`package`
-            val outerClassName = file.options.javaOuterClassname.takeIf { it.isNotBlank() } ?: defaultOuterClassName(file.name)
+            val outerClassName =
+                file.options.javaOuterClassname.takeIf { it.isNotBlank() } ?: defaultOuterClassName(file.name)
             val multipleFiles = file.options.javaMultipleFiles
             file.messageTypeList.forEach { message ->
                 putMessage(javaPackage, outerClassName, multipleFiles, emptyList(), message)

@@ -2,11 +2,7 @@ package io.github.mikai233.asteria.script.job
 
 import io.github.mikai233.asteria.script.ScriptExecutionCommand
 import io.github.mikai233.asteria.script.ScriptTarget
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
@@ -53,7 +49,8 @@ class SemaphoreScriptJobExecutionLimiter(
 ) : ScriptJobExecutionLimiter {
     private val global = semaphore(globalLimit, "global script job concurrency")
     private val engines = engineLimits.mapValues { (key, limit) -> semaphore(limit, "script engine $key concurrency") }
-    private val operators = operatorLimits.mapValues { (key, limit) -> semaphore(limit, "script operator $key concurrency") }
+    private val operators =
+        operatorLimits.mapValues { (key, limit) -> semaphore(limit, "script operator $key concurrency") }
     private val targetTypes = targetTypeLimits.mapKeys { it.key.lowercase() }
         .mapValues { (key, limit) -> semaphore(limit, "script target type $key concurrency") }
     private val jobs: MutableMap<String, Semaphore> = ConcurrentHashMap()
@@ -62,7 +59,12 @@ class SemaphoreScriptJobExecutionLimiter(
         val permits = buildList {
             add(global)
             context.requestedMaxConcurrentItems()?.takeIf { it < globalLimit }?.let { limit ->
-                add(jobs.computeIfAbsent(context.jobId.value) { semaphore(limit, "script job ${context.jobId} concurrency") })
+                add(jobs.computeIfAbsent(context.jobId.value) {
+                    semaphore(
+                        limit,
+                        "script job ${context.jobId} concurrency"
+                    )
+                })
             }
             engines[context.command.artifact.engine]?.let { add(it) }
             context.command.metadata.requester?.let { operators[it]?.let(::add) }

@@ -4,21 +4,15 @@ import io.github.mikai233.asteria.id.WorkerId
 import io.github.mikai233.asteria.id.WorkerIdOwner
 import io.github.mikai233.asteria.id.WorkerIdRange
 import io.github.mikai233.asteria.id.WorkerIdUnavailableException
-import java.time.Duration
-import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.CuratorFrameworkFactory
 import org.apache.curator.retry.ExponentialBackoffRetry
 import org.apache.curator.test.TestingServer
 import org.apache.curator.x.async.AsyncCuratorFramework
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import java.time.Duration
+import java.time.Instant
+import kotlin.test.*
 
 class ZookeeperWorkerIdRepositoryTest {
     @Test
@@ -28,7 +22,8 @@ class ZookeeperWorkerIdRepositoryTest {
             val now = Instant.parse("2026-05-02T00:00:00Z")
 
             val first = repository.acquire(WorkerIdOwner("node-a"), range, Duration.ofSeconds(30), now)
-            val firstAgain = repository.acquire(WorkerIdOwner("node-a"), range, Duration.ofSeconds(30), now.plusSeconds(1))
+            val firstAgain =
+                repository.acquire(WorkerIdOwner("node-a"), range, Duration.ofSeconds(30), now.plusSeconds(1))
             val second = repository.acquire(WorkerIdOwner("node-b"), range, Duration.ofSeconds(30), now)
 
             assertEquals(WorkerId(1), first.id)

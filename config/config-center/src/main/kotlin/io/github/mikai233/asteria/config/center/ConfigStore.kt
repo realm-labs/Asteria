@@ -24,8 +24,8 @@ data class ConfigEntry(
             return false
         }
         return path == other.path &&
-            bytes.contentEquals(other.bytes) &&
-            revision == other.revision
+                bytes.contentEquals(other.bytes) &&
+                revision == other.revision
     }
 
     override fun hashCode(): Int {

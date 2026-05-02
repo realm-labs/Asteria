@@ -13,7 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import java.util.UUID
+import java.util.*
 
 /**
  * Netty handler that owns gateway session lifecycle but lets the application receive native decoded Netty messages.

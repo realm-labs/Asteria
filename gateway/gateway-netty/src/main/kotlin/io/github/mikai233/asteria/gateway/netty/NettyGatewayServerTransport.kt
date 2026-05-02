@@ -8,12 +8,7 @@ import io.github.mikai233.asteria.observability.MetricTags
 import io.github.mikai233.asteria.observability.Metrics
 import io.github.mikai233.asteria.observability.NoopMetrics
 import io.netty.bootstrap.ServerBootstrap
-import io.netty.channel.Channel
-import io.netty.channel.ChannelInitializer
-import io.netty.channel.ChannelOption
-import io.netty.channel.EventLoopGroup
-import io.netty.channel.MultiThreadIoEventLoopGroup
-import io.netty.channel.ServerChannel
+import io.netty.channel.*
 import io.netty.channel.epoll.Epoll
 import io.netty.channel.epoll.EpollIoHandler
 import io.netty.channel.epoll.EpollServerSocketChannel
@@ -26,7 +21,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.slf4j.LoggerFactory
-import java.util.UUID
+import java.util.*
 
 data class NettyGatewayServerOptions(
     val host: String = "0.0.0.0",
@@ -149,10 +144,21 @@ abstract class NettyGatewayServerTransport(
             workerGroup = null
             bossGroup = null
             metrics.counter("asteria.gateway.netty.stop.succeeded.total", tags).increment()
-            logger.info("Netty gateway transport stopped kind={} host={} port={}", kind.name, options.host, options.port)
+            logger.info(
+                "Netty gateway transport stopped kind={} host={} port={}",
+                kind.name,
+                options.host,
+                options.port
+            )
         } catch (error: Throwable) {
             metrics.counter("asteria.gateway.netty.stop.failed.total", tags).increment()
-            logger.error("Netty gateway transport failed to stop kind={} host={} port={}", kind.name, options.host, options.port, error)
+            logger.error(
+                "Netty gateway transport failed to stop kind={} host={} port={}",
+                kind.name,
+                options.host,
+                options.port,
+                error
+            )
             throw error
         } finally {
             metrics.timer("asteria.gateway.netty.stop.duration", tags)

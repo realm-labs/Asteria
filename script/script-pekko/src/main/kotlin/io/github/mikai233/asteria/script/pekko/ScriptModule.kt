@@ -7,18 +7,7 @@ import io.github.mikai233.asteria.observability.Metrics
 import io.github.mikai233.asteria.observability.NoopMetrics
 import io.github.mikai233.asteria.observability.NoopTracer
 import io.github.mikai233.asteria.observability.Tracer
-import io.github.mikai233.asteria.script.CompositeScriptAuditSink
-import io.github.mikai233.asteria.script.DefaultScriptPolicy
-import io.github.mikai233.asteria.script.InMemoryScriptExecutionStore
-import io.github.mikai233.asteria.script.NoopScriptAuditSink
-import io.github.mikai233.asteria.script.ScriptAuditSink
-import io.github.mikai233.asteria.script.ScriptEngine
-import io.github.mikai233.asteria.script.ScriptEngineRegistry
-import io.github.mikai233.asteria.script.ScriptExecutor
-import io.github.mikai233.asteria.script.ScriptExecutionStore
-import io.github.mikai233.asteria.script.ScriptPolicy
-import io.github.mikai233.asteria.script.ScriptRunner
-import io.github.mikai233.asteria.script.ScriptRuntime
+import io.github.mikai233.asteria.script.*
 import org.apache.pekko.actor.ActorSystem
 
 class ScriptModule private constructor(

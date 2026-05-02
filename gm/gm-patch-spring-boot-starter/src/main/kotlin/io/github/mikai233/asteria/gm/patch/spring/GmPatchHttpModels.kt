@@ -2,12 +2,7 @@ package io.github.mikai233.asteria.gm.patch.spring
 
 import io.github.mikai233.asteria.core.RoleKey
 import io.github.mikai233.asteria.gm.patch.GmPatchCreateRequest
-import io.github.mikai233.asteria.patch.PatchId
-import io.github.mikai233.asteria.patch.PatchStatus
-import io.github.mikai233.asteria.patch.PatchTarget
-import io.github.mikai233.asteria.patch.RuntimePatchNodeResultQuery
-import io.github.mikai233.asteria.patch.RuntimePatchNodeStatus
-import io.github.mikai233.asteria.patch.RuntimePatchQuery
+import io.github.mikai233.asteria.patch.*
 
 data class GmPatchListRequest(
     val status: PatchStatus? = null,

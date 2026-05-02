@@ -94,7 +94,13 @@ class LocalGameApplicationTest {
             app.launch()
             val runtime = app.services.get<PekkoRuntime>()
             assertEquals(
-                RuntimeNodeConfig("seed-1", "127.0.0.1", topology.requireNode("seed-1").port, setOf("seed"), seed = true),
+                RuntimeNodeConfig(
+                    "seed-1",
+                    "127.0.0.1",
+                    topology.requireNode("seed-1").port,
+                    setOf("seed"),
+                    seed = true
+                ),
                 runtime.node,
             )
             assertEquals("config-center", app.services.get<GameServerStartupSummary>().topologySource)
@@ -119,8 +125,14 @@ class LocalGameApplicationTest {
             cluster.launch()
             assertEquals(NodeState.Started, cluster["seed-1"].state)
             assertEquals(NodeState.Started, cluster["player-1"].state)
-            assertEquals("local-config-center", cluster["seed-1"].services.get<GameServerStartupSummary>().topologySource)
-            assertEquals(listOf("player-1", "seed-1"), cluster["player-1"].services.get<GameServerStartupSummary>().topologyNodes.sorted())
+            assertEquals(
+                "local-config-center",
+                cluster["seed-1"].services.get<GameServerStartupSummary>().topologySource
+            )
+            assertEquals(
+                listOf("player-1", "seed-1"),
+                cluster["player-1"].services.get<GameServerStartupSummary>().topologyNodes.sorted()
+            )
         } finally {
             cluster.stop()
         }

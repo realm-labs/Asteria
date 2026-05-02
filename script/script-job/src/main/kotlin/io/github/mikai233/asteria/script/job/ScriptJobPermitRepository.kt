@@ -2,7 +2,7 @@ package io.github.mikai233.asteria.script.job
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.UUID
+import java.util.*
 
 @JvmInline
 value class ScriptJobPermitLeaseId(val value: String) {

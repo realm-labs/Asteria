@@ -14,7 +14,8 @@ class PatchModule private constructor(
         val runtime = PatchRuntime(options.environment, context.tracerOrNoop(), context.metricsOrNoop())
         val repository = options.repository ?: InMemoryRuntimePatchRepository()
         val resolver = options.resolver ?: StaticRuntimePatchPluginResolver()
-        val service = PatchApplicationService(runtime, repository, resolver, context.tracerOrNoop(), context.metricsOrNoop())
+        val service =
+            PatchApplicationService(runtime, repository, resolver, context.tracerOrNoop(), context.metricsOrNoop())
         val nodeResults = options.nodeResults ?: InMemoryRuntimePatchNodeResultRepository()
         val nodeProvider = options.nodeProvider ?: LocalPatchNodeProvider(options.environment)
         val nodeClient = options.nodeClient ?: LocalPatchNodeClient(service)
