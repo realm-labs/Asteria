@@ -7,6 +7,7 @@ import io.github.mikai233.asteria.config.ConfigReloadResult
 import io.github.mikai233.asteria.config.ConfigReloadStatus
 import io.github.mikai233.asteria.config.ConfigService
 import io.github.mikai233.asteria.config.ConfigSnapshot
+import io.github.mikai233.asteria.config.ConfigSnapshotDiff
 import io.github.mikai233.asteria.config.ConfigTableChange
 import io.github.mikai233.asteria.config.ConfigTable
 import io.github.mikai233.asteria.config.ConfigTableName
@@ -132,6 +133,7 @@ private fun ConfigReloadRecord.toGm(): GmConfigReloadRecord {
 }
 
 private fun ConfigReloadResult.toGm(): GmConfigReloadRecord {
+    val diff = ConfigSnapshotDiff.between(previous, current)
     return GmConfigReloadRecord(
         id = 0,
         status = GmConfigReloadRecordStatus.Success,

@@ -33,7 +33,7 @@ class ConfigReloadMonitor(
                 occurredAt = Instant.now(),
                 previousRevision = result.previous?.revision,
                 currentRevision = result.current.revision,
-                diff = result.diff,
+                diff = ConfigSnapshotDiff.between(result.previous, result.current),
             ),
         )
     }

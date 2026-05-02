@@ -37,8 +37,25 @@ interface ConfigReloadSubscription {
 data class ConfigReloadResult(
     val previous: ConfigSnapshot?,
     val current: ConfigSnapshot,
-    val diff: ConfigSnapshotDiff = ConfigSnapshotDiff.between(previous, current),
-)
+    val changedTables: Set<ConfigTableName> = emptySet(),
+) {
+    /**
+     * Returns the business-facing change event for a real reload, or `null` for the initial load
+     * and no-op reloads.
+     */
+    fun changeEventOrNull(): ConfigChangedEvent? {
+        val previous = previous ?: return null
+        if (changedTables.isEmpty()) {
+            return null
+        }
+        return ConfigChangedEvent(
+            previousRevision = previous.revision,
+            currentRevision = current.revision,
+            current = current,
+            changedTables = changedTables,
+        )
+    }
+}
 
 /**
  * Owns the current config snapshot and reload lifecycle.
@@ -91,9 +108,12 @@ class ConfigService(
             val loaded = buildComponents(raw)
             validate(loaded)
 
+            val previous = snapshot
+            val changedTables = ConfigSnapshotDiff.between(previous, loaded).changedTableNames()
             val result = ConfigReloadResult(
-                previous = snapshot,
+                previous = previous,
                 current = loaded,
+                changedTables = changedTables,
             )
             snapshot = loaded
 
@@ -131,6 +151,10 @@ class ConfigService(
         val errors = validators.flatMap { it.validate(snapshot).errors }
         ConfigValidationResult(errors).throwIfFailed()
     }
+}
+
+private fun ConfigSnapshotDiff.changedTableNames(): Set<ConfigTableName> {
+    return (addedTables + removedTables + changedTables).mapTo(linkedSetOf()) { it.name }
 }
 
 private data class BuiltConfigComponent(

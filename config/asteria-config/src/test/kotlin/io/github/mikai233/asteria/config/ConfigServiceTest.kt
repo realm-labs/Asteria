@@ -29,7 +29,8 @@ class ConfigServiceTest {
         assertEquals(2, table.size)
         assertEquals("project-configs", result.current.requireComponent<GeneratedTables>().name)
         assertEquals(result, notified)
-        assertEquals(listOf("items"), result.diff.addedTables.map { it.name.value })
+        val diff = ConfigSnapshotDiff.between(result.previous, result.current)
+        assertEquals(listOf("items"), diff.addedTables.map { it.name.value })
     }
 
     @Test
@@ -38,7 +39,7 @@ class ConfigServiceTest {
         val service = ConfigService(
             loader = ConfigLoader {
                 version += 1
-                snapshot("v$version")
+                changingSnapshot("v$version")
             },
             componentBuilders = listOf(
                 configComponentBuilder<GeneratedTables>("generated-tables") { snapshot ->
@@ -58,6 +59,30 @@ class ConfigServiceTest {
         assertEquals("component build failed", error.message)
         assertEquals("v1", service.current().revision.version)
         assertEquals("v1", service.current().requireComponent<GeneratedTables>().name)
+    }
+
+    @Test
+    fun `reload exposes changed event after publishing snapshot`() = runBlocking {
+        var version = 0
+        lateinit var service: ConfigService
+        service = ConfigService(
+            loader = ConfigLoader {
+                version += 1
+                changingSnapshot("v$version")
+            },
+        )
+        service.load()
+
+        val result = service.reload()
+        val event = result.changeEventOrNull()
+
+        assertEquals("v2", service.current().revision.version)
+        assertNotNull(event)
+        assertEquals(ConfigRevision("v1"), event.previousRevision)
+        assertEquals(ConfigRevision("v2"), event.currentRevision)
+        assertEquals(event.currentRevision, event.current.revision)
+        assertEquals(setOf(ConfigTableName("items")), event.changedTables)
+        assertEquals(event.currentRevision, service.current().revision)
     }
 
     @Test
@@ -198,6 +223,7 @@ class ConfigServiceTest {
 
         assertEquals(result.current.revision, status.currentRevision)
         assertEquals(result.current.revision, status.lastSuccess?.currentRevision)
+        assertEquals(listOf("items"), status.lastSuccess?.diff?.addedTables?.map { it.name.value })
         assertEquals("broken", status.lastFailure?.message)
         assertEquals(2, status.recent.size)
     }
@@ -245,6 +271,21 @@ class ConfigServiceTest {
                     name = "items",
                     rows = listOf(
                         ItemConfig(1, "Sword", 10),
+                        ItemConfig(2, "Potion", 5),
+                    ).associateBy { it.id },
+                ),
+            ),
+        )
+    }
+
+    private fun changingSnapshot(version: String): ConfigSnapshot {
+        return DefaultConfigSnapshot(
+            revision = ConfigRevision(version),
+            tables = listOf(
+                mapConfigTable(
+                    name = "items",
+                    rows = listOf(
+                        ItemConfig(1, "Sword-$version", 10),
                         ItemConfig(2, "Potion", 5),
                     ).associateBy { it.id },
                 ),
