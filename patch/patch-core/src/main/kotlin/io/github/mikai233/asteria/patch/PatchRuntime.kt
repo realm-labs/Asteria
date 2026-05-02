@@ -4,18 +4,60 @@ import java.io.Serializable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/**
+ * Runtime patch unit loaded and applied by a node.
+ *
+ * Implementations should prefer declaring changes through [PatchInstallContext], especially
+ * [PatchInstallContext.replace]. Replacement operations are tracked by the framework as ordered patch layers. When a
+ * later patch is disabled, the registry is rebuilt from the remaining layers, so the active implementation falls back
+ * to the previous patch instead of the original base entry.
+ *
+ * Keep patch instances small and deterministic. A patch may be applied during node startup replay or by a live GM
+ * operation, so [install] should be safe to run once for the patch id on each target node and should fail before
+ * creating irreversible side effects whenever possible.
+ */
 interface RuntimePatchPlugin {
+    /**
+     * Declares and initializes the patch.
+     *
+     * Use [PatchInstallContext.replace] for handler/service replacements. Those operations are committed only after
+     * every operation validates successfully, and committed operations are rolled back if a later operation fails.
+     *
+     * Code that changes state outside [PatchInstallContext], such as registering listeners, starting background jobs,
+     * or opening resources, is not automatically tracked. Such side effects should either happen after all replacement
+     * declarations or be cleaned up by [uninstall].
+     */
     suspend fun install(context: PatchInstallContext)
 
+    /**
+     * Cleans up side effects that the framework cannot track.
+     *
+     * Most pure replacement patches do not need to override this method. Registry replacements declared through
+     * [PatchInstallContext.replace] are removed by the framework after [uninstall] returns. The registry then falls
+     * back to the previous patch layer, or to the original base entry when no previous layer exists.
+     *
+     * Override this method for resources such as event subscriptions, scheduled tasks, metrics, temporary caches, file
+     * handles, or background jobs created by [install]. Do not manually restore handler/service replacements here unless
+     * they were changed outside [PatchInstallContext].
+     */
     suspend fun uninstall(context: PatchUninstallContext) {
     }
 }
 
+/**
+ * Records framework-managed operations for one patch installation.
+ */
 class PatchInstallContext internal constructor(
     private val order: PatchOrder,
 ) {
     private val operations: MutableList<PatchOperation> = mutableListOf()
 
+    /**
+     * Replaces one entry in [registry] for this patch layer.
+     *
+     * The replacement is ordered by the patch's [PatchOrder]. Disabling the patch removes only this layer and rebuilds
+     * the registry from the remaining layers, preserving earlier patches.
+     */
     fun <K : Any, V : Any> replace(registry: PatchableRegistry<K, V>, key: K, value: V) {
         operations.add(RegistryReplacementOperation(registry, key, value, order))
     }
@@ -23,7 +65,13 @@ class PatchInstallContext internal constructor(
     internal fun operations(): List<PatchOperation> = operations.toList()
 }
 
+/**
+ * Context passed to [RuntimePatchPlugin.uninstall].
+ */
 class PatchUninstallContext internal constructor(
+    /**
+     * Patch metadata for the patch being removed.
+     */
     val patch: RuntimePatch,
 )
 
