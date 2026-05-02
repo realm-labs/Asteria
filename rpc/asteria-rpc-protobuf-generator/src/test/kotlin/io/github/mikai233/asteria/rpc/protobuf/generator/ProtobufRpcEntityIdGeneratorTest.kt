@@ -36,7 +36,7 @@ class ProtobufRpcEntityIdGeneratorTest {
         val generatedFile = kotlinOutput.resolve(Path("com/example/generated/GeneratedEntityIds.kt"))
         assertTrue(generatedFile.exists())
         val generatedCode = generatedFile.readText()
-        assertContains(generatedCode, "object GeneratedEntityIds")
+        assertContains(generatedCode, "class GeneratedEntityIds : GeneratedProtobufRpcProtocol()")
         assertContains(generatedCode, "override fun contribute")
         assertContains(generatedCode, "entityId<ProtoLogin.LoginReq>")
         assertContains(generatedCode, "message.playerId.toString()")

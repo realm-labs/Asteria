@@ -90,7 +90,7 @@ object ProtobufRpcEntityIdGenerator {
             .addParameter("builder", ProtobufRpcProtocolBuilder::class)
             .addCode(buildContributorCode(entityIds))
             .build()
-        val entityIdType = TypeSpec.objectBuilder(config.className)
+        val entityIdType = TypeSpec.classBuilder(config.className)
             .superclass(GeneratedProtobufRpcProtocol::class)
             .addFunction(contributeFunction)
             .build()

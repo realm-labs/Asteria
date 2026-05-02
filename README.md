@@ -94,6 +94,7 @@ Standalone modules:
 - `asteria-cluster-pekko-management`: optional Pekko Management / Cluster Bootstrap startup strategy.
 - `asteria-cluster-pekko-kubernetes`: optional Kubernetes API discovery startup strategy.
 - `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
+- `asteria-protocol-protobuf-generator`: metadata-based generator for protobuf gateway protocol contributors.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
 - `asteria-persistence`: entity, mem data, data scope, data manager, persistence provider contracts.
 - `asteria-starter`: starter DSL helpers for local projects.
@@ -144,6 +145,45 @@ The protobuf entity id generator reads a descriptor set with `asteria.rpc.rpc_en
 `GeneratedProtobufRpcEntityIds` implementation plus the `ServiceLoader` metadata used by `RpcModule.autoDiscover()`.
 Actor targets are selected by application code through the shard or singleton `ActorRef`; RPC metadata only describes how
 cluster sharding extracts the entity id.
+
+Full RPC protocol metadata can also be generated from a compact JSON file when a project wants message ids, method names,
+targets, request/response types, and entity-id extraction to use the same generated registration path:
+
+```json
+{
+  "methods": [
+    {
+      "id": 1001,
+      "name": "player.query",
+      "mode": "ASK",
+      "requestType": "com.example.protocol.QueryPlayerReq",
+      "responseId": 1002,
+      "responseType": "com.example.protocol.QueryPlayerResp",
+      "target": { "type": "ENTITY", "name": "player" },
+      "entityIdProperty": "playerId"
+    }
+  ]
+}
+```
+
+Gateway protobuf protocols can also be generated from metadata:
+
+```json
+{
+  "messages": [
+    {
+      "id": 1001,
+      "type": "com.example.protocol.LoginReq",
+      "direction": "CLIENT",
+      "target": { "type": "ENTITY", "name": "player" },
+      "idProperty": "playerId"
+    }
+  ]
+}
+```
+
+The generator emits a `GeneratedProtobufGatewayProtocol` implementation that registers message ids, parsers, directions,
+and gateway routes without baking in business packet framing or login semantics.
 
 Observability is optional and defaults to no-op tracing and metrics:
 
