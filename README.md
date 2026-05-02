@@ -16,8 +16,7 @@ Foundation modules:
 RPC modules:
 
 - `rpc/asteria-rpc`: RPC target and route registry contracts.
-- `rpc/asteria-rpc-protobuf`: protobuf RPC route registry runtime contracts for generated routes.
-- `rpc/asteria-rpc-protobuf-generator`: descriptor-set based generator for protobuf RPC route registries.
+- `rpc/asteria-rpc-protobuf`: protobuf RPC message id and entity id registry runtime contracts.
 
 Script modules:
 
@@ -90,15 +89,15 @@ Observability modules:
 
 Standalone modules:
 
+- `asteria-game-server-pekko-starter`: common Pekko game server dependencies and starter DSL helpers.
 - `asteria-cluster-pekko`: Pekko Cluster Sharding and Singleton adapters.
 - `asteria-cluster-pekko-management`: optional Pekko Management / Cluster Bootstrap startup strategy.
 - `asteria-cluster-pekko-kubernetes`: optional Kubernetes API discovery startup strategy.
 - `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
-- `asteria-protocol-protobuf-generator`: metadata-based generator for protobuf gateway protocol contributors.
+- `asteria-protobuf-codegen`: metadata and descriptor based protobuf protocol code generators.
 - `asteria-protocol-protobuf-gradle-plugin`: Gradle plugin that wires protobuf gateway/RPC metadata code generation.
 - `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
 - `asteria-persistence`: entity, mem data, data scope, data manager, persistence provider contracts.
-- `asteria-starter`: starter DSL helpers for local projects.
 
 ## Minimal Shape
 

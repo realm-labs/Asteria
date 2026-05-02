@@ -5,9 +5,8 @@ plugins {
 
 dependencies {
     implementation(project(":asteria-protocol-protobuf"))
-    implementation(project(":asteria-protocol-protobuf-generator"))
+    implementation(project(":asteria-protobuf-codegen"))
     implementation(project(":asteria-rpc-protobuf"))
-    implementation(project(":asteria-rpc-protobuf-generator"))
     implementation("org.jetbrains.kotlin.jvm:org.jetbrains.kotlin.jvm.gradle.plugin:2.3.21")
     implementation(localGroovy())
 

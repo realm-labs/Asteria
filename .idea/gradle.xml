@@ -19,16 +19,15 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/asteria-cluster-pekko" />
-            <option value="$PROJECT_DIR$/asteria-cluster-pekko-kubernetes" />
-            <option value="$PROJECT_DIR$/asteria-cluster-pekko-management" />
-            <option value="$PROJECT_DIR$/asteria-gateway-netty" />
-            <option value="$PROJECT_DIR$/asteria-persistence" />
-            <option value="$PROJECT_DIR$/asteria-persistence-mongodb" />
-            <option value="$PROJECT_DIR$/asteria-protocol-protobuf" />
-            <option value="$PROJECT_DIR$/asteria-protocol-protobuf-generator" />
-            <option value="$PROJECT_DIR$/asteria-protocol-protobuf-gradle-plugin" />
-            <option value="$PROJECT_DIR$/asteria-starter" />
+            <option value="$PROJECT_DIR$/cluster/asteria-cluster-pekko" />
+            <option value="$PROJECT_DIR$/cluster/asteria-cluster-pekko-kubernetes" />
+            <option value="$PROJECT_DIR$/cluster/asteria-cluster-pekko-management" />
+            <option value="$PROJECT_DIR$/gateway/asteria-gateway-netty" />
+            <option value="$PROJECT_DIR$/persistence/asteria-persistence" />
+            <option value="$PROJECT_DIR$/persistence/asteria-persistence-mongodb" />
+            <option value="$PROJECT_DIR$/protocol/asteria-protobuf-codegen" />
+            <option value="$PROJECT_DIR$/protocol/asteria-protocol-protobuf" />
+            <option value="$PROJECT_DIR$/protocol/asteria-protocol-protobuf-gradle-plugin" />
             <option value="$PROJECT_DIR$/broadcast/asteria-broadcast" />
             <option value="$PROJECT_DIR$/broadcast/asteria-broadcast-pekko" />
             <option value="$PROJECT_DIR$/broadcast/asteria-broadcast-protobuf" />
@@ -64,7 +63,6 @@
             <option value="$PROJECT_DIR$/observability/asteria-observability-opentelemetry" />
             <option value="$PROJECT_DIR$/rpc/asteria-rpc" />
             <option value="$PROJECT_DIR$/rpc/asteria-rpc-protobuf" />
-            <option value="$PROJECT_DIR$/rpc/asteria-rpc-protobuf-generator" />
             <option value="$PROJECT_DIR$/script/asteria-script-core" />
             <option value="$PROJECT_DIR$/script/asteria-script-engine-groovy" />
             <option value="$PROJECT_DIR$/script/asteria-script-engine-jar" />
@@ -74,6 +72,7 @@
             <option value="$PROJECT_DIR$/script/asteria-script-job-spring-boot-starter" />
             <option value="$PROJECT_DIR$/script/asteria-script-pekko" />
             <option value="$PROJECT_DIR$/script/asteria-script-protobuf" />
+            <option value="$PROJECT_DIR$/starter/asteria-game-server-pekko-starter" />
             <option value="$PROJECT_DIR$/utils/asteria-game-utils" />
           </set>
         </option>

@@ -20,7 +20,7 @@ include(
     "asteria-observability-opentelemetry",
     "asteria-rpc",
     "asteria-rpc-protobuf",
-    "asteria-rpc-protobuf-generator",
+    "asteria-protobuf-codegen",
     "asteria-broadcast",
     "asteria-broadcast-protobuf",
     "asteria-broadcast-pekko",
@@ -50,7 +50,6 @@ include(
     "asteria-gateway-core",
     "asteria-gateway-pekko",
     "asteria-protocol-protobuf",
-    "asteria-protocol-protobuf-generator",
     "asteria-protocol-protobuf-gradle-plugin",
     "asteria-gateway-netty",
     "asteria-persistence",
@@ -66,7 +65,7 @@ include(
     "asteria-config-center-etcd",
     "asteria-config-center-nacos",
     "asteria-cluster-config",
-    "asteria-starter",
+    "asteria-game-server-pekko-starter",
 )
 
 mapOf(
@@ -78,7 +77,7 @@ mapOf(
     "asteria-observability-opentelemetry" to "observability/asteria-observability-opentelemetry",
     "asteria-rpc" to "rpc/asteria-rpc",
     "asteria-rpc-protobuf" to "rpc/asteria-rpc-protobuf",
-    "asteria-rpc-protobuf-generator" to "rpc/asteria-rpc-protobuf-generator",
+    "asteria-protobuf-codegen" to "protocol/asteria-protobuf-codegen",
     "asteria-broadcast" to "broadcast/asteria-broadcast",
     "asteria-broadcast-protobuf" to "broadcast/asteria-broadcast-protobuf",
     "asteria-broadcast-pekko" to "broadcast/asteria-broadcast-pekko",
@@ -112,11 +111,18 @@ mapOf(
     "asteria-gm-cluster-pekko" to "gm/asteria-gm-cluster-pekko",
     "asteria-gm-cluster-pekko-management" to "gm/asteria-gm-cluster-pekko-management",
     "asteria-gm-cluster-pekko-management-spring-boot-starter" to "gm/asteria-gm-cluster-pekko-management-spring-boot-starter",
+    "asteria-cluster-pekko" to "cluster/asteria-cluster-pekko",
+    "asteria-cluster-pekko-management" to "cluster/asteria-cluster-pekko-management",
+    "asteria-cluster-pekko-kubernetes" to "cluster/asteria-cluster-pekko-kubernetes",
     "asteria-gateway-core" to "gateway/asteria-gateway-core",
     "asteria-gateway-pekko" to "gateway/asteria-gateway-pekko",
-    "asteria-protocol-protobuf-generator" to "asteria-protocol-protobuf-generator",
-    "asteria-protocol-protobuf-gradle-plugin" to "asteria-protocol-protobuf-gradle-plugin",
+    "asteria-gateway-netty" to "gateway/asteria-gateway-netty",
+    "asteria-protocol-protobuf" to "protocol/asteria-protocol-protobuf",
+    "asteria-protocol-protobuf-gradle-plugin" to "protocol/asteria-protocol-protobuf-gradle-plugin",
+    "asteria-persistence" to "persistence/asteria-persistence",
+    "asteria-persistence-mongodb" to "persistence/asteria-persistence-mongodb",
     "asteria-game-utils" to "utils/asteria-game-utils",
+    "asteria-game-server-pekko-starter" to "starter/asteria-game-server-pekko-starter",
 ).forEach { (name, path) ->
     project(":$name").projectDir = file(path)
 }

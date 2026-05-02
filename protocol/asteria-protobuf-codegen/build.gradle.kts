@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":asteria-protocol-protobuf"))
     implementation(project(":asteria-rpc-protobuf"))
     implementation(libs.jackson.databind)
     implementation(libs.jackson.module.kotlin)
