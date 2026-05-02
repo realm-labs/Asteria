@@ -42,6 +42,7 @@ Config modules:
 - `:config:config-gradle-plugin`: Gradle plugin that wires KSP and config accessor generator dependencies.
 - `:config:config-ksp`: KSP processor that generates strongly typed config table refs and dynamic accessors.
 - `:config:config-luban`: optional Luban Java JSON and binary config loaders with module integration.
+- `:config:config-publisher`: validates exported config artifacts and publishes manifests plus raw files to a config center.
 - `:config:config-center`: config center store, watch, typed repository, codec, and in-memory implementation contracts.
 - `:config:config-center-zookeeper`: Zookeeper config center adapter backed by Apache Curator.
 - `:config:config-center-etcd`: Etcd config center adapter backed by jetcd.
@@ -81,6 +82,28 @@ The plugin wires KSP and generates strongly typed table refs plus dynamic `Confi
   ]
 }
 ```
+
+Config publication:
+
+```kotlin
+val publisher = ConfigPublisher(
+    loader = LubanBinaryConfigLoader(
+        tablesType = GameTables::class,
+        dataDir = layout.projectDirectory.dir("build/luban").asFile.toPath(),
+    ),
+    artifactSource = DirectoryConfigArtifactSource(layout.projectDirectory.dir("build/luban").asFile.toPath()),
+    store = configStore,
+    validators = listOf(gameConfigValidator),
+    componentBuilders = listOf(itemIndexBuilder, activityTimelineBuilder),
+)
+
+val result = publisher.publish()
+```
+
+The publisher is intended to run after the game's export tool has produced raw config files. It loads the exported
+snapshot, rebuilds runtime components, runs validators, uploads raw artifacts, writes a manifest for the revision, and
+only then advances the `current` pointer in the config center. Consumers should watch the current pointer instead of
+guessing which revision directory is newest.
 
 Observability modules:
 

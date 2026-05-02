@@ -62,6 +62,7 @@ include(
     "config:config-gradle-plugin",
     "config:config-ksp",
     "config:config-luban",
+    "config:config-publisher",
     "config:config-center",
     "config:config-center-zookeeper",
     "config:config-center-etcd",
