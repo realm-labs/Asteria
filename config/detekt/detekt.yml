@@ -1,0 +1,55 @@
+style:
+  MaxLineLength:
+    active: false
+  MagicNumber:
+    active: false
+  LoopWithTooManyJumpStatements:
+    active: false
+  ReturnCount:
+    active: false
+  SerialVersionUIDInSerializableClass:
+    active: false
+  ThrowsCount:
+    active: false
+  WildcardImport:
+    active: false
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+
+complexity:
+  ComplexCondition:
+    active: false
+  CyclomaticComplexMethod:
+    active: false
+  LargeClass:
+    active: false
+  LongMethod:
+    active: false
+  TooManyFunctions:
+    active: false
+
+empty-blocks:
+  EmptyFunctionBlock:
+    active: false
+
+naming:
+  MatchingDeclarationName:
+    active: false
+
+ktlint:
+  active: false
+  autoCorrect: false
+  ClassSignature:
+    active: false
+  Filename:
+    active: false
+  FunctionExpressionBody:
+    active: false
+  FunctionSignature:
+    active: false
+  NoWildcardImports:
+    active: false
+  Wrapping:
+    active: false

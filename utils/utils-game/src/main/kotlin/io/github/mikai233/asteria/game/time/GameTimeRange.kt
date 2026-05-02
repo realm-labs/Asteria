@@ -145,7 +145,7 @@ fun currentGameDayRange(
 }
 
 private fun DayOfWeek.weekMinute(time: LocalTime): Int {
-    return (value - 1) * MinutesPerDay + time.hour * 60 + time.minute
+    return (value - 1) * MINUTES_PER_DAY + time.hour * 60 + time.minute
 }
 
-private const val MinutesPerDay: Int = 24 * 60
+private const val MINUTES_PER_DAY: Int = 24 * 60
