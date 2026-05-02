@@ -9,44 +9,44 @@ application-level choices instead of framework requirements.
 
 Foundation modules:
 
-- `foundation/asteria-core`: application lifecycle, module system, role keys, entity specs, singleton specs, service registry.
-- `foundation/asteria-actor`: Pekko actor base utilities, actor coroutine dispatcher, timer helpers.
-- `foundation/asteria-message`: message contracts, handler dispatch, route registry, handler context.
+- `:foundation:foundation-core`: application lifecycle, module system, role keys, entity specs, singleton specs, service registry.
+- `:foundation:foundation-actor`: Pekko actor base utilities, actor coroutine dispatcher, timer helpers.
+- `:foundation:foundation-message`: message contracts, handler dispatch, route registry, handler context.
 
 RPC modules:
 
-- `rpc/asteria-rpc`: RPC target and route registry contracts.
-- `rpc/asteria-rpc-protobuf`: protobuf RPC message id and entity id registry runtime contracts.
+- `:rpc:rpc-core`: RPC target and route registry contracts.
+- `:rpc:rpc-protobuf`: protobuf RPC message id and entity id registry runtime contracts.
 
 Script modules:
 
-- `script/asteria-script-core`: optional script execution contracts, targets, contexts, engines, and results.
-- `script/asteria-script-job`: optional async script job orchestration and result storage contracts for GM workflows.
-- `script/asteria-script-protobuf`: protobuf wire contracts and converters for script commands and results.
-- `script/asteria-script-pekko`: optional Pekko integration for node, role, actor path, entity, and singleton script targets.
+- `:script:script-core`: optional script execution contracts, targets, contexts, engines, and results.
+- `:script:script-job`: optional async script job orchestration and result storage contracts for GM workflows.
+- `:script:script-protobuf`: protobuf wire contracts and converters for script commands and results.
+- `:script:script-pekko`: optional Pekko integration for node, role, actor path, entity, and singleton script targets.
 
 GM modules:
 
-- `gm/asteria-gm-core`: GM feature metadata, permission, scope, policy, and audit contracts.
-- `gm/asteria-gm-spring-boot-starter`: Spring Boot starter that exposes installed GM features to HTTP clients.
-- `gm/asteria-gm-script`: script execution GM feature metadata and script job operation contracts.
-- `gm/asteria-gm-script-spring-boot-starter`: optional Spring Boot HTTP API for script GM tools.
-- `gm/asteria-gm-cluster`: runtime-neutral cluster status and actor query contracts for GM tools.
-- `gm/asteria-gm-cluster-spring-boot-starter`: optional Spring Boot HTTP API for cluster GM tools.
-- `gm/asteria-gm-cluster-pekko`: Pekko-backed cluster status adapter for GM tools.
+- `:gm:gm-core`: GM feature metadata, permission, scope, policy, and audit contracts.
+- `:gm:gm-spring-boot-starter`: Spring Boot starter that exposes installed GM features to HTTP clients.
+- `:gm:gm-script`: script execution GM feature metadata and script job operation contracts.
+- `:gm:gm-script-spring-boot-starter`: optional Spring Boot HTTP API for script GM tools.
+- `:gm:gm-cluster`: runtime-neutral cluster status and actor query contracts for GM tools.
+- `:gm:gm-cluster-spring-boot-starter`: optional Spring Boot HTTP API for cluster GM tools.
+- `:gm:gm-cluster-pekko`: Pekko-backed cluster status adapter for GM tools.
 
 Config modules:
 
-- `config/asteria-config`: config table snapshot, reload, validation, and module contracts.
-- `config/asteria-config-annotations`: annotations used by config table accessor code generation.
-- `config/asteria-config-gradle-plugin`: Gradle plugin that wires KSP and config accessor generator dependencies.
-- `config/asteria-config-ksp`: KSP processor that generates strongly typed config table refs and dynamic accessors.
-- `config/asteria-config-luban`: optional Luban Java JSON and binary config loaders with module integration.
-- `config/asteria-config-center`: config center store, watch, typed repository, codec, and in-memory implementation contracts.
-- `config/asteria-config-center-zookeeper`: Zookeeper config center adapter backed by Apache Curator.
-- `config/asteria-config-center-etcd`: Etcd config center adapter backed by jetcd.
-- `config/asteria-config-center-nacos`: Nacos config center adapter backed by the official Nacos client.
-- `config/asteria-cluster-config`: runtime node config, cluster topology, and config-center backed topology provider.
+- `:config:config-core`: config table snapshot, reload, validation, and module contracts.
+- `:config:config-annotations`: annotations used by config table accessor code generation.
+- `:config:config-gradle-plugin`: Gradle plugin that wires KSP and config accessor generator dependencies.
+- `:config:config-ksp`: KSP processor that generates strongly typed config table refs and dynamic accessors.
+- `:config:config-luban`: optional Luban Java JSON and binary config loaders with module integration.
+- `:config:config-center`: config center store, watch, typed repository, codec, and in-memory implementation contracts.
+- `:config:config-center-zookeeper`: Zookeeper config center adapter backed by Apache Curator.
+- `:config:config-center-etcd`: Etcd config center adapter backed by jetcd.
+- `:config:config-center-nacos`: Nacos config center adapter backed by the official Nacos client.
+- `:cluster:cluster-config`: runtime node config, cluster topology, and config-center backed topology provider.
 
 Config accessor generation:
 
@@ -84,20 +84,20 @@ The plugin wires KSP and generates strongly typed table refs plus dynamic `Confi
 
 Observability modules:
 
-- `observability/asteria-observability-core`: optional tracing, metrics, trace context, no-op defaults, and module registration.
-- `observability/asteria-observability-opentelemetry`: OpenTelemetry bridge for Asteria observability.
+- `:observability:observability-core`: optional tracing, metrics, trace context, no-op defaults, and module registration.
+- `:observability:observability-opentelemetry`: OpenTelemetry bridge for Asteria observability.
 
 Standalone modules:
 
-- `asteria-game-server-pekko-starter`: common Pekko game server dependencies and starter DSL helpers.
-- `asteria-cluster-pekko`: Pekko Cluster Sharding and Singleton adapters.
-- `asteria-cluster-pekko-management`: optional Pekko Management / Cluster Bootstrap startup strategy.
-- `asteria-cluster-pekko-kubernetes`: optional Kubernetes API discovery startup strategy.
-- `asteria-protocol-protobuf`: protobuf ID registry and frame encoding contracts.
-- `asteria-protobuf-codegen`: metadata and descriptor based protobuf protocol code generators.
-- `asteria-protocol-protobuf-gradle-plugin`: Gradle plugin that wires protobuf gateway/RPC metadata code generation.
-- `asteria-gateway-netty`: Netty gateway session and packet/protobuf codecs.
-- `asteria-persistence`: entity, mem data, data scope, data manager, persistence provider contracts.
+- `:starter:starter-game-server-pekko`: common Pekko game server dependencies and starter DSL helpers.
+- `:cluster:cluster-pekko`: Pekko Cluster Sharding and Singleton adapters.
+- `:cluster:cluster-pekko-management`: optional Pekko Management / Cluster Bootstrap startup strategy.
+- `:cluster:cluster-pekko-kubernetes`: optional Kubernetes API discovery startup strategy.
+- `:protocol:protocol-protobuf`: protobuf ID registry and frame encoding contracts.
+- `:protocol:protobuf-codegen`: metadata and descriptor based protobuf protocol code generators.
+- `:protocol:protobuf-codegen-gradle-plugin`: Gradle plugin that wires protobuf gateway/RPC metadata code generation.
+- `:gateway:gateway-netty`: Netty gateway session and packet/protobuf codecs.
+- `:persistence:persistence-core`: entity, mem data, data scope, data manager, persistence provider contracts.
 
 ## Minimal Shape
 
@@ -314,9 +314,9 @@ written through Asteria.
 
 Pekko cluster runtime is driven by a startup strategy. `TopologyPekkoClusterStartup` selects the current node by
 `nodeId`; Asteria generates the Pekko host, port, roles, and seed node config from `RuntimeNodeConfig`.
-`LocalPekkoClusterStartup` self-joins a single local node. The core `asteria-cluster-pekko` module does not depend on
-Pekko Management or Kubernetes Discovery. For dynamic environments, add `asteria-cluster-pekko-management` to use
-`BootstrapPekkoClusterStartup`, or add `asteria-cluster-pekko-kubernetes` to use `KubernetesApiPekkoClusterStartup`.
+`LocalPekkoClusterStartup` self-joins a single local node. The core `:cluster:cluster-pekko` module does not depend on
+Pekko Management or Kubernetes Discovery. For dynamic environments, add `:cluster:cluster-pekko-management` to use
+`BootstrapPekkoClusterStartup`, or add `:cluster:cluster-pekko-kubernetes` to use `KubernetesApiPekkoClusterStartup`.
 Applications still provide deployment-specific network values such as canonical host and port through config or
 `application.conf`.
 
