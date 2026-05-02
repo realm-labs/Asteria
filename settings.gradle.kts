@@ -55,6 +55,7 @@ include(
     "protocol:protobuf-codegen-gradle-plugin",
     "persistence:persistence-core",
     "persistence:persistence-mongodb",
+    "persistence:persistence-mongodb-ksp",
     "utils:utils-game",
     "config:config-core",
     "config:config-annotations",

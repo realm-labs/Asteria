@@ -140,13 +140,17 @@ abstract class MongoTrackedObjectSupport(
 ) : MongoPersistentValue, MongoDirtyTargetAware, DataLeaseAware {
     private var dirtyTarget: MongoDirtyTarget? = null
     private var lease: DataLease? = null
+    private val dirtyTargetChildren: MutableList<MongoDirtyTargetAware> = mutableListOf()
+    private val leaseChildren: MutableList<DataLeaseAware> = mutableListOf()
 
     override fun bindDirtyTarget(dirtyTarget: MongoDirtyTarget?) {
         this.dirtyTarget = dirtyTarget
+        dirtyTargetChildren.forEach { it.bindDirtyTarget(dirtyTarget) }
     }
 
     override fun bindLease(lease: DataLease) {
         this.lease = lease
+        leaseChildren.forEach { it.bindLease(lease) }
     }
 
     protected fun markSet(path: MongoPath, value: Any?) {
@@ -159,4 +163,19 @@ abstract class MongoTrackedObjectSupport(
     }
 
     protected fun currentDirtyTarget(): MongoDirtyTarget? = dirtyTarget
+
+    /**
+     * Registers a generated nested wrapper so unload leases and dirty boundaries propagate through the object graph.
+     */
+    protected fun <T> trackChild(child: T): T {
+        if (child is MongoDirtyTargetAware) {
+            dirtyTargetChildren += child
+            child.bindDirtyTarget(dirtyTarget)
+        }
+        if (child is DataLeaseAware) {
+            leaseChildren += child
+            lease?.let(child::bindLease)
+        }
+        return child
+    }
 }

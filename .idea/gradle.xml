@@ -66,6 +66,7 @@
             <option value="$PROJECT_DIR$/persistence" />
             <option value="$PROJECT_DIR$/persistence/persistence-core" />
             <option value="$PROJECT_DIR$/persistence/persistence-mongodb" />
+            <option value="$PROJECT_DIR$/persistence/persistence-mongodb-ksp" />
             <option value="$PROJECT_DIR$/protocol" />
             <option value="$PROJECT_DIR$/protocol/protobuf-codegen" />
             <option value="$PROJECT_DIR$/protocol/protobuf-codegen-gradle-plugin" />

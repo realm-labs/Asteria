@@ -98,6 +98,8 @@ Standalone modules:
 - `:protocol:protobuf-codegen-gradle-plugin`: Gradle plugin that wires protobuf gateway/RPC metadata code generation.
 - `:gateway:gateway-netty`: Netty gateway session and packet/protobuf codecs.
 - `:persistence:persistence-core`: entity, mem data, data scope, data manager, persistence provider contracts.
+- `:persistence:persistence-mongodb`: MongoDB tracked document, row cache, dirty patch, flush, and WAL support.
+- `:persistence:persistence-mongodb-ksp`: KSP processor that generates Mongo tracked wrappers from storage DTOs.
 
 ## Minimal Shape
 
@@ -211,6 +213,71 @@ asteriaProtobufProtocol {
 
 The gateway client metadata output keeps only ids, message types, directions, and optional request/response names. Server
 route targets and entity-id fields stay server-side.
+
+Mongo tracked wrappers can be generated from storage DTOs. The DTO remains the Mongo serialization shape, while the
+generated wrapper is the mutable actor-local view that records dirty fields.
+
+```kotlin
+@AsteriaMongoEntity(collection = "players")
+data class PlayerEntity(
+    @AsteriaMongoId
+    override val id: Long,
+    val name: String,
+    @AsteriaMongoField("lv")
+    val level: Int,
+    val bag: MutableMap<String, ItemStack>,
+) : Entity<Long>
+```
+
+The generator accepts Mongo-safe scalar values, enums, arrays, `Map` / `List` / `Set`, and project data classes whose
+properties are also Mongo-safe. Direct data-class fields receive generated nested wrappers, so field mutations are still
+tracked:
+
+```kotlin
+player.profile.nickname = "alice"
+```
+
+Other project-defined or externally coded value objects must be explicitly registered:
+
+```kotlin
+@AsteriaMongoValue
+data class EncodedPayload(val bytes: ByteArray)
+```
+
+For third-party types that cannot be annotated, pass a KSP option:
+
+```kotlin
+ksp {
+    arg("asteria.mongodb.allowedTypes", "com.example.money.Money,com.example.geo.GeoPoint")
+}
+```
+
+This keeps generated wrappers from silently accepting objects that the Mongo codec cannot serialize or whose inner
+mutations would not be tracked.
+
+The generated code provides `TrackedPlayerEntity` and `PlayerEntityMongo`:
+
+```kotlin
+val players = PlayerEntityMongo.table(
+    database = mongoDatabase,
+    cachePolicy = RowCachePolicy(10.minutes),
+)
+
+players.use(playerId) { player ->
+    player.level += 1
+    player.bag["1001"] = ItemStack(itemId = 1001, count = 5)
+}
+```
+
+Business modules enable it with KSP:
+
+```kotlin
+dependencies {
+    implementation("io.github.mikai233:persistence-core:<version>")
+    implementation("io.github.mikai233:persistence-mongodb:<version>")
+    ksp("io.github.mikai233:persistence-mongodb-ksp:<version>")
+}
+```
 
 Observability is optional and defaults to no-op tracing and metrics:
 
