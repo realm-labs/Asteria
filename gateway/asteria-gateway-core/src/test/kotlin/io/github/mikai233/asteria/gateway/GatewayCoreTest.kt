@@ -104,6 +104,38 @@ class GatewayCoreTest {
         assertEquals("hello", forwarded)
         assertEquals(null, registry.get(GatewaySessionId("s1")))
     }
+
+    @Test
+    fun `session responder encodes and writes packet to session`() = runBlocking {
+        val registry = LocalGatewaySessionRegistry()
+        val connection = RecordingConnection()
+        val session = GatewaySession(GatewaySessionId("s1"), connection)
+        registry.register(session)
+        val responder = SessionGatewayResponder(
+            sessions = registry,
+            packets = GatewayPacketPipeline(
+                codec = StringPacketCodec,
+                interceptors = listOf(SuffixInterceptor("out")),
+            ),
+        )
+
+        val sent = responder.respond(GatewaySessionId("s1"), "reply")
+
+        assertEquals(true, sent)
+        assertEquals(listOf(GatewayFrame("reply-out".encodeToByteArray())), connection.frames)
+    }
+
+    @Test
+    fun `session responder returns false for missing session`() = runBlocking {
+        val responder = SessionGatewayResponder(
+            sessions = LocalGatewaySessionRegistry(),
+            packets = GatewayPacketPipeline(StringPacketCodec),
+        )
+
+        val sent = responder.respond(GatewaySessionId("missing"), "reply")
+
+        assertEquals(false, sent)
+    }
 }
 
 private object StringPacketCodec : GatewayPacketCodec<String> {

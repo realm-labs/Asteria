@@ -30,6 +30,7 @@ jetcd-core = { module = "io.etcd:jetcd-core", version.ref = "jetcd" }
 nacos-client = { module = "com.alibaba.nacos:nacos-client", version.ref = "nacos" }
 netty-all = { module = "io.netty:netty-all", version.ref = "netty" }
 pekko-actor = { module = "org.apache.pekko:pekko-actor_2.13", version.ref = "pekko" }
+pekko-testkit = { module = "org.apache.pekko:pekko-testkit_2.13", version.ref = "pekko" }
 pekko-cluster-sharding = { module = "org.apache.pekko:pekko-cluster-sharding_2.13", version.ref = "pekko" }
 pekko-cluster-tools = { module = "org.apache.pekko:pekko-cluster-tools_2.13", version.ref = "pekko" }
 pekko-discovery = { module = "org.apache.pekko:pekko-discovery_2.13", version.ref = "pekko" }
