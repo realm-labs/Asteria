@@ -6,7 +6,9 @@ import org.apache.pekko.actor.TimerScheduler
 import kotlin.time.Duration
 import kotlin.time.toJavaDuration
 
-data class TimerInteraction(val block: (TimerScheduler) -> Unit)
+typealias TimerInteractionBlock = (TimerScheduler) -> Unit
+
+data class TimerInteraction(val block: TimerInteractionBlock)
 
 class TimersActor : AbstractActorWithTimers() {
     companion object {

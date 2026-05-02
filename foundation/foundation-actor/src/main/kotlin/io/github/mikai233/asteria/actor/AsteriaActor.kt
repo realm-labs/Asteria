@@ -1,18 +1,12 @@
 package io.github.mikai233.asteria.actor
 
 import io.github.mikai233.asteria.core.NodeRuntime
-import io.github.mikai233.asteria.observability.MetricTags
-import io.github.mikai233.asteria.observability.Metrics
-import io.github.mikai233.asteria.observability.NoopMetrics
-import io.github.mikai233.asteria.observability.NoopTracer
-import io.github.mikai233.asteria.observability.TraceAttributes
-import io.github.mikai233.asteria.observability.Tracer
+import io.github.mikai233.asteria.observability.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.withTimeout
 import org.apache.pekko.actor.AbstractActorWithStash
-import org.apache.pekko.actor.ActorRef
 import scala.PartialFunction
 import scala.runtime.BoxedUnit
 import kotlin.coroutines.CoroutineContext
@@ -25,13 +19,6 @@ abstract class AsteriaActor<N : NodeRuntime>(
 ) : AbstractActorWithStash() {
     val logger = actorLogger()
     val coroutineScope: ActorCoroutineScope = self.actorCoroutineScope()
-
-    private lateinit var timersActor: ActorRef
-
-    override fun preStart() {
-        super.preStart()
-        timersActor = context.actorOf(TimersActor.props(), "timers")
-    }
 
     override fun postStop() {
         coroutineScope.cancel()
@@ -89,26 +76,6 @@ abstract class AsteriaActor<N : NodeRuntime>(
 
     fun execute(name: String, block: () -> Unit) {
         self tell NamedActorTask(name, block)
-    }
-
-    fun cancelTimer(key: Any) {
-        timersActor tell TimerInteraction { it.cancel(key) }
-    }
-
-    fun cancelAllTimers() {
-        timersActor tell TimerInteraction { it.cancelAll() }
-    }
-
-    fun startSingleTimer(key: Any, message: Any, delay: Duration) {
-        timersActor tell TimerInteraction { it.startSingleTimer(key, message, delay) }
-    }
-
-    fun startTimerWithFixedDelay(key: Any, message: Any, delay: Duration) {
-        timersActor tell TimerInteraction { it.startTimerWithFixedDelay(key, message, delay) }
-    }
-
-    fun startTimerAtFixedRate(key: Any, message: Any, interval: Duration) {
-        timersActor tell TimerInteraction { it.startTimerAtFixedRate(key, message, interval) }
     }
 
     fun launch(
