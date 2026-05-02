@@ -4,6 +4,8 @@ import io.github.mikai233.asteria.config.ConfigTableName
 import io.github.mikai233.asteria.gm.config.GmConfigInspector
 import io.github.mikai233.asteria.gm.config.GmConfigMetadata
 import io.github.mikai233.asteria.gm.config.GmConfigPermissions
+import io.github.mikai233.asteria.gm.config.GmConfigReloadRecord
+import io.github.mikai233.asteria.gm.config.GmConfigReloadStatus
 import io.github.mikai233.asteria.gm.config.GmConfigRow
 import io.github.mikai233.asteria.gm.config.GmConfigRowPage
 import io.github.mikai233.asteria.gm.config.GmConfigRowQuery
@@ -37,6 +39,43 @@ class GmConfigController(
             action = "gm.config.metadata",
         ) {
             inspector.metadata()
+        }
+    }
+
+    @GetMapping("/reload/status")
+    suspend fun reloadStatus(request: HttpServletRequest): GmConfigReloadStatus {
+        return endpoints.execute(
+            request = request,
+            permission = GmConfigPermissions.Read,
+            action = "gm.config.reload.status",
+        ) {
+            inspector.reloadStatus()
+        }
+    }
+
+    @GetMapping("/reload/history")
+    suspend fun reloadHistory(
+        request: HttpServletRequest,
+        @RequestParam limit: Int = 20,
+    ): List<GmConfigReloadRecord> {
+        return endpoints.execute(
+            request = request,
+            permission = GmConfigPermissions.Read,
+            action = "gm.config.reload.history",
+            attributes = mapOf("limit" to limit.toString()),
+        ) {
+            inspector.reloadHistory(limit)
+        }
+    }
+
+    @PostMapping("/reload")
+    suspend fun reload(request: HttpServletRequest): GmConfigReloadRecord {
+        return endpoints.execute(
+            request = request,
+            permission = GmConfigPermissions.Reload,
+            action = "gm.config.reload",
+        ) {
+            inspector.reloadNow()
         }
     }
 

@@ -13,6 +13,7 @@ import io.github.mikai233.asteria.gm.core.GmRoute
  */
 object GmConfigPermissions {
     val Read: GmPermissionKey = GmPermissionKey("gm.config.read")
+    val Reload: GmPermissionKey = GmPermissionKey("gm.config.reload")
     val Export: GmPermissionKey = GmPermissionKey("gm.config.export")
     val SensitiveRead: GmPermissionKey = GmPermissionKey("gm.config.sensitive-read")
 }
@@ -27,6 +28,7 @@ class GmConfigFeature : GmFeature {
         description = "Browse and diagnose loaded game config tables.",
         permissions = listOf(
             GmPermission(GmConfigPermissions.Read, "Read config tables"),
+            GmPermission(GmConfigPermissions.Reload, "Reload config snapshot", highRisk = true),
             GmPermission(GmConfigPermissions.Export, "Export config data"),
             GmPermission(GmConfigPermissions.SensitiveRead, "Read sensitive config fields", highRisk = true),
         ),

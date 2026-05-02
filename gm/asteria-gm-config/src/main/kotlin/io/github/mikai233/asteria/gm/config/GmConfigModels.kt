@@ -2,6 +2,7 @@ package io.github.mikai233.asteria.gm.config
 
 import io.github.mikai233.asteria.config.ConfigRevision
 import io.github.mikai233.asteria.config.ConfigTableName
+import java.time.Instant
 
 /**
  * Metadata of the currently loaded config snapshot.
@@ -9,6 +10,49 @@ import io.github.mikai233.asteria.config.ConfigTableName
 data class GmConfigMetadata(
     val revision: ConfigRevision,
     val tableCount: Int,
+)
+
+/**
+ * Reload diagnostics shown in GM.
+ */
+data class GmConfigReloadStatus(
+    val currentRevision: ConfigRevision?,
+    val lastSuccess: GmConfigReloadRecord?,
+    val lastFailure: GmConfigReloadRecord?,
+    val recent: List<GmConfigReloadRecord>,
+)
+
+/**
+ * One GM-facing reload record.
+ */
+data class GmConfigReloadRecord(
+    val id: Long,
+    val status: GmConfigReloadRecordStatus,
+    val occurredAt: Instant,
+    val previousRevision: ConfigRevision? = null,
+    val currentRevision: ConfigRevision? = null,
+    val addedTables: List<GmConfigChangedTable> = emptyList(),
+    val removedTables: List<GmConfigChangedTable> = emptyList(),
+    val changedTables: List<GmConfigChangedTable> = emptyList(),
+    val signalReason: String? = null,
+    val signalSource: String? = null,
+    val message: String? = null,
+)
+
+enum class GmConfigReloadRecordStatus {
+    Success,
+    Failure,
+}
+
+/**
+ * Table-level change summary.
+ */
+data class GmConfigChangedTable(
+    val name: String,
+    val keyType: String,
+    val rowType: String,
+    val previousSize: Int?,
+    val currentSize: Int?,
 )
 
 /**
@@ -111,6 +155,12 @@ data class GmConfigRowPage(
  */
 interface GmConfigInspector {
     suspend fun metadata(): GmConfigMetadata
+
+    suspend fun reloadStatus(): GmConfigReloadStatus
+
+    suspend fun reloadHistory(limit: Int = 20): List<GmConfigReloadRecord>
+
+    suspend fun reloadNow(): GmConfigReloadRecord
 
     suspend fun listTables(): List<GmConfigTableSummary>
 

@@ -1,8 +1,13 @@
 package io.github.mikai233.asteria.gm.config
 
 import io.github.mikai233.asteria.config.ConfigRevision
+import io.github.mikai233.asteria.config.ConfigReloadMonitor
+import io.github.mikai233.asteria.config.ConfigReloadRecord
+import io.github.mikai233.asteria.config.ConfigReloadResult
+import io.github.mikai233.asteria.config.ConfigReloadStatus
 import io.github.mikai233.asteria.config.ConfigService
 import io.github.mikai233.asteria.config.ConfigSnapshot
+import io.github.mikai233.asteria.config.ConfigTableChange
 import io.github.mikai233.asteria.config.ConfigTable
 import io.github.mikai233.asteria.config.ConfigTableName
 
@@ -12,6 +17,7 @@ import io.github.mikai233.asteria.config.ConfigTableName
 class SnapshotGmConfigInspector(
     private val configService: ConfigService,
     private val projector: ConfigRowProjector = ReflectionConfigRowProjector(),
+    private val reloadMonitor: ConfigReloadMonitor? = null,
 ) : GmConfigInspector {
     private val cache = GmConfigViewCache(projector)
 
@@ -21,6 +27,26 @@ class SnapshotGmConfigInspector(
             revision = snapshot.revision,
             tableCount = snapshot.tables().size,
         )
+    }
+
+    override suspend fun reloadStatus(): GmConfigReloadStatus {
+        val status = reloadMonitor?.status(configService.currentOrNull())
+            ?: ConfigReloadStatus(
+                currentRevision = configService.currentOrNull()?.revision,
+                lastSuccess = null,
+                lastFailure = null,
+                recent = emptyList(),
+            )
+        return status.toGm()
+    }
+
+    override suspend fun reloadHistory(limit: Int): List<GmConfigReloadRecord> {
+        require(limit > 0) { "GM config reload history limit must be positive" }
+        return reloadMonitor?.history(limit).orEmpty().map { it.toGm() }
+    }
+
+    override suspend fun reloadNow(): GmConfigReloadRecord {
+        return configService.reload().toGm()
     }
 
     override suspend fun listTables(): List<GmConfigTableSummary> {
@@ -71,6 +97,61 @@ class SnapshotGmConfigInspector(
         val table = snapshot.table(name) ?: error("config table $name not found in revision ${snapshot.revision.version}")
         return cache.view(snapshot.revision, table)
     }
+}
+
+private fun ConfigReloadStatus.toGm(): GmConfigReloadStatus {
+    return GmConfigReloadStatus(
+        currentRevision = currentRevision,
+        lastSuccess = lastSuccess?.toGm(),
+        lastFailure = lastFailure?.toGm(),
+        recent = recent.map { it.toGm() },
+    )
+}
+
+private fun ConfigReloadRecord.toGm(): GmConfigReloadRecord {
+    return when (this) {
+        is ConfigReloadRecord.Success -> GmConfigReloadRecord(
+            id = id,
+            status = GmConfigReloadRecordStatus.Success,
+            occurredAt = occurredAt,
+            previousRevision = previousRevision,
+            currentRevision = currentRevision,
+            addedTables = diff.addedTables.map { it.toGm() },
+            removedTables = diff.removedTables.map { it.toGm() },
+            changedTables = diff.changedTables.map { it.toGm() },
+        )
+        is ConfigReloadRecord.Failure -> GmConfigReloadRecord(
+            id = id,
+            status = GmConfigReloadRecordStatus.Failure,
+            occurredAt = occurredAt,
+            signalReason = signal?.reason,
+            signalSource = signal?.source,
+            message = message,
+        )
+    }
+}
+
+private fun ConfigReloadResult.toGm(): GmConfigReloadRecord {
+    return GmConfigReloadRecord(
+        id = 0,
+        status = GmConfigReloadRecordStatus.Success,
+        occurredAt = java.time.Instant.now(),
+        previousRevision = previous?.revision,
+        currentRevision = current.revision,
+        addedTables = diff.addedTables.map { it.toGm() },
+        removedTables = diff.removedTables.map { it.toGm() },
+        changedTables = diff.changedTables.map { it.toGm() },
+    )
+}
+
+private fun ConfigTableChange.toGm(): GmConfigChangedTable {
+    return GmConfigChangedTable(
+        name = name.value,
+        keyType = keyType,
+        rowType = rowType,
+        previousSize = previousSize,
+        currentSize = currentSize,
+    )
 }
 
 private class GmConfigViewCache(

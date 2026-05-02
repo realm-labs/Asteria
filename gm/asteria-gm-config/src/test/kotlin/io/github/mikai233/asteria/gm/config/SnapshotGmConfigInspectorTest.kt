@@ -1,6 +1,7 @@
 package io.github.mikai233.asteria.gm.config
 
 import io.github.mikai233.asteria.config.ConfigLoader
+import io.github.mikai233.asteria.config.ConfigReloadMonitor
 import io.github.mikai233.asteria.config.ConfigRevision
 import io.github.mikai233.asteria.config.ConfigService
 import io.github.mikai233.asteria.config.ConfigSnapshot
@@ -72,6 +73,27 @@ class SnapshotGmConfigInspectorTest {
         assertEquals(2, page.nextOffset)
     }
 
+    @Test
+    fun inspectorReportsReloadStatusAndManualReload() = runBlocking {
+        val loader = VersionedConfigLoader()
+        val service = ConfigService(loader)
+        val monitor = ConfigReloadMonitor()
+        service.subscribe(monitor)
+        service.load()
+        val inspector = SnapshotGmConfigInspector(service, reloadMonitor = monitor)
+
+        val reload = inspector.reloadNow()
+        val status = inspector.reloadStatus()
+        val history = inspector.reloadHistory()
+
+        assertEquals(GmConfigReloadRecordStatus.Success, reload.status)
+        assertEquals("v2", reload.currentRevision?.version)
+        assertEquals("v2", status.currentRevision?.version)
+        assertEquals("v2", status.lastSuccess?.currentRevision?.version)
+        assertEquals(listOf("items"), reload.changedTables.map { it.name })
+        assertEquals(2, history.size)
+    }
+
     private suspend fun inspector(): SnapshotGmConfigInspector {
         val service = ConfigService(TestConfigLoader())
         service.load()
@@ -87,6 +109,21 @@ class SnapshotGmConfigInspectorTest {
             ).associateBy { it.id }
             return DefaultConfigSnapshot(
                 revision = ConfigRevision("v1", checksum = "abc"),
+                tables = listOf(mapConfigTable("items", rows)),
+            )
+        }
+    }
+
+    private class VersionedConfigLoader : ConfigLoader {
+        private var version = 0
+
+        override suspend fun load(): ConfigSnapshot {
+            version += 1
+            val rows = listOf(
+                ItemConfig(version, "Sword-$version", 5, RewardConfig(1001, version)),
+            ).associateBy { it.id }
+            return DefaultConfigSnapshot(
+                revision = ConfigRevision("v$version"),
                 tables = listOf(mapConfigTable("items", rows)),
             )
         }

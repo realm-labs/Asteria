@@ -37,6 +37,7 @@ interface ConfigReloadSubscription {
 data class ConfigReloadResult(
     val previous: ConfigSnapshot?,
     val current: ConfigSnapshot,
+    val diff: ConfigSnapshotDiff = ConfigSnapshotDiff.between(previous, current),
 )
 
 /**

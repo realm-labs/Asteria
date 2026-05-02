@@ -19,17 +19,21 @@ class ConfigModule private constructor(
 
     override suspend fun install(context: ModuleContext) {
         val loader = options.loader ?: error("config loader must be configured")
+        val monitor = ConfigReloadMonitor(options.reloadHistorySize)
         val service = ConfigService(
             loader = loader,
             validators = options.validators,
         )
+        service.subscribe(monitor)
         options.reloadListeners.forEach { listener ->
             service.subscribe(listener)
         }
         context.services.register(ConfigService::class, service)
+        context.services.register(ConfigReloadMonitor::class, monitor)
 
         options.hotReload?.let { hotReload ->
-            context.services.register(ConfigHotReloadService::class, ConfigHotReloadService(service, hotReload))
+            val monitored = hotReload.copy(failureListeners = listOf(monitor) + hotReload.failureListeners)
+            context.services.register(ConfigHotReloadService::class, ConfigHotReloadService(service, monitored))
         }
     }
 
@@ -60,6 +64,7 @@ data class ConfigModuleOptions(
     val reloadListeners: List<ConfigReloadListener>,
     val loadOnStart: Boolean,
     val hotReload: ConfigHotReloadOptions?,
+    val reloadHistorySize: Int,
 )
 
 /**
@@ -71,6 +76,11 @@ class ConfigModuleBuilder {
      * Whether [ConfigService.load] should run during module start.
      */
     var loadOnStart: Boolean = true
+
+    /**
+     * Number of recent reload records kept in memory for diagnostics.
+     */
+    var reloadHistorySize: Int = 50
 
     private var loader: ConfigLoader? = null
     private var hotReload: ConfigHotReloadOptions? = null
@@ -126,6 +136,7 @@ class ConfigModuleBuilder {
             reloadListeners = reloadListeners.toList(),
             loadOnStart = loadOnStart,
             hotReload = hotReload,
+            reloadHistorySize = reloadHistorySize,
         )
     }
 }

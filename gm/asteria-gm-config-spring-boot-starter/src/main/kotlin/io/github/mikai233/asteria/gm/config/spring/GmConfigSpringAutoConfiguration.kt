@@ -1,12 +1,14 @@
 package io.github.mikai233.asteria.gm.config.spring
 
 import io.github.mikai233.asteria.config.ConfigService
+import io.github.mikai233.asteria.config.ConfigReloadMonitor
 import io.github.mikai233.asteria.gm.config.ConfigRowProjector
 import io.github.mikai233.asteria.gm.config.GmConfigInspector
 import io.github.mikai233.asteria.gm.config.ReflectionConfigRowProjector
 import io.github.mikai233.asteria.gm.config.SnapshotGmConfigInspector
 import io.github.mikai233.asteria.gm.spring.GmEndpointSupport
 import io.github.mikai233.asteria.gm.spring.GmSpringAutoConfiguration
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -36,8 +38,9 @@ class GmConfigSpringAutoConfiguration {
     fun snapshotGmConfigInspector(
         configService: ConfigService,
         projector: ConfigRowProjector,
+        reloadMonitor: ObjectProvider<ConfigReloadMonitor>,
     ): GmConfigInspector {
-        return SnapshotGmConfigInspector(configService, projector)
+        return SnapshotGmConfigInspector(configService, projector, reloadMonitor.getIfAvailable())
     }
 
     @Bean

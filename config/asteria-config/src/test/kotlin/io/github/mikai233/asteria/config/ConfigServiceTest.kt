@@ -29,6 +29,7 @@ class ConfigServiceTest {
         assertEquals(2, table.size)
         assertEquals("project-configs", result.current.requireComponent<GeneratedTables>().name)
         assertEquals(result, notified)
+        assertEquals(listOf("items"), result.diff.addedTables.map { it.name.value })
     }
 
     @Test
@@ -133,6 +134,47 @@ class ConfigServiceTest {
     }
 
     @Test
+    fun `snapshot diff reports added removed and changed tables`() {
+        val previous = DefaultConfigSnapshot(
+            revision = ConfigRevision("v1"),
+            tables = listOf(
+                mapConfigTable("keep", mapOf(1 to ItemConfig(1, "Sword", 10))),
+                mapConfigTable("removed", mapOf(1 to ItemConfig(1, "Old", 1))),
+            ),
+        )
+        val current = DefaultConfigSnapshot(
+            revision = ConfigRevision("v2"),
+            tables = listOf(
+                mapConfigTable("keep", mapOf(1 to ItemConfig(1, "Sword+", 10))),
+                mapConfigTable("added", mapOf(1 to ItemConfig(1, "New", 1))),
+            ),
+        )
+
+        val diff = ConfigSnapshotDiff.between(previous, current)
+
+        assertEquals(listOf("added"), diff.addedTables.map { it.name.value })
+        assertEquals(listOf("removed"), diff.removedTables.map { it.name.value })
+        assertEquals(listOf("keep"), diff.changedTables.map { it.name.value })
+    }
+
+    @Test
+    fun `reload monitor records success and failure`() = runBlocking {
+        val monitor = ConfigReloadMonitor()
+        val service = ConfigService(TestConfigLoader())
+        service.subscribe(monitor)
+
+        val result = service.load()
+        monitor.failed(ConfigReloadFailed(ConfigReloadSignal("test"), IllegalStateException("broken")))
+
+        val status = monitor.status(service.current())
+
+        assertEquals(result.current.revision, status.currentRevision)
+        assertEquals(result.current.revision, status.lastSuccess?.currentRevision)
+        assertEquals("broken", status.lastFailure?.message)
+        assertEquals(2, status.recent.size)
+    }
+
+    @Test
     fun `module registers service and loads on start`() = runBlocking {
         val app = gameApplication {
             install(
@@ -145,8 +187,10 @@ class ConfigServiceTest {
         app.launch()
 
         val service = app.services.get<ConfigService>()
+        val monitor = app.services.get<ConfigReloadMonitor>()
         val items = service.current().requireTable<Int, ItemConfig>(ConfigTableName("items"))
         assertNotNull(items[1])
+        assertEquals("v1", monitor.status(service.current()).lastSuccess?.currentRevision?.version)
 
         app.stop()
     }
