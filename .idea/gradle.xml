@@ -39,6 +39,7 @@
             <option value="$PROJECT_DIR$/config/config-gradle-plugin" />
             <option value="$PROJECT_DIR$/config/config-ksp" />
             <option value="$PROJECT_DIR$/config/config-luban" />
+            <option value="$PROJECT_DIR$/config/config-publisher" />
             <option value="$PROJECT_DIR$/foundation" />
             <option value="$PROJECT_DIR$/foundation/foundation-actor" />
             <option value="$PROJECT_DIR$/foundation/foundation-core" />
