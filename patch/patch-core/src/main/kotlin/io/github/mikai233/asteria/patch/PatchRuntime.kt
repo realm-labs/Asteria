@@ -3,7 +3,6 @@ package io.github.mikai233.asteria.patch
 import java.io.Serializable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.reflect.KClass
 
 /**
  * Runtime patch unit loaded and applied by a node.
@@ -13,7 +12,7 @@ import kotlin.reflect.KClass
  * later patch is disabled, the registry is rebuilt from the remaining layers, so the active implementation falls back
  * to the previous patch instead of the original base entry.
  *
- * For type-keyed business services, use [PatchableServiceRegistry] and [PatchInstallContext.replaceService]. This gives
+ * For type-keyed business services, use [PatchableServiceRegistry] and [PatchInstallContext.replace]. This gives
  * service patches the same ordered rollback behavior without requiring mutable static service variables.
  *
  * Keep patch instances small and deterministic. A patch may be applied during node startup replay or by a live GM
@@ -62,22 +61,8 @@ class PatchInstallContext internal constructor(
      * The replacement is ordered by the patch's [PatchOrder]. Disabling the patch removes only this layer and rebuilds
      * the registry from the remaining layers, preserving earlier patches.
      */
-    fun <K : Any, V : Any> replace(registry: PatchableRegistry<K, V>, key: K, value: V) {
-        operations.add(RegistryReplacementOperation(registry, key, value, order))
-    }
-
-    /**
-     * Replaces one service in [registry] for this patch layer.
-     *
-     * Business code should keep using [PatchableServiceRegistry.require] or a thin facade over it. Disabling the patch
-     * removes only this layer, so service lookup falls back to the previous patch implementation when present.
-     */
-    fun <T : Any> replaceService(
-        registry: PatchableServiceRegistry,
-        type: KClass<T>,
-        service: T,
-    ) {
-        operations.add(ServiceReplacementOperation(registry, type, service, order))
+    fun <K : Any, V : Any> replace(registry: PatchSlotRegistry<K, V>, key: K, value: V) {
+        operations.add(TargetReplacementOperation(registry, key, value, order))
     }
 
     internal fun operations(): List<PatchOperation> = operations.toList()
@@ -187,14 +172,14 @@ internal interface PatchOperation {
     fun rollback()
 }
 
-private data class RegistryReplacementOperation<K : Any, V : Any>(
-    val registry: PatchableRegistry<K, V>,
+private data class TargetReplacementOperation<K : Any, V : Any>(
+    val registry: PatchSlotRegistry<K, V>,
     val key: K,
     val value: V,
     val order: PatchOrder,
 ) : PatchOperation {
     override fun validate() {
-        registry.require(key)
+        check(registry.current(key) != null) { "patch registry key $key not found" }
     }
 
     override fun commit() {
@@ -202,26 +187,7 @@ private data class RegistryReplacementOperation<K : Any, V : Any>(
     }
 
     override fun rollback() {
-        registry.removePatch(order.id)
-    }
-}
-
-private data class ServiceReplacementOperation<T : Any>(
-    val registry: PatchableServiceRegistry,
-    val type: KClass<T>,
-    val service: T,
-    val order: PatchOrder,
-) : PatchOperation {
-    override fun validate() {
-        registry.require(type)
-    }
-
-    override fun commit() {
-        registry.replace(type, service, order)
-    }
-
-    override fun rollback() {
-        registry.removePatch(order.id)
+        registry.remove(order.id)
     }
 }
 
@@ -232,5 +198,5 @@ inline fun <reified T : Any> PatchInstallContext.replaceService(
     registry: PatchableServiceRegistry,
     service: T,
 ) {
-    replaceService(registry, T::class, service)
+    replace(registry, T::class, service)
 }

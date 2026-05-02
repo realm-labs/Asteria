@@ -6,13 +6,13 @@ import kotlin.reflect.KClass
  * Type-keyed service registry whose entries can be replaced by runtime patches.
  *
  * This is the service-oriented form of [PatchableRegistry]. Business code reads services through [require] instead of
- * keeping mutable static references. Patch plugins replace services through [PatchInstallContext.replaceService], so
+ * keeping mutable static references. Patch plugins replace services through [PatchInstallContext.replace], so
  * disable/uninstall removes only the target patch layer and falls back to the previous patch implementation when one
  * exists.
  */
 class PatchableServiceRegistry(
     services: Map<KClass<*>, Any> = emptyMap(),
-) {
+) : PatchSlotRegistry<KClass<*>, Any> {
     private val registry = PatchableRegistry(services)
 
     /**
@@ -61,15 +61,19 @@ class PatchableServiceRegistry(
         return require(T::class)
     }
 
-    internal fun <T : Any> replace(
-        type: KClass<T>,
-        service: T,
-        order: PatchOrder,
-    ) {
-        registry.replace(type, service, order)
+    override fun current(key: KClass<*>): Any? {
+        return registry.get(key)
     }
 
-    internal fun removePatch(id: PatchId) {
-        registry.removePatch(id)
+    override fun replace(
+        key: KClass<*>,
+        value: Any,
+        order: PatchOrder,
+    ) {
+        registry.replace(key, value, order)
+    }
+
+    override fun remove(id: PatchId) {
+        registry.remove(id)
     }
 }

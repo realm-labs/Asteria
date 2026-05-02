@@ -45,6 +45,23 @@ class PatchableServiceRegistryTest {
         assertFalse(failed.isSuccess)
     }
 
+    @Test
+    fun serviceRegistryCanUseGenericPatchReplacementPath() = runBlocking {
+        val services = PatchableServiceRegistry()
+        services.register(GreetingService::class, GreetingService("base"))
+        val runtime = runtime()
+
+        val result = runtime.apply(
+            patch("generic-service-replace", sequence = 1),
+            plugin {
+                replace(services, GreetingService::class, GreetingService("patched"))
+            },
+        )
+
+        assertIs<PatchApplyResult.Applied>(result)
+        assertEquals("patched", services.require<GreetingService>().value)
+    }
+
     private fun runtime(): PatchRuntime {
         return PatchRuntime(PatchEnvironment("game", "1.0.0"))
     }

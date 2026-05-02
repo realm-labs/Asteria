@@ -3,6 +3,33 @@ package io.github.mikai233.asteria.patch
 import java.util.concurrent.atomic.AtomicReference
 
 /**
+ * A registry slot that can be replaced by ordered runtime patch layers.
+ *
+ * This abstraction is intentionally smaller than the public read API of a registry. Patch installation only needs to
+ * validate that a key exists, install one ordered layer, and remove that layer during rollback/uninstall. Concrete
+ * registries can expose richer business-facing APIs without forcing [PatchInstallContext] to know each registry shape.
+ */
+interface PatchSlotRegistry<K : Any, V : Any> {
+    /**
+     * Returns the currently active value for [key], or `null` when the key is not registered.
+     *
+     * Patch runtime calls this before committing a patch operation so missing handler/service keys fail before partial
+     * replacement happens.
+     */
+    fun current(key: K): V?
+
+    /**
+     * Installs [value] as the replacement for [key] in the patch layer represented by [order].
+     */
+    fun replace(key: K, value: V, order: PatchOrder)
+
+    /**
+     * Removes every replacement layer owned by [id].
+     */
+    fun remove(id: PatchId)
+}
+
+/**
  * Copy-on-write registry for runtime patchable dispatch points.
  *
  * Reads are lock-free and always observe a complete immutable snapshot. Patch application stores
@@ -11,7 +38,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class PatchableRegistry<K : Any, V : Any>(
     entries: Map<K, V> = emptyMap(),
-) {
+) : PatchSlotRegistry<K, V> {
     private val state = AtomicReference(RegistryState(entries.toMap()))
 
     fun get(key: K): V? {
@@ -20,6 +47,10 @@ class PatchableRegistry<K : Any, V : Any>(
 
     fun require(key: K): V {
         return get(key) ?: error("patchable registry key $key not found")
+    }
+
+    override fun current(key: K): V? {
+        return get(key)
     }
 
     fun snapshot(): Map<K, V> {
@@ -39,14 +70,14 @@ class PatchableRegistry<K : Any, V : Any>(
         }
     }
 
-    fun replace(key: K, value: V, order: PatchOrder) {
+    override fun replace(key: K, value: V, order: PatchOrder) {
         state.updateAndGet { old ->
             check(key in old.base) { "patchable registry key $key does not exist" }
             old.withReplacement(key, value, order).rebuild()
         }
     }
 
-    fun removePatch(id: PatchId) {
+    override fun remove(id: PatchId) {
         state.updateAndGet { old ->
             old.copy(layers = old.layers.filterNot { it.order.id == id }).rebuild()
         }
