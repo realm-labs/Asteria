@@ -27,6 +27,8 @@ data class MongoEntityPropertyModel(
     val kind: MongoEntityPropertyKind = MongoEntityPropertyKind.Value,
     val trackedType: TypeName = type,
     val valueKind: MongoEntityPropertyKind = MongoEntityPropertyKind.Value,
+    val scanIgnored: Boolean = false,
+    val scanWholeField: Boolean = false,
 )
 
 enum class MongoEntityPropertyKind {
@@ -464,17 +466,27 @@ object AsteriaMongoEntityCodeGenerator {
         val contextType = ClassName(MONGODB_PACKAGE, "MongoTrackContext")
         val databaseType = ClassName("com.mongodb.kotlin.client.coroutine", "MongoDatabase")
         val cachePolicyType = ClassName(PERSISTENCE_PACKAGE, "RowCachePolicy")
+        val scanPlanType = ClassName(PERSISTENCE_PACKAGE, "EntityScanPlan").parameterizedBy(model.entityType)
         val journalType = ClassName(MONGODB_PACKAGE, "MongoWriteJournal")
         val noopJournal = ClassName(MONGODB_PACKAGE, "NoopMongoWriteJournal")
+        val metricsType = ClassName("io.github.mikai233.asteria.observability", "Metrics")
+        val noopMetrics = ClassName("io.github.mikai233.asteria.observability", "NoopMetrics")
         val clockType = ClassName("java.time", "Clock")
         val tableType = ClassName(MONGODB_PACKAGE, "MongoKeyedDocumentTable")
             .parameterizedBy(model.id.type.copy(nullable = false), model.entityType, wrapperType)
+        val scannedTableType = ClassName(MONGODB_PACKAGE, "MongoScannedKeyedDocumentTable")
+            .parameterizedBy(model.id.type.copy(nullable = false), model.entityType)
 
         return TypeSpec.objectBuilder(helperType)
             .addKdoc("Generated Mongo metadata and factories for [%T].\n", model.entityType)
             .addProperty(
                 PropertySpec.builder("COLLECTION", STRING, KModifier.CONST)
                     .initializer("%S", model.collectionName)
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("SCAN_PLAN", scanPlanType)
+                    .initializer(buildScanPlanInitializer(model))
                     .build(),
             )
             .addFunction(
@@ -521,7 +533,123 @@ object AsteriaMongoEntityCodeGenerator {
                     )
                     .build(),
             )
+            .addFunction(
+                FunSpec.builder("scannedTable")
+                    .addParameter("database", databaseType)
+                    .addParameter("cachePolicy", cachePolicyType)
+                    .addParameter(
+                        ParameterSpec.builder("journal", journalType)
+                            .defaultValue("%T", noopJournal)
+                            .build(),
+                    )
+                    .addParameter(
+                        ParameterSpec.builder("metrics", metricsType)
+                            .defaultValue("%T", noopMetrics)
+                            .build(),
+                    )
+                    .addParameter(
+                        ParameterSpec.builder("clock", clockType)
+                            .defaultValue("%T.systemUTC()", clockType)
+                            .build(),
+                    )
+                    .returns(scannedTableType)
+                    .addStatement(
+                        "return %T(COLLECTION, %T::class, SCAN_PLAN, cachePolicy, database, journal, metrics, clock)",
+                        scannedTableType,
+                        model.entityType,
+                    )
+                    .build(),
+            )
+            .apply {
+                model.nestedObjects.forEach { nested ->
+                    addFunction(buildNestedMongoValueFunction(nested))
+                }
+            }
             .build()
+    }
+
+    private fun buildScanPlanInitializer(model: MongoEntityCodegenModel): CodeBlock {
+        val scannedFields = model.properties
+            .filterNot { property -> property.name == model.id.name || property.scanIgnored }
+            .map { property ->
+                val member = if (property.kind == MongoEntityPropertyKind.Map && !property.scanWholeField) {
+                    MONGO_SCANNED_MAP_FIELD
+                } else {
+                    MONGO_SCANNED_FIELD
+                }
+                CodeBlock.of(
+                    "%M(%S) { entity: %T -> %L }",
+                    member,
+                    property.fieldName,
+                    model.entityType,
+                    scanValueExpression(property, "entity.${property.name}"),
+                )
+            }
+        if (scannedFields.isEmpty()) {
+            return CodeBlock.of("%M<%T>()", MONGO_SCAN_PLAN, model.entityType)
+        }
+        val builder = CodeBlock.builder()
+            .add("%M(\n", MONGO_SCAN_PLAN)
+            .indent()
+        scannedFields.forEachIndexed { index, field ->
+            if (index > 0) {
+                builder.add(",\n")
+            }
+            builder.add(field)
+        }
+        return builder
+            .unindent()
+            .add("\n)")
+            .build()
+    }
+
+    private fun buildNestedMongoValueFunction(model: MongoNestedObjectModel): FunSpec {
+        val functionName = mongoValueFunctionName(model.wrapperType)
+        val documentType = ClassName("org.bson", "Document")
+        val entries = CodeBlock.builder()
+        model.properties.forEachIndexed { index, property ->
+            if (index > 0) entries.add(",\n")
+            entries.add("%S to %M(%L)", property.fieldName, MONGO_VALUE_OF, scanValueExpression(property, "value.${property.name}"))
+        }
+        return FunSpec.builder(functionName)
+            .addModifiers(KModifier.PRIVATE)
+            .addParameter("value", model.sourceType)
+            .returns(ANY_NULLABLE)
+            .addCode(
+                CodeBlock.builder()
+                    .add("return %T(mapOf(\n", documentType)
+                    .indent()
+                    .add(entries.build())
+                    .unindent()
+                    .add("\n))\n")
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun scanValueExpression(property: MongoEntityPropertyModel, sourceExpression: String): CodeBlock {
+        if (property.kind == MongoEntityPropertyKind.Object) {
+            return CodeBlock.of("%L(%L)", mongoValueFunctionName(property.trackedType), sourceExpression)
+        }
+        if (property.valueKind != MongoEntityPropertyKind.Object) {
+            return CodeBlock.of("%L", sourceExpression)
+        }
+        val wrapperType = property.collectionValueWrapperType() ?: return CodeBlock.of("%L", sourceExpression)
+        val functionName = mongoValueFunctionName(wrapperType)
+        return when (property.kind) {
+            MongoEntityPropertyKind.Map ->
+                CodeBlock.of("%L.mapValues { (_, value) -> %L(value) }", sourceExpression, functionName)
+
+            MongoEntityPropertyKind.List ->
+                CodeBlock.of("%L.map { value -> %L(value) }", sourceExpression, functionName)
+
+            else -> CodeBlock.of("%L", sourceExpression)
+        }
+    }
+
+    private fun mongoValueFunctionName(type: TypeName): String {
+        val className = type as? ClassName ?: return "mongoValue"
+        return className.simpleName.replaceFirstChar { it.lowercaseChar() } + "MongoValue"
     }
 
     private fun TypeName.asMutableCollection(): TypeName {
@@ -575,6 +703,9 @@ object AsteriaMongoEntityCodeGenerator {
     private val MONGO_TRACKED_SET = MemberName(MONGODB_PACKAGE, "mongoTrackedSet")
     private val MONGO_TRACKED_VALUE = MemberName(MONGODB_PACKAGE, "mongoTrackedValue")
     private val MONGO_VALUE_OF = MemberName(MONGODB_PACKAGE, "mongoValueOf")
+    private val MONGO_SCAN_PLAN = MemberName(MONGODB_PACKAGE, "mongoScanPlan")
+    private val MONGO_SCANNED_FIELD = MemberName(MONGODB_PACKAGE, "mongoScannedField")
+    private val MONGO_SCANNED_MAP_FIELD = MemberName(MONGODB_PACKAGE, "mongoScannedMapField")
     private const val PERSISTENCE_PACKAGE = "io.github.mikai233.asteria.persistence"
     private const val MONGODB_PACKAGE = "io.github.mikai233.asteria.persistence.mongodb"
 }

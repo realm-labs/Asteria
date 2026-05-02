@@ -143,6 +143,8 @@ private class AsteriaMongoEntitySymbolProcessor(
             kind = if (nestedType == null) propertyKind(type) else MongoEntityPropertyKind.Object,
             trackedType = nestedType ?: collectionTrackedType(type, collectionNestedType) ?: type.toTypeName(),
             valueKind = valueKind,
+            scanIgnored = property.hasAnnotation(AsteriaMongoScanIgnore::class.qualifiedName!!),
+            scanWholeField = property.hasAnnotation(AsteriaMongoScanWholeField::class.qualifiedName!!),
         )
     }
 
@@ -242,6 +244,13 @@ private class AsteriaMongoEntitySymbolProcessor(
         properties: List<MongoEntityPropertyModel>,
     ): Boolean {
         return properties.all { property ->
+            if (property.scanWholeField && property.kind != MongoEntityPropertyKind.Map) {
+                logger.error(
+                    "@AsteriaMongoScanWholeField can only be used on Map properties: " +
+                            "${owner.simpleName.asString()}.${property.name}",
+                )
+                return@all false
+            }
             val declaration = owner.property(property.name)
             val type = declaration?.type?.resolve() ?: return@all true
             validateMongoType(type, "property ${owner.simpleName.asString()}.${property.name}", mutableSetOf())

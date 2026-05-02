@@ -114,8 +114,20 @@ class AsteriaMongoEntityCodeGeneratorTest {
         assertContains(code, "\"lv\" to mongoValueOf(level)")
         assertContains(code, "object PlayerEntityMongo")
         assertContains(code, "const val COLLECTION: String = \"players\"")
+        assertContains(code, "public val SCAN_PLAN: EntityScanPlan<PlayerEntity> = mongoScanPlan(")
+        assertContains(code, "mongoScannedField(\"name\") { entity: PlayerEntity -> entity.name }")
+        assertContains(code, "mongoScannedField(\"lv\") { entity: PlayerEntity -> entity.level }")
+        assertContains(
+            code,
+            "mongoScannedMapField(\"bag\") { entity: PlayerEntity -> entity.bag.mapValues { (_, value) -> trackedItemStackMongoValue(value) } }"
+        )
+        assertContains(code, "trackedPlayerProfileMongoValue(entity.profile)")
+        assertContains(code, "trackedQuestStateMongoValue(value)")
         assertContains(code, "fun table(")
         assertContains(code, "MongoKeyedDocumentTable<Long, PlayerEntity, TrackedPlayerEntity>")
+        assertContains(code, "fun scannedTable(")
+        assertContains(code, "MongoScannedKeyedDocumentTable<Long, PlayerEntity>")
+        assertContains(code, "metrics: Metrics = NoopMetrics")
     }
 
     private companion object {

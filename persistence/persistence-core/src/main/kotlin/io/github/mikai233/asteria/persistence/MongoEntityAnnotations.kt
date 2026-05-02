@@ -51,6 +51,24 @@ annotation class AsteriaMongoField(
 annotation class AsteriaMongoIgnore
 
 /**
+ * Excludes a persisted property from generated scan-based dirty tracking.
+ *
+ * Use this only when the field is maintained by another write path. The generated wrapper path is unaffected.
+ */
+@Target(AnnotationTarget.PROPERTY)
+@Retention(AnnotationRetention.BINARY)
+annotation class AsteriaMongoScanIgnore
+
+/**
+ * Forces generated scan-based dirty tracking to compare and write a collection as one whole field.
+ *
+ * Map properties are scanned by key by default. Mark a map with this annotation when per-key updates are not wanted.
+ */
+@Target(AnnotationTarget.PROPERTY)
+@Retention(AnnotationRetention.BINARY)
+annotation class AsteriaMongoScanWholeField
+
+/**
  * Marks a project-defined value type as safe to persist through the Mongo driver without generated field-level
  * tracking.
  *
