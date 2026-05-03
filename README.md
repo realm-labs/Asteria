@@ -210,8 +210,8 @@ raw entity snapshots. Mixing them makes it easy to mutate data through a path th
 
 For scan-based tables, a scan snapshot means "this state has already been converted into the pending write queue", not
 "this state has reached Mongo". If a flush fails, the pending write queue requeues the write and retries later.
-Creation is currently `setAll + upsert`; scanned row tables expose `createLoaded(row)` for new in-memory rows. Use an
-explicit existence check when insert-only behavior is required.
+Creation uses `setAll + upsert`; scanned row tables expose `createLoaded(row)` for new in-memory rows. Use an explicit
+existence check when insert-only behavior is required.
 
 Business data that owns scanned tables can opt into normal `DataManager.tick()` scheduling with `MongoScannedTableData`:
 
@@ -289,7 +289,8 @@ cluster.stop()
 ```
 
 When a test needs to exercise the config-center topology path instead of the static provider, use
-`localConfigCenterGameCluster`. It writes the generated topology to an in-memory `ConfigStore` before building nodes.
+`localConfigCenterGameCluster`. It writes the generated topology to a `ConfigStore` before building nodes; the default
+store is in-memory, and tests can pass Zookeeper, Etcd, or another adapter when they need to verify a concrete backend.
 
 ```kotlin
 val cluster = localConfigCenterGameCluster {
@@ -659,10 +660,26 @@ install(ScriptModule {
 })
 ```
 
-Actors must explicitly opt in to actor-level scripts:
+Actors must explicitly opt in to actor-level scripts. Use the convenience base class when script handling should be
+available in the normal running receive:
 
 ```kotlin
 class PlayerActor(runtime: NodeRuntime) : ScriptableAsteriaActor<NodeRuntime>(runtime)
+```
+
+Actors with custom state machines can compose `ActorScriptSupport` only into states that should accept GM scripts:
+
+```kotlin
+class PlayerActor(runtime: NodeRuntime) : AsteriaActor<NodeRuntime>(runtime) {
+    private val scripts = ActorScriptSupport(this)
+
+    override fun createReceive(): Receive {
+        val business = receiveBuilder()
+            .match(PlayerCommand::class.java) { handleCommand(it) }
+            .build()
+        return business.orElse(scripts.receive())
+    }
+}
 ```
 
 Projects can replace the default script policy when script execution needs stricter controls such as checksum
@@ -702,6 +719,3 @@ install(ScriptJobModule {
 val jobs = app.services.get<ScriptJobService>()
 jobs.submit(command)
 ```
-
-The first migration target is to make the existing `akka-game-server` a game project built on these modules, not the
-source of framework-level concepts.

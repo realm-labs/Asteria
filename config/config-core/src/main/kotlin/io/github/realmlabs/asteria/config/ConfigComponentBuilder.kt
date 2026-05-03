@@ -22,8 +22,8 @@ interface ConfigComponentBuilder<T : Any> {
     /**
      * Tables used by this builder.
      *
-     * The first implementation rebuilds all components on every reload. Dependencies are still declared now so tooling
-     * and later optimizations can explain why a component exists and which table changes affect it.
+     * Dependencies are part of the component contract: they document which tables feed the component and give reload
+     * tooling enough information to explain why a component exists and which table changes affect it.
      */
     val dependencies: Set<ConfigTableName>
 
