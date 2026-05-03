@@ -22,8 +22,8 @@ interface ScriptContext {
             ?: NonCancellableScriptToken
 }
 
-data class NodeScriptContext(
-    override val runtime: NodeRuntime,
+data class NodeScriptContext<N : NodeRuntime>(
+    override val runtime: N,
     override val request: ScriptExecutionRequest,
 ) : ScriptContext {
     override val services: ServiceRegistry get() = runtime.services

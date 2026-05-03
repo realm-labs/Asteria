@@ -36,9 +36,10 @@ class GroovyScriptEngineTest {
             import io.github.realmlabs.asteria.script.NodeScript
             import io.github.realmlabs.asteria.script.NodeScriptContext
             import io.github.realmlabs.asteria.script.ScriptExecutionResult
+            import io.github.realmlabs.asteria.core.NodeRuntime
 
-            class TestNodeScript extends NodeScript {
-                ScriptExecutionResult executeNode(NodeScriptContext context) {
+            class TestNodeScript extends NodeScript<NodeRuntime> {
+                ScriptExecutionResult executeNode(NodeScriptContext<NodeRuntime> context) {
                     return new ScriptExecutionResult(context.request.executionId, true, context.target.toString(), null, context.nodeAddress, null)
                 }
             }
