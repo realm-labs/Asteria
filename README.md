@@ -302,7 +302,8 @@ val cluster = localConfigCenterGameCluster {
 
 RPC protocol metadata is intentionally limited to centralized protobuf message id allocation. It does not describe
 targets, method names, or request/response modes, because internal RPC callers already choose the destination actor or
-service explicitly.
+service explicitly. Messages that may be sent to a sharding entity can additionally declare how to extract the entity id
+with a protobuf option; this still does not declare the target actor.
 
 ```json
 {
@@ -316,6 +317,16 @@ service explicitly.
       "type": "com.example.protocol.QueryPlayerResp"
     }
   ]
+}
+```
+
+```protobuf
+import "asteria_rpc_options.proto";
+
+message QueryPlayerReq {
+  option (asteria.rpc.entity_id) = "player_id";
+
+  int64 player_id = 1;
 }
 ```
 
@@ -359,6 +370,7 @@ asteriaProtobufProtocol {
     rpc {
         enabled.set(true)
         metadataFile.set(layout.projectDirectory.file("protocol/rpc-protocol.json"))
+        descriptorSetFile.set(layout.buildDirectory.file("generated/descriptors/main.desc"))
     }
 }
 ```
@@ -378,6 +390,20 @@ pekko.actor.serialization-bindings {
 The serializer uses the generated RPC message registry as the manifest table: `tell` and `ask` still use normal Pekko
 `ActorRef` routing, while serialization writes the registered message id plus the protobuf payload. Messages sent across
 Pekko remoting must be registered in RPC metadata; unregistered protobuf messages fail serialization.
+
+When the destination is a sharding entity, use the generated entity id resolver to build the Pekko message extractor:
+
+```kotlin
+val extractor = ProtobufRpcShardExtractors.byEntityIdHash(shardCount)
+```
+
+For custom shard routing, keep the same entity id extraction and provide the shard id strategy explicitly:
+
+```kotlin
+val extractor = ProtobufRpcShardExtractors.of { message, entityId ->
+    routeByRegion(message, entityId)
+}
+```
 
 Mongo tracked wrappers can be generated from storage DTOs. The DTO remains the Mongo serialization shape, while the
 generated wrapper is the mutable actor-local view that records dirty fields.

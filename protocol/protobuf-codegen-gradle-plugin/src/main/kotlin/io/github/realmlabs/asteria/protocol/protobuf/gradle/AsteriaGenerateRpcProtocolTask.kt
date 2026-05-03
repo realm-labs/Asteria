@@ -18,6 +18,11 @@ abstract class AsteriaGenerateRpcProtocolTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val metadataFile: RegularFileProperty
 
+    @get:Optional
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val descriptorSetFile: RegularFileProperty
+
     @get:OutputDirectory
     abstract val kotlinOutputDirectory: DirectoryProperty
 
@@ -39,6 +44,7 @@ abstract class AsteriaGenerateRpcProtocolTask : DefaultTask() {
         ProtobufRpcProtocolGenerator.generate(
             ProtobufRpcGeneratorConfig(
                 metadata = metadataFile.get().asFile.toPath(),
+                descriptorSet = descriptorSetFile.orNull?.asFile?.toPath(),
                 kotlinOutput = kotlinOutputDirectory.get().asFile.toPath(),
                 resourcesOutput = resourcesOutputDirectory.get().asFile.toPath(),
                 packageName = packageName.get(),

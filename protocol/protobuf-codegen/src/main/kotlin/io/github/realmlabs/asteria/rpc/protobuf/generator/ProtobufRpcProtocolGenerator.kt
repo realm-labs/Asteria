@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.MapperFeature
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.google.protobuf.DescriptorProtos
+import com.google.protobuf.ExtensionRegistry
 import com.squareup.kotlinpoet.*
+import io.github.realmlabs.asteria.rpc.protobuf.AsteriaRpcOptionsProto
 import io.github.realmlabs.asteria.rpc.protobuf.GeneratedProtobufRpcProtocol
 import io.github.realmlabs.asteria.rpc.protobuf.ProtobufRpcProtocolBuilder
 import io.github.realmlabs.asteria.rpc.protobuf.ProtobufRpcProtocolContributor
@@ -24,7 +27,8 @@ object ProtobufRpcProtocolGenerator {
 
     fun generate(config: ProtobufRpcGeneratorConfig) {
         val metadata = readMetadata(config.metadata)
-        val file = buildFile(config, metadata)
+        val entityIds = config.descriptorSet?.let(::readEntityIds).orEmpty()
+        val file = buildFile(config, metadata, entityIds)
         file.writeTo(config.kotlinOutput)
         writeServiceProvider(config)
     }
@@ -33,11 +37,19 @@ object ProtobufRpcProtocolGenerator {
         config: ProtobufRpcGeneratorConfig,
         metadata: RpcProtocolMetadata,
     ): FileSpec {
+        return buildFile(config, metadata, emptyList())
+    }
+
+    private fun buildFile(
+        config: ProtobufRpcGeneratorConfig,
+        metadata: RpcProtocolMetadata,
+        entityIds: List<MessageEntityId>,
+    ): FileSpec {
         validateMetadata(metadata)
         val contributeFunction = FunSpec.builder("contribute")
             .addModifiers(KModifier.OVERRIDE)
             .addParameter("builder", ProtobufRpcProtocolBuilder::class)
-            .addCode(buildContributorCode(metadata))
+            .addCode(buildContributorCode(metadata, entityIds))
             .build()
         val type = TypeSpec.classBuilder(config.className)
             .superclass(GeneratedProtobufRpcProtocol::class)
@@ -54,6 +66,58 @@ object ProtobufRpcProtocolGenerator {
         }
     }
 
+    private fun readEntityIds(descriptorSetPath: Path): List<MessageEntityId> {
+        val registry = ExtensionRegistry.newInstance().apply {
+            add(AsteriaRpcOptionsProto.entityId)
+        }
+        val descriptorSet = descriptorSetPath.inputStream().use {
+            DescriptorProtos.FileDescriptorSet.parseFrom(it, registry)
+        }
+        return descriptorSet.fileList.flatMap(::entityIdsInFile)
+    }
+
+    private fun entityIdsInFile(file: DescriptorProtos.FileDescriptorProto): List<MessageEntityId> {
+        val javaPackage = file.options.javaPackage.takeIf { it.isNotBlank() } ?: file.`package`
+        val outerClassName =
+            file.options.javaOuterClassname.takeIf { it.isNotBlank() } ?: defaultOuterClassName(file.name)
+        val multipleFiles = file.options.javaMultipleFiles
+        return file.messageTypeList.flatMap { message ->
+            entityIdsInMessage(
+                message = message,
+                javaPackage = javaPackage,
+                outerClassName = outerClassName,
+                multipleFiles = multipleFiles,
+                parents = emptyList(),
+            )
+        }
+    }
+
+    private fun entityIdsInMessage(
+        message: DescriptorProtos.DescriptorProto,
+        javaPackage: String,
+        outerClassName: String,
+        multipleFiles: Boolean,
+        parents: List<String>,
+    ): List<MessageEntityId> {
+        val currentPath = parents + message.name
+        val ownEntityId = if (message.options.hasExtension(AsteriaRpcOptionsProto.entityId)) {
+            val fieldName = message.options.getExtension(AsteriaRpcOptionsProto.entityId)
+            val messageClass = messageClassName(javaPackage, outerClassName, multipleFiles, currentPath)
+            listOf(MessageEntityId(currentPath.joinToString("."), message, messageClass, fieldName))
+        } else {
+            emptyList()
+        }
+        return ownEntityId + message.nestedTypeList.flatMap { nested ->
+            entityIdsInMessage(
+                message = nested,
+                javaPackage = javaPackage,
+                outerClassName = outerClassName,
+                multipleFiles = multipleFiles,
+                parents = currentPath,
+            )
+        }
+    }
+
     private fun validateMetadata(metadata: RpcProtocolMetadata) {
         require(metadata.messages.isNotEmpty()) { "protobuf RPC metadata must contain at least one message" }
         val messageIds = metadata.messages.map { it.id }
@@ -66,7 +130,10 @@ object ProtobufRpcProtocolGenerator {
         }
     }
 
-    private fun buildContributorCode(metadata: RpcProtocolMetadata): CodeBlock {
+    private fun buildContributorCode(
+        metadata: RpcProtocolMetadata,
+        entityIds: List<MessageEntityId>,
+    ): CodeBlock {
         val builder = CodeBlock.builder()
         metadata.messages.sortedBy { it.id }.forEach { message ->
             val messageClass = ClassName.bestGuess(message.type)
@@ -77,7 +144,55 @@ object ProtobufRpcProtocolGenerator {
                 messageClass,
             )
         }
+        entityIds.forEach { entityId ->
+            validateField(entityId)
+            builder.add("builder.entityId<%T> { message ->\n", entityId.messageClass)
+            builder.indent()
+            builder.add("message.%L.toString()\n", entityId.fieldName.protoFieldNameToKotlinProperty())
+            builder.unindent()
+            builder.add("}\n")
+        }
         return builder.build()
+    }
+
+    private fun validateField(entityId: MessageEntityId) {
+        require(entityId.fieldName.isNotBlank()) {
+            "entity_id for ${entityId.protoName} must not be blank"
+        }
+        require(entityId.message.fieldList.any { it.name == entityId.fieldName }) {
+            "field ${entityId.fieldName} not found in ${entityId.protoName}"
+        }
+    }
+
+    private fun messageClassName(
+        javaPackage: String,
+        outerClassName: String,
+        multipleFiles: Boolean,
+        messagePath: List<String>,
+    ): ClassName {
+        return if (multipleFiles) {
+            ClassName(javaPackage, messagePath.first(), *messagePath.drop(1).toTypedArray())
+        } else {
+            ClassName(javaPackage, outerClassName, *messagePath.toTypedArray())
+        }
+    }
+
+    private fun defaultOuterClassName(fileName: String): String {
+        val baseName = fileName.substringAfterLast('/').substringBeforeLast('.')
+        return baseName.split('_', '-')
+            .filter { it.isNotBlank() }
+            .joinToString("") { it.replaceFirstChar(Char::uppercaseChar) }
+    }
+
+    private fun String.protoFieldNameToKotlinProperty(): String {
+        val parts = split('_').filter { it.isNotBlank() }
+        return parts.mapIndexed { index, part ->
+            if (index == 0) {
+                part
+            } else {
+                part.replaceFirstChar(Char::uppercaseChar)
+            }
+        }.joinToString("")
     }
 
     private fun writeServiceProvider(config: ProtobufRpcGeneratorConfig) {
@@ -99,6 +214,7 @@ object ProtobufRpcProtocolGenerator {
 
 data class ProtobufRpcGeneratorConfig(
     val metadata: Path,
+    val descriptorSet: Path? = null,
     val kotlinOutput: Path,
     val resourcesOutput: Path,
     val packageName: String,
@@ -114,6 +230,7 @@ data class ProtobufRpcGeneratorConfig(
             }
             return ProtobufRpcGeneratorConfig(
                 metadata = Path(requireNotNull(values["--metadata"]) { "--metadata is required" }),
+                descriptorSet = values["--descriptor-set"]?.let(::Path),
                 kotlinOutput = Path(requireNotNull(values["--kotlin-output"]) { "--kotlin-output is required" })
                     .also { Files.createDirectories(it) },
                 resourcesOutput = Path(requireNotNull(values["--resources-output"]) { "--resources-output is required" })
@@ -132,4 +249,11 @@ data class RpcProtocolMetadata(
 data class RpcMessageSpec(
     val id: Int,
     val type: String,
+)
+
+private data class MessageEntityId(
+    val protoName: String,
+    val message: DescriptorProtos.DescriptorProto,
+    val messageClass: ClassName,
+    val fieldName: String,
 )

@@ -8,6 +8,7 @@ import kotlin.reflect.KClass
 
 class ProtobufRpcProtocol(
     val messages: ProtobufMessageRegistry<Int>,
+    val entityIds: ProtobufRpcEntityIdRegistry,
 )
 
 fun interface ProtobufRpcProtocolContributor {
@@ -16,6 +17,7 @@ fun interface ProtobufRpcProtocolContributor {
 
 class ProtobufRpcProtocolBuilder {
     private val messages = ProtobufMessageRegistryBuilder<Int>()
+    private val entityIds = ProtobufRpcEntityIdRegistryBuilder()
 
     fun include(contributor: ProtobufRpcProtocolContributor) {
         contributor.contribute(this)
@@ -36,9 +38,21 @@ class ProtobufRpcProtocolBuilder {
         messages.message(id, messageClass, parser)
     }
 
+    inline fun <reified M : GeneratedMessage> entityId(noinline resolve: (M) -> String) {
+        entityId(M::class.java, resolve)
+    }
+
+    fun <M : GeneratedMessage> entityId(
+        messageClass: Class<M>,
+        resolve: (M) -> String,
+    ) {
+        entityIds.entityId(messageClass, resolve)
+    }
+
     fun build(): ProtobufRpcProtocol {
         return ProtobufRpcProtocol(
             messages = messages.build(),
+            entityIds = entityIds.build(),
         )
     }
 }

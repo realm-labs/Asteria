@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package asteria.rpc;
+
+option java_multiple_files = false;
+option java_package = "io.github.realmlabs.asteria.rpc.protobuf";
+option java_outer_classname = "AsteriaRpcOptionsProto";
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MessageOptions {
+  string entity_id = 50001;
+}

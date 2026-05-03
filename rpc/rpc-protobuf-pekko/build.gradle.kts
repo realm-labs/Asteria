@@ -4,5 +4,6 @@ plugins {
 
 dependencies {
     api(project(":rpc:rpc-protobuf"))
+    api(project(":cluster:cluster-pekko"))
     api(libs.pekko.actor)
 }

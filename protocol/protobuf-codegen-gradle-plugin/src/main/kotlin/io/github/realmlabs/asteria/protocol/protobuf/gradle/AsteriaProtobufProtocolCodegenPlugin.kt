@@ -78,6 +78,7 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
         return project.tasks.register("generateAsteriaRpcProtocol", AsteriaGenerateRpcProtocolTask::class.java) {
             it.generationEnabled.set(extension.rpc.enabled)
             it.metadataFile.set(extension.rpc.metadataFile)
+            it.descriptorSetFile.set(extension.rpc.descriptorSetFile)
             it.kotlinOutputDirectory.set(generatedKotlin.map { directory -> directory.dir("rpc") })
             it.resourcesOutputDirectory.set(generatedResources.map { directory -> directory.dir("rpc") })
             it.packageName.set(

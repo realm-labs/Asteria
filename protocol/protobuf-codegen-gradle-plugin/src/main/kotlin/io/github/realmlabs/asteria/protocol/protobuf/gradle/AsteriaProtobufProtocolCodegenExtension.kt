@@ -43,6 +43,7 @@ abstract class RpcProtocolCodegenExtension @Inject constructor(
 ) {
     val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     val metadataFile: RegularFileProperty = objects.fileProperty()
+    val descriptorSetFile: RegularFileProperty = objects.fileProperty()
     val packageName: Property<String> = objects.property(String::class.java)
     val className: Property<String> = objects.property(String::class.java).convention("GeneratedRpcProtocol")
 }
