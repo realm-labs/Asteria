@@ -256,6 +256,14 @@ private class AsteriaMongoEntitySymbolProcessor(
             }
             val declaration = owner.property(property.name)
             val type = declaration?.type?.resolve() ?: return@all true
+            if (type.isNullableMongoCollectionType()) {
+                logger.error(
+                    "Nullable Mongo collection properties are not supported: " +
+                            "${owner.simpleName.asString()}.${property.name}. " +
+                            "Use an empty collection, a nullable wrapper object, or a whole-value @AsteriaMongoValue type.",
+                )
+                return@all false
+            }
             if (!validateScanListKey(owner, property, type)) {
                 return@all false
             }
@@ -282,6 +290,13 @@ private class AsteriaMongoEntitySymbolProcessor(
         label: String,
         visiting: MutableSet<String>,
     ): Boolean {
+        if (type.isNullableMongoCollectionType()) {
+            logger.error(
+                "$label is a nullable Mongo collection. Use an empty collection, a nullable wrapper object, " +
+                        "or a whole-value @AsteriaMongoValue type.",
+            )
+            return false
+        }
         val declaration = type.declaration
         val qualifiedName = declaration.qualifiedName?.asString()
         if (qualifiedName != null && qualifiedName in valueTypes) {
@@ -470,6 +485,10 @@ private class AsteriaMongoEntitySymbolProcessor(
 
             else -> MongoEntityPropertyKind.Value
         }
+    }
+
+    private fun KSType.isNullableMongoCollectionType(): Boolean {
+        return isMarkedNullable && declaration.qualifiedName?.asString() in MAP_TYPES + LIST_OR_SET_TYPES
     }
 
     private fun KSClassDeclaration.property(name: String): KSPropertyDeclaration? {

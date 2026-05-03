@@ -164,6 +164,73 @@ class AsteriaMongoEntityCodeGeneratorTest {
         assertContains(error.message.orEmpty(), "@AsteriaMongoScanListById is not supported")
     }
 
+    @Test
+    fun `rejects nullable collection codegen models`() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            AsteriaMongoEntityCodeGenerator.buildFile(
+                MongoEntityCodegenModel(
+                    packageName = "com.example.player",
+                    entityType = PLAYER_ENTITY,
+                    wrapperName = "TrackedPlayerEntity",
+                    helperName = "PlayerEntityMongo",
+                    collectionName = "players",
+                    id = MongoEntityPropertyModel("id", "_id", LONG),
+                    properties = listOf(
+                        MongoEntityPropertyModel("id", "_id", LONG),
+                        MongoEntityPropertyModel(
+                            "bag",
+                            "bag",
+                            MUTABLE_MAP.parameterizedBy(STRING, ITEM_STACK).copy(nullable = true),
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        assertContains(error.message.orEmpty(), "Nullable Mongo collection properties are not supported")
+    }
+
+    @Test
+    fun `rejects nullable collection inside nested object codegen models`() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            AsteriaMongoEntityCodeGenerator.buildFile(
+                MongoEntityCodegenModel(
+                    packageName = "com.example.player",
+                    entityType = PLAYER_ENTITY,
+                    wrapperName = "TrackedPlayerEntity",
+                    helperName = "PlayerEntityMongo",
+                    collectionName = "players",
+                    id = MongoEntityPropertyModel("id", "_id", LONG),
+                    properties = listOf(
+                        MongoEntityPropertyModel("id", "_id", LONG),
+                        MongoEntityPropertyModel(
+                            "profile",
+                            "profile",
+                            PROFILE,
+                            MongoEntityPropertyKind.Object,
+                            TRACKED_PROFILE,
+                        ),
+                    ),
+                    nestedObjects = listOf(
+                        MongoNestedObjectModel(
+                            sourceType = PROFILE,
+                            wrapperType = TRACKED_PROFILE,
+                            properties = listOf(
+                                MongoEntityPropertyModel(
+                                    "tags",
+                                    "tags",
+                                    MUTABLE_LIST.parameterizedBy(STRING).copy(nullable = true),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        assertContains(error.message.orEmpty(), "Nullable Mongo collection properties are not supported")
+    }
+
     private companion object {
         val INT = ClassName("kotlin", "Int")
         val LONG = ClassName("kotlin", "Long")

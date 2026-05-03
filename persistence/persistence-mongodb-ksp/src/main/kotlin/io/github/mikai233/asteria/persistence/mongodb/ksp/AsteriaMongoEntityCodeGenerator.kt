@@ -45,6 +45,16 @@ object AsteriaMongoEntityCodeGenerator {
         require(model.properties.none { property -> property.scanListKey != null }) {
             "@AsteriaMongoScanListById is not supported; use Map<ID, Value> for keyed collections"
         }
+        require(model.properties.none { property -> property.type.isNullableCollectionType() }) {
+            "Nullable Mongo collection properties are not supported"
+        }
+        require(
+            model.nestedObjects.none { nested ->
+                nested.properties.any { property -> property.type.isNullableCollectionType() }
+            },
+        ) {
+            "Nullable Mongo collection properties are not supported"
+        }
         val wrapperType = ClassName(model.packageName, model.wrapperName)
         val helperType = ClassName(model.packageName, model.helperName)
         return FileSpec.builder(model.packageName, model.wrapperName)
@@ -674,6 +684,22 @@ object AsteriaMongoEntityCodeGenerator {
             else -> return this
         }
         return mutableRawType.parameterizedBy(parameterized.typeArguments).copy(nullable = this.isNullable)
+    }
+
+    private fun TypeName.isNullableCollectionType(): Boolean {
+        if (!isNullable) return false
+        val parameterized = this as? com.squareup.kotlinpoet.ParameterizedTypeName ?: return false
+        return when (parameterized.rawType.canonicalName) {
+            "kotlin.collections.Map",
+            "kotlin.collections.MutableMap",
+            "kotlin.collections.List",
+            "kotlin.collections.MutableList",
+            "kotlin.collections.Set",
+            "kotlin.collections.MutableSet",
+                -> true
+
+            else -> false
+        }
     }
 
     private fun MongoEntityPropertyModel.collectionValueWrapperType(): TypeName? {

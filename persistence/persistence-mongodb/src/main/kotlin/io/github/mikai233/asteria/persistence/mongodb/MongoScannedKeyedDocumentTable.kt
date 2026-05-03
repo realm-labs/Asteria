@@ -228,6 +228,26 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         return collection.find(filter).toList().map { it.id }
     }
 
+    /**
+     * Queries database-side snapshots and immediately projects them to caller-owned values.
+     *
+     * Returned raw Mongo entities are not attached to this table's row cache. Mutating them will not be scanned or
+     * flushed. Prefer this overload for read-only filtering, reporting, or candidate selection.
+     */
+    suspend fun <T> querySnapshots(filter: Bson = Document(), mapper: (E) -> T): List<T> {
+        return collection.find(filter).toList().map(mapper)
+    }
+
+    /**
+     * Queries detached raw Mongo entities.
+     *
+     * Mutating returned objects is not scanned. Use [queryKeys] and re-enter [use], or use the mapper overload to return
+     * immutable caller-owned snapshots.
+     */
+    @Deprecated(
+        message = "Raw query snapshots are detached and mutable. Use querySnapshots(filter, mapper) or queryKeys + use.",
+        replaceWith = ReplaceWith("querySnapshots(filter) { it }"),
+    )
     suspend fun querySnapshots(filter: Bson = Document()): List<E> {
         return collection.find(filter).toList()
     }
