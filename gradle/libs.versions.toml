@@ -18,6 +18,7 @@ slf4j = "2.0.17"
 spring-boot = "4.0.6"
 spring-framework = "7.0.7"
 jakarta-servlet = "6.1.0"
+testcontainers = "1.21.4"
 
 [libraries]
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
@@ -60,6 +61,7 @@ slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure", version.ref = "spring-boot" }
 spring-web = { module = "org.springframework:spring-web", version.ref = "spring-framework" }
 jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakarta-servlet" }
+testcontainers-mongodb = { module = "org.testcontainers:mongodb", version.ref = "testcontainers" }
 
 [plugins]
 protobuf = { id = "com.google.protobuf", version = "0.10.0" }

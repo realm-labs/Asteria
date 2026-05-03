@@ -7,4 +7,5 @@ dependencies {
     api(project(":observability:observability-core"))
     api(libs.mongodb.driver.kotlin.coroutine)
     implementation(libs.slf4j.api)
+    testImplementation(libs.testcontainers.mongodb)
 }

@@ -172,6 +172,10 @@ Use scan-based tracking when business code should keep mutating the raw entity:
   updates;
 - `Set` fields remain whole-field values because mutable set elements make `hashCode` / `equals` unsafe.
 
+Choose one write model per logical table. Do not mix generated wrappers and scan-based raw entity writes for the same
+Mongo collection in one business module: wrapper writes know only the generated wrapper state, while scan writes compare
+raw entity snapshots. Mixing them makes it easy to mutate data through a path that the active writer does not own.
+
 For scan-based tables, a scan snapshot means "this state has already been converted into the pending write queue", not
 "this state has reached Mongo". If a flush fails, the pending write queue requeues the write and retries later.
 Creation is currently `setAll + upsert`; scanned row tables expose `createLoaded(row)` for new in-memory rows. Use an
