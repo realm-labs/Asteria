@@ -154,6 +154,29 @@ Standalone modules:
 - `:persistence:persistence-mongodb`: MongoDB tracked document, row cache, dirty patch, flush, and WAL support.
 - `:persistence:persistence-mongodb-ksp`: KSP processor that generates Mongo tracked wrappers from storage DTOs.
 
+## Publishing
+
+Release artifacts start at `0.1.0`. The repository default is `0.1.0-SNAPSHOT`; release builds override it from the Git
+tag, so `v0.1.0` publishes version `0.1.0`.
+
+Local verification:
+
+```bash
+./gradlew publishToMavenLocal
+```
+
+Maven Central releases are handled by `.github/workflows/release.yml` on `v*` tags. The workflow expects these repository
+secrets:
+
+- `MAVEN_CENTRAL_USERNAME`
+- `MAVEN_CENTRAL_PASSWORD`
+- `SIGNING_IN_MEMORY_KEY`
+- `SIGNING_IN_MEMORY_KEY_ID`
+- `SIGNING_IN_MEMORY_KEY_PASSWORD`
+
+Before the first release, make sure the `io.github.mikai233` namespace is verified in Central Portal and the signing
+public key has been distributed.
+
 ## Persistence Dirty Tracking
 
 Mongo persistence supports two dirty tracking styles.
