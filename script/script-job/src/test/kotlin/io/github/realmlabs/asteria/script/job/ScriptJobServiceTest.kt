@@ -739,16 +739,18 @@ class ScriptJobServiceTest {
 }
 
 private class FakeScriptRuntime(
-    private vararg val results: ScriptExecutionBatchResult,
+    vararg results: ScriptExecutionBatchResult,
 ) : ScriptRuntime {
-    private var index: Int = 0
+    private val results: Map<String, ScriptExecutionBatchResult> = results.associateBy { it.executionId }
 
     override suspend fun execute(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionResult {
         return executeAll(command, timeout).results.single()
     }
 
     override suspend fun executeAll(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionBatchResult {
-        return results[index++]
+        return requireNotNull(results[command.executionId]) {
+            "script execution result for ${command.executionId} not found"
+        }
     }
 
     override fun dispatch(command: ScriptExecutionCommand) {
