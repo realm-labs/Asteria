@@ -107,9 +107,16 @@ jobs:
             exit 1
           fi
 
-          if git rev-parse -q --verify "refs/tags/${TAG_NAME}" >/dev/null; then
-            echo "Release tag already exists: ${TAG_NAME}" >&2
-            exit 1
+          CREATE_TAG="true"
+          TAG_SHA="$(git rev-list -n 1 "${TAG_NAME}" 2>/dev/null || true)"
+          if [[ -n "${TAG_SHA}" ]]; then
+            if [[ "${TAG_SHA}" != "${GITHUB_SHA}" ]]; then
+              echo "Release tag already exists on another commit: ${TAG_NAME}" >&2
+              exit 1
+            fi
+
+            CREATE_TAG="false"
+            echo "Release tag already exists on current commit and will be reused: ${TAG_NAME}"
           fi
 
           CENTRAL_POM_URL="https://repo1.maven.org/maven2/io/github/realm-labs/foundation-core/${VERSION_NAME}/foundation-core-${VERSION_NAME}.pom"
@@ -121,9 +128,31 @@ jobs:
           {
             echo "version=${VERSION_NAME}"
             echo "tag=${TAG_NAME}"
+            echo "create-tag=${CREATE_TAG}"
           } >> "${GITHUB_OUTPUT}"
 
           echo "Preparing release ${VERSION_NAME} (${TAG_NAME})"
+
+      - name: Validate signing key
+        env:
+          SIGNING_IN_MEMORY_KEY: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SIGNING_IN_MEMORY_KEY}" ]]; then
+            echo "SIGNING_IN_MEMORY_KEY is empty." >&2
+            exit 1
+          fi
+
+          if ! grep -q "BEGIN PGP PRIVATE KEY BLOCK" <<< "${SIGNING_IN_MEMORY_KEY}"; then
+            echo "SIGNING_IN_MEMORY_KEY must contain an ASCII-armored private key." >&2
+            exit 1
+          fi
+
+          KEY_FILE="$(mktemp)"
+          printf '%s\n' "${SIGNING_IN_MEMORY_KEY}" > "${KEY_FILE}"
+          gpg --batch --import "${KEY_FILE}" >/dev/null
+          rm -f "${KEY_FILE}"
 
       - name: Verify
         run: |
@@ -131,6 +160,7 @@ jobs:
             -PVERSION_NAME="${{ steps.release.outputs.version }}"
 
       - name: Create release tag
+        if: steps.release.outputs.create-tag == 'true'
         run: |
           set -euo pipefail
 
@@ -144,7 +174,6 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
         run: |
           ./gradlew --no-daemon publishAndReleaseToMavenCentral \

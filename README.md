@@ -178,7 +178,6 @@ The workflow expects these repository secrets:
 - `MAVEN_CENTRAL_USERNAME`
 - `MAVEN_CENTRAL_PASSWORD`
 - `SIGNING_IN_MEMORY_KEY`
-- `SIGNING_IN_MEMORY_KEY_ID`
 - `SIGNING_IN_MEMORY_KEY_PASSWORD`
 
 Before the first release, make sure the `io.github.realm-labs` namespace is verified in Central Portal and the signing
