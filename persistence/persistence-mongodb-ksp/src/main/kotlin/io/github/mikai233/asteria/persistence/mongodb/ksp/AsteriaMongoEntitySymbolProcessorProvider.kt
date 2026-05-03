@@ -12,7 +12,6 @@ import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoFi
 import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoId
 import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoIgnore
 import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoScanIgnore
-import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoScanListById
 import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoScanWholeField
 import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoValue
 
@@ -152,9 +151,6 @@ private class AsteriaMongoEntitySymbolProcessor(
             valueKind = valueKind,
             scanIgnored = property.hasAnnotation(AsteriaMongoScanIgnore::class.qualifiedName!!),
             scanWholeField = property.hasAnnotation(AsteriaMongoScanWholeField::class.qualifiedName!!),
-            scanListKey = property.findAnnotation(AsteriaMongoScanListById::class.qualifiedName!!)
-                ?.stringArg("property")
-                ?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -271,25 +267,8 @@ private class AsteriaMongoEntitySymbolProcessor(
                 )
                 return@all false
             }
-            if (!validateScanListKey(owner, property, type)) {
-                return@all false
-            }
             validateMongoType(type, "property ${owner.simpleName.asString()}.${property.name}", mutableSetOf())
         }
-    }
-
-    private fun validateScanListKey(
-        owner: KSClassDeclaration,
-        property: MongoEntityPropertyModel,
-        @Suppress("UNUSED_PARAMETER") type: KSType,
-    ): Boolean {
-        val keyName = property.scanListKey ?: return true
-        logger.error(
-            "@AsteriaMongoScanListById is not supported for scan-based Mongo tracking: " +
-                    "${owner.simpleName.asString()}.${property.name} uses key $keyName. " +
-                    "Use Map<ID, Value> when elements need independent set/unset updates.",
-        )
-        return false
     }
 
     private fun validateMongoType(

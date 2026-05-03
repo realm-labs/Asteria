@@ -47,41 +47,6 @@ fun <E : Any> mongoScannedMapField(
 }
 
 /**
- * Tracks one list-like field by a stable element key.
- *
- * This helper is intentionally disabled for now. Mongo array update paths are positional, so keyed-list semantics need a
- * dedicated storage shape instead of encoding element ids as path parts. Use `Map<ID, Value>` for keyed collections.
- */
-@Deprecated(
-    message = "Keyed list scan is not supported. Use Map<ID, Value> for keyed collections.",
-    level = DeprecationLevel.ERROR,
-)
-fun <E : Any, V : Any> mongoScannedListByKeyField(
-    fieldName: String,
-    value: (E) -> Iterable<V>?,
-    key: (V) -> Any?,
-    persistentValue: (V) -> Any? = { element -> element },
-): ScannedField<E> {
-    return ScannedField(
-        path = FieldPath.of(fieldName),
-        value = value,
-        hash = MongoStableHasher::hash,
-        children = { listValue ->
-            val result = linkedMapOf<Any?, Any?>()
-            ((listValue as? Iterable<*>) ?: emptyList<Any?>()).forEach { element ->
-                @Suppress("UNCHECKED_CAST")
-                val typedElement = element as V
-                val elementKey = key(typedElement)
-                require(result.put(elementKey, persistentValue(typedElement)) == null) {
-                    "duplicate Mongo scan list key $elementKey for field $fieldName"
-                }
-            }
-            result
-        },
-    )
-}
-
-/**
  * Converts database-agnostic scan changes into Mongo update operations.
  */
 object MongoFieldChangeEncoder {

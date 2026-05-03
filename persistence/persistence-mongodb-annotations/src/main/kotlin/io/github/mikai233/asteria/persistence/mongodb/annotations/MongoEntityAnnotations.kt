@@ -69,19 +69,6 @@ annotation class AsteriaMongoScanIgnore
 annotation class AsteriaMongoScanWholeField
 
 /**
- * Reserved for a future keyed-list storage model.
- *
- * This annotation is currently rejected by the Mongo KSP processor. Mongo array paths are positional, so writing
- * `field.<element id>` would not mean "the list element whose id is `<element id>`". Model keyed, independently updated
- * collections as `Map<ID, Value>` for scan-based dirty tracking.
- */
-@Target(AnnotationTarget.PROPERTY)
-@Retention(AnnotationRetention.BINARY)
-annotation class AsteriaMongoScanListById(
-    val property: String,
-)
-
-/**
  * Marks a project-defined value type as safe to persist through the Mongo driver without generated field-level
  * tracking.
  *

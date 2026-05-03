@@ -135,36 +135,6 @@ class AsteriaMongoEntityCodeGeneratorTest {
     }
 
     @Test
-    fun `rejects keyed list scan codegen models`() {
-        val error = assertFailsWith<IllegalArgumentException> {
-            AsteriaMongoEntityCodeGenerator.buildFile(
-                MongoEntityCodegenModel(
-                    packageName = "com.example.player",
-                    entityType = PLAYER_ENTITY,
-                    wrapperName = "TrackedPlayerEntity",
-                    helperName = "PlayerEntityMongo",
-                    collectionName = "players",
-                    id = MongoEntityPropertyModel("id", "_id", LONG),
-                    properties = listOf(
-                        MongoEntityPropertyModel("id", "_id", LONG),
-                        MongoEntityPropertyModel(
-                            "quests",
-                            "quests",
-                            MUTABLE_LIST.parameterizedBy(QUEST_STATE),
-                            MongoEntityPropertyKind.List,
-                            MUTABLE_LIST.parameterizedBy(TRACKED_QUEST_STATE),
-                            MongoEntityPropertyKind.Object,
-                            scanListKey = "questId",
-                        ),
-                    ),
-                ),
-            )
-        }
-
-        assertContains(error.message.orEmpty(), "@AsteriaMongoScanListById is not supported")
-    }
-
-    @Test
     fun `rejects nullable collection codegen models`() {
         val error = assertFailsWith<IllegalArgumentException> {
             AsteriaMongoEntityCodeGenerator.buildFile(

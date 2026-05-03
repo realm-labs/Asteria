@@ -29,7 +29,6 @@ data class MongoEntityPropertyModel(
     val valueKind: MongoEntityPropertyKind = MongoEntityPropertyKind.Value,
     val scanIgnored: Boolean = false,
     val scanWholeField: Boolean = false,
-    val scanListKey: String? = null,
 )
 
 enum class MongoEntityPropertyKind {
@@ -42,9 +41,6 @@ enum class MongoEntityPropertyKind {
 
 object AsteriaMongoEntityCodeGenerator {
     fun buildFile(model: MongoEntityCodegenModel): FileSpec {
-        require(model.properties.none { property -> property.scanListKey != null }) {
-            "@AsteriaMongoScanListById is not supported; use Map<ID, Value> for keyed collections"
-        }
         require(model.properties.none { property -> property.type.isNullableCollectionType() }) {
             "Nullable Mongo collection properties are not supported"
         }
