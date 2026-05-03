@@ -68,7 +68,7 @@ class PekkoGatewayForwarder<P : Any>(
 ) : GatewayForwarder<P> {
     private val logger = LoggerFactory.getLogger(PekkoGatewayForwarder::class.java)
 
-    override suspend fun forward(context: GatewaySessionContext, route: GatewayRoute, packet: P) {
+    override fun forward(context: GatewaySessionContext, route: GatewayRoute, packet: P) {
         val tags = route.target.metricTags()
         val startedAt = System.nanoTime()
         metrics.counter("asteria.gateway.pekko.forward.total", tags).increment()

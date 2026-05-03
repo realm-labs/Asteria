@@ -35,7 +35,7 @@ class ProtobufGatewayRouteResolver(
     private val protocolRegistry: ProtobufProtocolRegistry,
     private val routeRegistry: ProtocolRouteRegistry,
 ) : GatewayRouteResolver<ClientProtoEnvelope> {
-    override suspend fun resolve(context: GatewaySessionContext, packet: ClientProtoEnvelope): GatewayRoute {
+    override fun resolve(context: GatewaySessionContext, packet: ClientProtoEnvelope): GatewayRoute {
         val direction = protocolRegistry.directionFor(packet.id)
         require(direction.allowsClientToServer) {
             "protobuf message id ${packet.id} is not allowed in client-to-server direction"

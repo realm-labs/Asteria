@@ -14,7 +14,7 @@ data class GatewayRoute(
 )
 
 fun interface GatewayRouteResolver<P : Any> {
-    suspend fun resolve(context: GatewaySessionContext, packet: P): GatewayRoute
+    fun resolve(context: GatewaySessionContext, packet: P): GatewayRoute
 }
 
 /**
@@ -24,7 +24,7 @@ fun interface GatewayRouteResolver<P : Any> {
  * [RouteTarget.Service] to a role/path selection. Applications can also provide a local-only implementation for tests.
  */
 fun interface GatewayForwarder<P : Any> {
-    suspend fun forward(context: GatewaySessionContext, route: GatewayRoute, packet: P)
+    fun forward(context: GatewaySessionContext, route: GatewayRoute, packet: P)
 }
 
 class GatewayMessageDispatcher<P : Any>(
@@ -32,7 +32,7 @@ class GatewayMessageDispatcher<P : Any>(
     private val forwarder: GatewayForwarder<P>,
     private val metrics: Metrics = NoopMetrics,
 ) {
-    suspend fun dispatch(context: GatewaySessionContext, packet: P): GatewayRoute {
+    fun dispatch(context: GatewaySessionContext, packet: P): GatewayRoute {
         val tags = context.metricTags()
         val startedAt = System.nanoTime()
         metrics.counter("asteria.gateway.dispatch.total", tags).increment()
