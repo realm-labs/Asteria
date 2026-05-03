@@ -403,6 +403,11 @@ data class PlayerEntity(
 ) : Entity<Long>
 ```
 
+The Mongo id can be declared in three ways:
+- use a property named `id`
+- annotate the id property with `@AsteriaMongoId`
+- annotate the id property with the official driver `@BsonId`
+
 The generator accepts Mongo-safe scalar values, enums, arrays, `Map` / `List` / `Set`, and project data classes whose
 properties are also Mongo-safe. It fails compilation when a field cannot be proven safe to encode or safe to track.
 Direct data-class fields and `Map` / `List` data-class elements receive generated nested wrappers, so field mutations

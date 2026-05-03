@@ -14,6 +14,7 @@ import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoI
 import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoScanIgnore
 import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoScanWholeField
 import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoValue
+import org.bson.codecs.pojo.annotations.BsonId
 
 class AsteriaMongoEntitySymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
@@ -77,18 +78,20 @@ private class AsteriaMongoEntitySymbolProcessor(
             }
             .toList()
         val annotatedIds = properties.filter { property ->
-            symbol.property(property.name)?.hasAnnotation(AsteriaMongoId::class.qualifiedName!!) == true
+            val declaration = symbol.property(property.name)
+            declaration?.hasAnnotation(AsteriaMongoId::class.qualifiedName!!) == true ||
+                    declaration?.hasAnnotation(BsonId::class.qualifiedName!!) == true
         }
         val id = when {
             annotatedIds.size == 1 -> annotatedIds.single()
             annotatedIds.size > 1 -> {
-                logger.error("Only one @AsteriaMongoId property is allowed", symbol)
+                logger.error("Only one @AsteriaMongoId or @BsonId property is allowed", symbol)
                 return null
             }
 
             else -> properties.singleOrNull { it.name == "id" } ?: run {
                 logger.error(
-                    "Mongo entity ${symbol.qualifiedName?.asString()} requires an id property or @AsteriaMongoId",
+                    "Mongo entity ${symbol.qualifiedName?.asString()} requires an id property, @AsteriaMongoId, or @BsonId",
                     symbol
                 )
                 return null
@@ -292,7 +295,7 @@ private class AsteriaMongoEntitySymbolProcessor(
             return true
         }
         if (declaration is KSClassDeclaration) {
-            if (declaration.classKind == com.google.devtools.ksp.symbol.ClassKind.ENUM_CLASS) {
+            if (declaration.classKind == ClassKind.ENUM_CLASS) {
                 return true
             }
             if (declaration.hasAnnotation(AsteriaMongoValue::class.qualifiedName!!)) {
@@ -366,7 +369,7 @@ private class AsteriaMongoEntitySymbolProcessor(
             return true
         }
         if (declaration is KSClassDeclaration) {
-            if (declaration.classKind == com.google.devtools.ksp.symbol.ClassKind.ENUM_CLASS) {
+            if (declaration.classKind == ClassKind.ENUM_CLASS) {
                 return true
             }
             if (declaration.hasAnnotation(AsteriaMongoValue::class.qualifiedName!!)) {
@@ -429,7 +432,7 @@ private class AsteriaMongoEntitySymbolProcessor(
             return true
         }
         val declaration = type.declaration as? KSClassDeclaration ?: return false
-        if (declaration.classKind == com.google.devtools.ksp.symbol.ClassKind.ENUM_CLASS) {
+        if (declaration.classKind == ClassKind.ENUM_CLASS) {
             return true
         }
         if (declaration.hasAnnotation(AsteriaMongoValue::class.qualifiedName!!)) {
@@ -447,7 +450,7 @@ private class AsteriaMongoEntitySymbolProcessor(
             return true
         }
         val declaration = type.declaration
-        if (declaration is KSClassDeclaration && declaration.classKind == com.google.devtools.ksp.symbol.ClassKind.ENUM_CLASS) {
+        if (declaration is KSClassDeclaration && declaration.classKind == ClassKind.ENUM_CLASS) {
             return true
         }
         logger.error("$label type ${qualifiedName ?: declaration.simpleName.asString()} is not safe as a Mongo path key")
