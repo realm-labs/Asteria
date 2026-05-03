@@ -19,8 +19,9 @@ Foundation modules:
 
 RPC modules:
 
-- `:rpc:rpc-core`: RPC target and route registry contracts.
+- `:rpc:rpc-core`: runtime-neutral internal RPC metadata contracts.
 - `:rpc:rpc-protobuf`: protobuf RPC message id and entity id registry runtime contracts.
+- `:rpc:rpc-protobuf-pekko`: Pekko serializer for sending registered protobuf RPC messages directly through `ActorRef`.
 
 Script modules:
 
@@ -384,6 +385,19 @@ asteriaProtobufProtocol {
 
 The gateway client metadata output keeps only ids, message types, directions, and optional request/response names. Server
 route targets and entity-id fields stay server-side.
+
+Internal protobuf RPC messages can be sent as the generated protobuf objects themselves. Add `:rpc:rpc-protobuf-pekko`
+and bind the serializer in Pekko config:
+
+```hocon
+pekko.actor.serialization-bindings {
+  "com.google.protobuf.GeneratedMessage" = asteria-rpc-protobuf
+}
+```
+
+The serializer uses the generated RPC message registry as the manifest table: `tell` and `ask` still use normal Pekko
+`ActorRef` routing, while serialization writes the registered message id plus the protobuf payload. Messages sent across
+Pekko remoting must be registered in RPC metadata; unregistered protobuf messages fail serialization.
 
 Mongo tracked wrappers can be generated from storage DTOs. The DTO remains the Mongo serialization shape, while the
 generated wrapper is the mutable actor-local view that records dirty fields.

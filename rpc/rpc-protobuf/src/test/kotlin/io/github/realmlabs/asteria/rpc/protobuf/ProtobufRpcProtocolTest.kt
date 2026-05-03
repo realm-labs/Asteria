@@ -1,81 +1,51 @@
 package io.github.realmlabs.asteria.rpc.protobuf
 
 import com.google.protobuf.BoolValue
-import com.google.protobuf.Int32Value
 import com.google.protobuf.StringValue
-import io.github.realmlabs.asteria.core.EntityKind
-import io.github.realmlabs.asteria.core.SingletonName
-import io.github.realmlabs.asteria.rpc.RpcMode
-import io.github.realmlabs.asteria.rpc.RpcTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class ProtobufRpcProtocolTest {
     @Test
-    fun `protobuf rpc protocol registers ask method messages and entity id`() {
+    fun `protobuf rpc protocol registers messages and entity id resolvers`() {
         val protocol = protobufRpcProtocol {
-            entityCall<StringValue, Int32Value>(
-                id = 1001,
-                name = "player.query",
-                target = RpcTarget.Entity(EntityKind("player")),
-                requestParser = StringValue.parser(),
-                responseId = 1002,
-                responseParser = Int32Value.parser(),
-                entityIdResolver = { it.value },
-            )
+            message(1001, StringValue.parser())
+            message(1002, BoolValue.parser())
+            entityId<StringValue> { it.value }
         }
-        val method = protocol.methods.methodFor(1001)
 
-        assertEquals("player.query", method?.name)
-        assertEquals(RpcMode.ASK, method?.mode)
-        assertEquals(Int32Value::class, method?.responseType)
-        assertEquals("p1", method?.resolveEntityId(StringValue.of("p1")))
-        assertEquals("p1", protocol.entityIds.entityId(StringValue.of("p1")))
+        assertEquals(1001, protocol.messages.keyFor(StringValue.of("p1")))
         assertEquals(StringValue.of("p1"), protocol.messages.decode(1001, StringValue.of("p1").toByteArray()).message)
-    }
-
-    @Test
-    fun `protobuf rpc protocol registers tell method`() {
-        val protocol = protobufRpcProtocol {
-            tell<BoolValue>(
-                id = 2001,
-                name = "world.reload",
-                target = RpcTarget.Singleton(SingletonName("world")),
-                requestParser = BoolValue.parser(),
-            )
-        }
-        val method = protocol.methods.methodNamed("world.reload")
-
-        assertEquals(RpcMode.TELL, method?.mode)
-        assertEquals(null, method?.responseType)
-        assertEquals(RpcTarget.Singleton(SingletonName("world")), method?.target)
+        assertEquals("p1", protocol.entityIds.entityId(StringValue.of("p1")))
+        assertEquals("p1", protocol.rpcProtocol().entityIds.entityId(StringValue.of("p1")))
     }
 
     @Test
     fun `protobuf rpc protocol supports contributors`() {
         val contributor = ProtobufRpcProtocolContributor { builder ->
-            builder.tell<BoolValue>(
-                id = 2001,
-                name = "world.reload",
-                target = RpcTarget.Singleton(SingletonName("world")),
-                requestParser = BoolValue.parser(),
-            )
+            builder.message(2001, BoolValue.parser())
         }
 
         val protocol = protobufRpcProtocol {
             include(contributor)
         }
 
-        assertEquals("world.reload", protocol.methods.methodFor(2001)?.name)
+        assertEquals(2001, protocol.messages.keyFor(BoolValue.of(true)))
     }
 
     @Test
-    fun `protobuf rpc protocol rejects duplicate request message metadata`() {
+    fun `protobuf rpc protocol rejects duplicate message metadata`() {
         assertFailsWith<IllegalStateException> {
             protobufRpcProtocol {
-                tell<StringValue>(1001, "a", RpcTarget.Singleton(SingletonName("world")), StringValue.parser())
-                tell<StringValue>(1002, "b", RpcTarget.Singleton(SingletonName("world")), StringValue.parser())
+                message<StringValue>(1001, StringValue.parser())
+                message<BoolValue>(1001, BoolValue.parser())
+            }
+        }
+        assertFailsWith<IllegalStateException> {
+            protobufRpcProtocol {
+                message<StringValue>(1001, StringValue.parser())
+                message<StringValue>(1002, StringValue.parser())
             }
         }
     }

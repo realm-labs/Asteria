@@ -11,7 +11,6 @@ class RpcModule private constructor(
     override suspend fun install(context: ModuleContext) {
         val protocol = protocolFactory(context)
         context.services.register(RpcProtocol::class, protocol)
-        context.services.register(RpcMethodRegistry::class, protocol.methods)
         context.services.register(RpcEntityIdRegistry::class, protocol.entityIds)
     }
 

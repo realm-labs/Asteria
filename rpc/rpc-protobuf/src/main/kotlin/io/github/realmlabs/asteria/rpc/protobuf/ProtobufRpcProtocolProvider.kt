@@ -10,7 +10,7 @@ abstract class GeneratedProtobufRpcProtocol : RpcProtocolProvider, ProtobufRpcPr
     final override fun create(): RpcProtocol {
         return protobufRpcProtocol {
             contribute(this)
-        }.protocol
+        }.rpcProtocol()
     }
 }
 

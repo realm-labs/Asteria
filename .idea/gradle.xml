@@ -87,6 +87,7 @@
             <option value="$PROJECT_DIR$/rpc" />
             <option value="$PROJECT_DIR$/rpc/rpc-core" />
             <option value="$PROJECT_DIR$/rpc/rpc-protobuf" />
+            <option value="$PROJECT_DIR$/rpc/rpc-protobuf-pekko" />
             <option value="$PROJECT_DIR$/script" />
             <option value="$PROJECT_DIR$/script/script-core" />
             <option value="$PROJECT_DIR$/script/script-engine-groovy" />

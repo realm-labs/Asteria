@@ -28,6 +28,7 @@ include(
     "patch:patch-pekko",
     "rpc:rpc-core",
     "rpc:rpc-protobuf",
+    "rpc:rpc-protobuf-pekko",
     "protocol:protobuf-codegen",
     "broadcast:broadcast-core",
     "broadcast:broadcast-protobuf",
