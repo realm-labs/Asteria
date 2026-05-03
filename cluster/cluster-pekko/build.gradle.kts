@@ -5,7 +5,6 @@ plugins {
 dependencies {
     api(project(":foundation:foundation-core"))
     api(project(":foundation:foundation-message"))
-    api(project(":rpc:rpc-core"))
     api(project(":cluster:cluster-config"))
     api(libs.pekko.actor)
     api(libs.pekko.cluster.sharding)

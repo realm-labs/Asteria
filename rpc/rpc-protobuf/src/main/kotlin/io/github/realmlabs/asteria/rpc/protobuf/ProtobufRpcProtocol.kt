@@ -4,17 +4,11 @@ import com.google.protobuf.GeneratedMessage
 import com.google.protobuf.Parser
 import io.github.realmlabs.asteria.protobuf.ProtobufMessageRegistry
 import io.github.realmlabs.asteria.protobuf.ProtobufMessageRegistryBuilder
-import io.github.realmlabs.asteria.rpc.*
 import kotlin.reflect.KClass
 
 class ProtobufRpcProtocol(
     val messages: ProtobufMessageRegistry<Int>,
-    val entityIds: RpcEntityIdRegistry,
-) {
-    fun rpcProtocol(): RpcProtocol {
-        return RpcProtocol(entityIds = entityIds)
-    }
-}
+)
 
 fun interface ProtobufRpcProtocolContributor {
     fun contribute(builder: ProtobufRpcProtocolBuilder)
@@ -22,7 +16,6 @@ fun interface ProtobufRpcProtocolContributor {
 
 class ProtobufRpcProtocolBuilder {
     private val messages = ProtobufMessageRegistryBuilder<Int>()
-    private val entityIds = ProtobufRpcEntityIdRegistryBuilder()
 
     fun include(contributor: ProtobufRpcProtocolContributor) {
         contributor.contribute(this)
@@ -43,22 +36,9 @@ class ProtobufRpcProtocolBuilder {
         messages.message(id, messageClass, parser)
     }
 
-    inline fun <reified M : GeneratedMessage> entityId(noinline resolve: (M) -> String) {
-        entityId(M::class.java, resolve)
-    }
-
-    fun <M : GeneratedMessage> entityId(
-        messageClass: Class<M>,
-        resolve: (M) -> String,
-    ) {
-        entityIds.entityId(messageClass, resolve)
-    }
-
     fun build(): ProtobufRpcProtocol {
-        val entityIdRegistry = entityIds.build()
         return ProtobufRpcProtocol(
             messages = messages.build(),
-            entityIds = entityIdRegistry,
         )
     }
 }

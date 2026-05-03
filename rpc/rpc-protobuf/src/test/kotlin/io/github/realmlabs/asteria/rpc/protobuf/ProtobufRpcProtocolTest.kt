@@ -8,17 +8,14 @@ import kotlin.test.assertFailsWith
 
 class ProtobufRpcProtocolTest {
     @Test
-    fun `protobuf rpc protocol registers messages and entity id resolvers`() {
+    fun `protobuf rpc protocol registers messages`() {
         val protocol = protobufRpcProtocol {
             message(1001, StringValue.parser())
             message(1002, BoolValue.parser())
-            entityId<StringValue> { it.value }
         }
 
         assertEquals(1001, protocol.messages.keyFor(StringValue.of("p1")))
         assertEquals(StringValue.of("p1"), protocol.messages.decode(1001, StringValue.of("p1").toByteArray()).message)
-        assertEquals("p1", protocol.entityIds.entityId(StringValue.of("p1")))
-        assertEquals("p1", protocol.rpcProtocol().entityIds.entityId(StringValue.of("p1")))
     }
 
     @Test

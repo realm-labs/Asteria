@@ -6,7 +6,6 @@ import io.github.realmlabs.asteria.cluster.pekko.PekkoRuntime
 import io.github.realmlabs.asteria.config.center.InMemoryConfigStore
 import io.github.realmlabs.asteria.config.center.configPath
 import io.github.realmlabs.asteria.core.NodeState
-import io.github.realmlabs.asteria.rpc.RpcEntityIdRegistry
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,7 +22,6 @@ class LocalGameApplicationTest {
         app.launch()
         assertEquals(NodeState.Started, app.state)
         assertNotNull(app.services.find<PekkoRuntime>())
-        assertNotNull(app.services.find<RpcEntityIdRegistry>())
         val summary = app.services.get<GameServerStartupSummary>()
         assertEquals("local", summary.topologySource)
         assertEquals(setOf("test"), summary.roles)

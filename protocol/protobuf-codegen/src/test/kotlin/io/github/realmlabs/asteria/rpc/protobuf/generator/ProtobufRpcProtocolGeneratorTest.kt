@@ -1,6 +1,5 @@
 package io.github.realmlabs.asteria.rpc.protobuf.generator
 
-import io.github.realmlabs.asteria.rpc.RpcProtocolProvider
 import io.github.realmlabs.asteria.rpc.protobuf.ProtobufRpcProtocolContributor
 import kotlin.io.path.*
 import kotlin.test.Test
@@ -56,12 +55,6 @@ class ProtobufRpcProtocolGeneratorTest {
         assertContains(generatedCode, "builder.message(id = 9_003")
         assertContains(generatedCode, "messageClass = KickPlayerResp::class")
 
-        val providerFile = resourcesOutput
-            .resolve("META-INF")
-            .resolve("services")
-            .resolve(RpcProtocolProvider::class.qualifiedName!!)
-        assertTrue(providerFile.exists())
-        assertContains(providerFile.readText(), "com.example.generated.GeneratedRpcProtocol")
         val contributorFile = resourcesOutput
             .resolve("META-INF")
             .resolve("services")

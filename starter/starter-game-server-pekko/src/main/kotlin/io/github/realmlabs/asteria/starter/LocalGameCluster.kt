@@ -10,7 +10,6 @@ import io.github.realmlabs.asteria.core.AsteriaApplication
 import io.github.realmlabs.asteria.core.AsteriaApplicationBuilder
 import io.github.realmlabs.asteria.core.AsteriaDsl
 import io.github.realmlabs.asteria.core.gameApplication
-import io.github.realmlabs.asteria.rpc.RpcModule
 import java.net.ServerSocket
 
 /**
@@ -210,7 +209,6 @@ class LocalGameClusterBuilder {
         val applications = nodes.zip(runtimeNodes).associate { (node, runtimeNode) ->
             runtimeNode.nodeId to gameApplication app@{
                 name = this@LocalGameClusterBuilder.name
-                install(RpcModule.autoDiscover())
                 this@LocalGameClusterBuilder.applySharedApplicationConfig(this@app, node)
                 install(
                     ClusterConfigModule {
@@ -255,7 +253,6 @@ class LocalGameClusterBuilder {
                         codec(configCodec)
                     },
                 )
-                install(RpcModule.autoDiscover())
                 this@LocalGameClusterBuilder.applySharedApplicationConfig(this@app, node)
                 install(
                     ClusterConfigModule {

@@ -13,7 +13,6 @@ import io.github.realmlabs.asteria.config.center.*
 import io.github.realmlabs.asteria.core.*
 import io.github.realmlabs.asteria.message.RouteRegistry
 import io.github.realmlabs.asteria.message.RouteRegistryBuilder
-import io.github.realmlabs.asteria.rpc.RpcModule
 
 /**
  * Installs a prebuilt gateway/client protocol route registry.
@@ -43,14 +42,13 @@ fun AsteriaApplicationBuilder.routes(configure: RouteRegistryBuilder.() -> Unit)
 /**
  * Builds a single local Pekko game node.
  *
- * The node self-joins a local cluster, uses the roles declared by the application, installs RPC auto-discovery, and
- * registers [GameServerStartupSummary]. Use this for simple local development. Use [localGameCluster] when behavior
- * depends on multiple concrete nodes.
+ * The node self-joins a local cluster, uses the roles declared by the application, and registers
+ * [GameServerStartupSummary]. Use this for simple local development. Use [localGameCluster] when behavior depends on
+ * multiple concrete nodes.
  */
 fun localGameApplication(configure: AsteriaApplicationBuilder.() -> Unit): AsteriaApplication {
     return gameApplication {
         install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
-        install(RpcModule.autoDiscover())
         configure()
         install(GameServerStartupSummaryModule("local"))
     }
@@ -69,7 +67,6 @@ fun clusterGameApplication(
     configure: AsteriaApplicationBuilder.() -> Unit,
 ): AsteriaApplication {
     return gameApplication {
-        install(RpcModule.autoDiscover())
         configure()
         val applicationName = name
         install(
@@ -103,7 +100,6 @@ fun clusterGameApplication(
                 codec(codec)
             },
         )
-        install(RpcModule.autoDiscover())
         configure()
         val applicationName = name
         install(
@@ -129,7 +125,6 @@ fun clusterGameApplication(
     configure: AsteriaApplicationBuilder.() -> Unit,
 ): AsteriaApplication {
     return gameApplication {
-        install(RpcModule.autoDiscover())
         configure()
         install(
             ClusterConfigModule {

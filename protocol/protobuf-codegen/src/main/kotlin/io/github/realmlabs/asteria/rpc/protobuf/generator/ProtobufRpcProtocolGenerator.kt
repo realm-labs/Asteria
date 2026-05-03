@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.squareup.kotlinpoet.*
-import io.github.realmlabs.asteria.rpc.RpcProtocolProvider
 import io.github.realmlabs.asteria.rpc.protobuf.GeneratedProtobufRpcProtocol
 import io.github.realmlabs.asteria.rpc.protobuf.ProtobufRpcProtocolBuilder
 import io.github.realmlabs.asteria.rpc.protobuf.ProtobufRpcProtocolContributor
@@ -86,9 +85,6 @@ object ProtobufRpcProtocolGenerator {
             .resolve("META-INF")
             .resolve("services")
             .also(Path::createDirectories)
-        serviceDir
-            .resolve(RpcProtocolProvider::class.qualifiedName!!)
-            .writeText("${config.packageName}.${config.className}\n")
         serviceDir
             .resolve(ProtobufRpcProtocolContributor::class.qualifiedName!!)
             .writeText("${config.packageName}.${config.className}\n")

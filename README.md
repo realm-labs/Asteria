@@ -19,8 +19,7 @@ Foundation modules:
 
 RPC modules:
 
-- `:rpc:rpc-core`: runtime-neutral internal RPC metadata contracts.
-- `:rpc:rpc-protobuf`: protobuf RPC message id and entity id registry runtime contracts.
+- `:rpc:rpc-protobuf`: protobuf RPC message id registry runtime contracts.
 - `:rpc:rpc-protobuf-pekko`: Pekko serializer for sending registered protobuf RPC messages directly through `ActorRef`.
 
 Script modules:
@@ -300,25 +299,6 @@ val cluster = localConfigCenterGameCluster {
     node("player-1", "player")
 }
 ```
-
-RPC entity ids are intended to be generated from protobuf metadata and loaded through `RpcModule.autoDiscover()`.
-The runtime consumes `RpcEntityIdRegistry`; game projects should not have to register every sharded RPC message in the
-application DSL.
-
-```protobuf
-import "asteria_rpc_options.proto";
-
-message LoginReq {
-  option (asteria.rpc.rpc_entity_id_field) = "player_id";
-
-  int64 player_id = 1;
-}
-```
-
-The protobuf entity id generator reads a descriptor set with `asteria.rpc.rpc_entity_id_field` options and emits a
-`GeneratedProtobufRpcEntityIds` implementation plus the `ServiceLoader` metadata used by `RpcModule.autoDiscover()`.
-Actor targets are selected by application code through the shard or singleton `ActorRef`; RPC entity id metadata only
-describes how cluster sharding extracts the entity id.
 
 RPC protocol metadata is intentionally limited to centralized protobuf message id allocation. It does not describe
 targets, method names, or request/response modes, because internal RPC callers already choose the destination actor or

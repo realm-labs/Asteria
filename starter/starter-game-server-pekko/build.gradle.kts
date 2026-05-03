@@ -7,7 +7,6 @@ dependencies {
     api(project(":foundation:foundation-actor"))
     api(project(":foundation:foundation-message"))
     api(project(":observability:observability-core"))
-    api(project(":rpc:rpc-core"))
     api(project(":rpc:rpc-protobuf"))
     api(project(":cluster:cluster-pekko"))
     api(project(":cluster:cluster-config"))

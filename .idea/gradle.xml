@@ -85,7 +85,6 @@
             <option value="$PROJECT_DIR$/protocol/protobuf-codegen-gradle-plugin" />
             <option value="$PROJECT_DIR$/protocol/protocol-protobuf" />
             <option value="$PROJECT_DIR$/rpc" />
-            <option value="$PROJECT_DIR$/rpc/rpc-core" />
             <option value="$PROJECT_DIR$/rpc/rpc-protobuf" />
             <option value="$PROJECT_DIR$/rpc/rpc-protobuf-pekko" />
             <option value="$PROJECT_DIR$/script" />
