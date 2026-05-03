@@ -4,8 +4,6 @@ import io.github.realmlabs.asteria.cluster.config.ClusterTopology
 import io.github.realmlabs.asteria.cluster.config.RuntimeNodeConfig
 import io.github.realmlabs.asteria.core.*
 import kotlinx.coroutines.future.await
-import kotlinx.coroutines.runBlocking
-import org.apache.pekko.Done
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.actor.CoordinatedShutdown
@@ -13,9 +11,6 @@ import org.apache.pekko.cluster.Cluster
 import org.apache.pekko.cluster.sharding.ShardCoordinator
 import org.apache.pekko.cluster.sharding.ShardRegion
 import scala.jdk.javaapi.FutureConverters
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
-import java.util.function.Supplier
 
 class PekkoRuntimeModule(
     private val startup: PekkoClusterStartup,
@@ -51,19 +46,11 @@ class PekkoRuntimeModule(
         system: ActorSystem,
     ) {
         val lifecycle = context.services.find<AsteriaModuleLifecycle>() ?: return
-        CoordinatedShutdown.get(system).addTask(
+        CoordinatedShutdown.get(system).addSuspendTask(
             CoordinatedShutdown.PhaseBeforeActorSystemTerminate(),
             "asteria-stop-modules-after-$name",
-            Supplier { stopApplicationModulesAfterPekkoRuntime(lifecycle) },
-        )
-    }
-
-    private fun stopApplicationModulesAfterPekkoRuntime(lifecycle: AsteriaModuleLifecycle): CompletionStage<Done> {
-        return CompletableFuture.supplyAsync {
-            runBlocking {
-                lifecycle.stopAfter(name)
-            }
-            Done.done()
+        ) {
+            lifecycle.stopAfter(name)
         }
     }
 

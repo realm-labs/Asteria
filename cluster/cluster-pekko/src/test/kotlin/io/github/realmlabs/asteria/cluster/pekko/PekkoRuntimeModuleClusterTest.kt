@@ -4,15 +4,18 @@ import io.github.realmlabs.asteria.cluster.config.ClusterTopology
 import io.github.realmlabs.asteria.cluster.config.RuntimeNodeConfig
 import io.github.realmlabs.asteria.cluster.config.StaticClusterTopologyProvider
 import io.github.realmlabs.asteria.core.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
 import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.actor.CoordinatedShutdown
 import scala.jdk.javaapi.FutureConverters
 import java.net.ServerSocket
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.time.Duration.Companion.milliseconds
 
 class PekkoRuntimeModuleClusterTest {
     @Test
@@ -84,6 +87,23 @@ class PekkoRuntimeModuleClusterTest {
 
         assertEquals(listOf("install:feature", "start:feature", "stop:feature"), events)
         app.stop()
+    }
+
+    @Test
+    fun `coordinated shutdown supports suspend tasks`() = runBlocking {
+        val events = mutableListOf<String>()
+        val system = ActorSystem.create("asteria-suspend-shutdown-test-${System.nanoTime()}")
+        system.addCoordinatedShutdownSuspendTask(
+            CoordinatedShutdown.PhaseBeforeActorSystemTerminate(),
+            "record-suspend-task",
+        ) {
+            delay(1.milliseconds)
+            events += "done"
+        }
+
+        FutureConverters.asJava(system.terminate()).await()
+
+        assertEquals(listOf("done"), events)
     }
 
     @Test
