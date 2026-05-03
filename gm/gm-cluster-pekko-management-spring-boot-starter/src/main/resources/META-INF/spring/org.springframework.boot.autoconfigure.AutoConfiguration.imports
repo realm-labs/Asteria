@@ -1,1 +1,1 @@
-io.github.mikai233.asteria.gm.cluster.pekko.management.spring.PekkoManagementGmClusterSpringAutoConfiguration
+io.github.realmlabs.asteria.gm.cluster.pekko.management.spring.PekkoManagementGmClusterSpringAutoConfiguration

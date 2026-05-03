@@ -3,5 +3,5 @@ plugins {
     id("com.vanniktech.maven.publish") version "0.36.0" apply false
 }
 
-group = providers.gradleProperty("GROUP").orElse("io.github.mikai233").get()
+group = providers.gradleProperty("GROUP").orElse("io.github.realm-labs").get()
 version = providers.gradleProperty("VERSION_NAME").orElse("0.1.0-SNAPSHOT").get()

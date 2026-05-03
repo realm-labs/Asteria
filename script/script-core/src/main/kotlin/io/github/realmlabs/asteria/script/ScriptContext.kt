@@ -1,0 +1,50 @@
+package io.github.realmlabs.asteria.script
+
+import io.github.realmlabs.asteria.actor.AsteriaActor
+import io.github.realmlabs.asteria.core.NodeRuntime
+import io.github.realmlabs.asteria.core.ServiceRegistry
+
+interface ScriptContext {
+    val runtime: NodeRuntime
+    val services: ServiceRegistry
+    val request: ScriptExecutionRequest?
+        get() = null
+    val artifact: ScriptArtifact
+    val metadata: ScriptExecutionMetadata
+        get() = request?.metadata ?: ScriptExecutionMetadata()
+    val resources: ScriptResources
+        get() = ScriptResources(metadata.resources, services.find<ScriptResourceResolver>())
+    val tables: ScriptResourceTableReader
+        get() = ScriptResourceTableReader(resources)
+    val cancellation: ScriptCancellationToken
+        get() = request
+            ?.let { services.find<ScriptCancellationProvider>()?.token(it) }
+            ?: NonCancellableScriptToken
+}
+
+data class NodeScriptContext(
+    override val runtime: NodeRuntime,
+    override val request: ScriptExecutionRequest,
+) : ScriptContext {
+    override val services: ServiceRegistry get() = runtime.services
+    override val artifact: ScriptArtifact get() = request.artifact
+    val target: ScriptTarget get() = request.target
+    val nodeAddress: String? get() = request.nodeAddress
+}
+
+interface ActorScriptContext<A : AsteriaActor<*>> : ScriptContext {
+    val actor: A
+    val target: ScriptTarget?
+        get() = request?.target
+    val actorPath: String?
+        get() = request?.actorPath
+}
+
+data class DefaultActorScriptContext<A : AsteriaActor<*>>(
+    override val runtime: NodeRuntime,
+    override val request: ScriptExecutionRequest,
+    override val actor: A,
+) : ActorScriptContext<A> {
+    override val services: ServiceRegistry get() = runtime.services
+    override val artifact: ScriptArtifact get() = request.artifact
+}

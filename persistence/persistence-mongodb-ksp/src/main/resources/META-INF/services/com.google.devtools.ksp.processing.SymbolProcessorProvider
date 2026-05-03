@@ -1,1 +1,1 @@
-io.github.mikai233.asteria.persistence.mongodb.ksp.AsteriaMongoEntitySymbolProcessorProvider
+io.github.realmlabs.asteria.persistence.mongodb.ksp.AsteriaMongoEntitySymbolProcessorProvider

@@ -1,0 +1,32 @@
+package io.github.realmlabs.asteria.gm.spring
+
+import io.github.realmlabs.asteria.gm.core.*
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
+
+@RestController
+@RequestMapping($$"${asteria.gm.api-prefix:/gm/api}")
+class GmFeatureController(
+    private val registry: GmFeatureRegistry,
+) {
+    @GetMapping("/features")
+    fun features(): List<GmFeatureDescriptor> {
+        return registry.features()
+    }
+
+    @GetMapping("/menus")
+    fun menus(): List<GmMenuItem> {
+        return registry.menus()
+    }
+
+    @GetMapping("/routes")
+    fun routes(): List<GmRoute> {
+        return registry.routes()
+    }
+
+    @GetMapping("/permissions")
+    fun permissions(): List<GmPermission> {
+        return registry.permissions()
+    }
+}

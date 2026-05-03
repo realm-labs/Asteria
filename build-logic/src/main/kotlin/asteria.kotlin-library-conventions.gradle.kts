@@ -9,7 +9,7 @@ plugins {
     id("com.vanniktech.maven.publish")
 }
 
-group = providers.gradleProperty("GROUP").orElse("io.github.mikai233").get()
+group = providers.gradleProperty("GROUP").orElse("io.github.realm-labs").get()
 version = providers.gradleProperty("VERSION_NAME").orElse("0.1.0-SNAPSHOT").get()
 
 repositories {
@@ -82,10 +82,10 @@ mavenPublishing {
         developers {
             developer {
                 id.set(providers.gradleProperty("ASTERIA_POM_DEVELOPER_ID").orElse("mikai"))
-                name.set(providers.gradleProperty("ASTERIA_POM_DEVELOPER_NAME").orElse("Mikai"))
+                name.set(providers.gradleProperty("ASTERIA_POM_DEVELOPER_NAME").orElse("Realm Labs"))
                 url.set(
                     providers.gradleProperty("ASTERIA_POM_DEVELOPER_URL")
-                        .orElse("https://github.com/mikai233"),
+                        .orElse("https://github.com/realm-labs"),
                 )
             }
         }

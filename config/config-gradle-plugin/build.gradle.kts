@@ -14,8 +14,8 @@ dependencies {
 gradlePlugin {
     plugins {
         create("asteriaConfigCodegen") {
-            id = "io.github.mikai233.asteria.config-codegen"
-            implementationClass = "io.github.mikai233.asteria.config.gradle.AsteriaConfigCodegenPlugin"
+            id = "io.github.realm-labs.asteria.config-codegen"
+            implementationClass = "io.github.realmlabs.asteria.config.gradle.AsteriaConfigCodegenPlugin"
         }
     }
 }

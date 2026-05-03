@@ -57,7 +57,7 @@ Config accessor generation:
 
 ```kotlin
 plugins {
-    id("io.github.mikai233.asteria.config-codegen")
+    id("io.github.realm-labs.asteria.config-codegen")
 }
 
 asteriaConfigCodegen {
@@ -174,7 +174,7 @@ secrets:
 - `SIGNING_IN_MEMORY_KEY_ID`
 - `SIGNING_IN_MEMORY_KEY_PASSWORD`
 
-Before the first release, make sure the `io.github.mikai233` namespace is verified in Central Portal and the signing
+Before the first release, make sure the `io.github.realm-labs` namespace is verified in Central Portal and the signing
 public key has been distributed.
 
 ## Persistence Dirty Tracking
@@ -352,7 +352,7 @@ Game projects usually consume the generator through the Gradle plugin:
 
 ```kotlin
 plugins {
-    id("io.github.mikai233.asteria.protobuf-protocol-codegen")
+    id("io.github.realm-labs.asteria.protobuf-protocol-codegen")
 }
 
 asteriaProtobufProtocol {
@@ -380,9 +380,9 @@ Mongo tracked wrappers can be generated from storage DTOs. The DTO remains the M
 generated wrapper is the mutable actor-local view that records dirty fields.
 
 ```kotlin
-import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoEntity
-import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoField
-import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoId
+import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoEntity
+import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoField
+import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoId
 
 @AsteriaMongoEntity(collection = "players")
 data class PlayerEntity(
@@ -448,10 +448,10 @@ Business modules enable it with KSP:
 
 ```kotlin
 dependencies {
-    implementation("io.github.mikai233:persistence-core:<version>")
-    implementation("io.github.mikai233:persistence-mongodb-annotations:<version>")
-    implementation("io.github.mikai233:persistence-mongodb:<version>")
-    ksp("io.github.mikai233:persistence-mongodb-ksp:<version>")
+    implementation("io.github.realm-labs:persistence-core:<version>")
+    implementation("io.github.realm-labs:persistence-mongodb-annotations:<version>")
+    implementation("io.github.realm-labs:persistence-mongodb:<version>")
+    ksp("io.github.realm-labs:persistence-mongodb-ksp:<version>")
 }
 ```
 
