@@ -180,8 +180,8 @@ The workflow expects these repository secrets:
 - `SIGNING_IN_MEMORY_KEY`
 - `SIGNING_IN_MEMORY_KEY_PASSWORD`
 
-Before the first release, make sure the `io.github.realm-labs` namespace is verified in Central Portal and the signing
-public key has been distributed.
+Before the first release, make sure the `io.github.realm-labs` namespace is verified in Central Portal. Asteria artifacts
+are published under the `io.github.realm-labs.asteria` group. Also make sure the signing public key has been distributed.
 
 ## Persistence Dirty Tracking
 
@@ -454,10 +454,10 @@ Business modules enable it with KSP:
 
 ```kotlin
 dependencies {
-    implementation("io.github.realm-labs:persistence-core:<version>")
-    implementation("io.github.realm-labs:persistence-mongodb-annotations:<version>")
-    implementation("io.github.realm-labs:persistence-mongodb:<version>")
-    ksp("io.github.realm-labs:persistence-mongodb-ksp:<version>")
+    implementation("io.github.realm-labs.asteria:persistence-core:<version>")
+    implementation("io.github.realm-labs.asteria:persistence-mongodb-annotations:<version>")
+    implementation("io.github.realm-labs.asteria:persistence-mongodb:<version>")
+    ksp("io.github.realm-labs.asteria:persistence-mongodb-ksp:<version>")
 }
 ```
 

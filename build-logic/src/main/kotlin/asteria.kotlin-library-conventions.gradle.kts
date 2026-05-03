@@ -11,7 +11,7 @@ plugins {
     id("com.vanniktech.maven.publish")
 }
 
-group = providers.gradleProperty("GROUP").orElse("io.github.realm-labs").get()
+group = providers.gradleProperty("GROUP").orElse("io.github.realm-labs.asteria").get()
 version = providers.gradleProperty("VERSION_NAME").orElse("0.1.0-SNAPSHOT").get()
 
 repositories {
