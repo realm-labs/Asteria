@@ -18,6 +18,7 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
 
             val gatewayTask = configureGatewayProtocol(project, extension, generatedKotlin, generatedResources)
             val rpcTask = configureRpcProtocol(project, extension, generatedKotlin, generatedResources)
+            configureGenerateProtoDependency(project, gatewayTask, rpcTask)
 
             project.extensions.configure(KotlinJvmProjectExtension::class.java) { kotlin ->
                 kotlin.sourceSets.getByName("main").kotlin.srcDir(generatedKotlin)
@@ -36,6 +37,19 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
             project.afterEvaluate {
                 if (extension.addDependencies.get()) {
                     addAsteriaDependencies(project, extension.asteriaVersion.get())
+                }
+            }
+        }
+    }
+
+    private fun configureGenerateProtoDependency(
+        project: Project,
+        vararg protocolTasks: org.gradle.api.tasks.TaskProvider<out org.gradle.api.Task>,
+    ) {
+        project.pluginManager.withPlugin("com.google.protobuf") {
+            protocolTasks.forEach { protocolTask ->
+                protocolTask.configure {
+                    it.dependsOn("generateProto")
                 }
             }
         }
@@ -127,6 +141,6 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
 
     companion object {
         const val DEFAULT_ASTERIA_VERSION = "1.0-SNAPSHOT"
-        private const val ASTERIA_GROUP = "io.github.realm-labs"
+        private const val ASTERIA_GROUP = "io.github.realm-labs.asteria"
     }
 }

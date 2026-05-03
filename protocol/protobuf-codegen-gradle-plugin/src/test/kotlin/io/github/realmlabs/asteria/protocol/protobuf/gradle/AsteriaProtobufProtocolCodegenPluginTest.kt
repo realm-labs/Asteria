@@ -10,6 +10,147 @@ import kotlin.test.assertTrue
 
 class AsteriaProtobufProtocolCodegenPluginTest {
     @Test
+    fun `adds asteria protobuf dependencies with published group`() {
+        val projectDir = createTempDirectory("asteria-protobuf-protocol-dependencies")
+        projectDir.resolve("settings.gradle.kts").writeText(
+            """
+            pluginManagement {
+                repositories {
+                    mavenCentral()
+                    gradlePluginPortal()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "protocol-plugin-dependencies-test"
+            """.trimIndent(),
+        )
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                kotlin("jvm") version "2.3.21"
+                id("io.github.realm-labs.asteria.protobuf-protocol-codegen")
+            }
+
+            asteriaProtobufProtocol {
+                asteriaVersion.set("0.1.2")
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("dependencies", "--configuration", "implementation", "--stacktrace")
+            .build()
+
+        assertContains(result.output, "io.github.realm-labs.asteria:protocol-protobuf:0.1.2")
+        assertContains(result.output, "io.github.realm-labs.asteria:rpc-protobuf:0.1.2")
+    }
+
+    @Test
+    fun `codegen tasks depend on protobuf generateProto task`() {
+        listOf("generateAsteriaGatewayProtocol", "generateAsteriaRpcProtocol").forEach { taskName ->
+            val projectDir = createTempDirectory("asteria-protobuf-protocol-generate-proto")
+            projectDir.resolve("settings.gradle.kts").writeText(
+                """
+                pluginManagement {
+                    repositories {
+                        mavenCentral()
+                        gradlePluginPortal()
+                    }
+                }
+                dependencyResolutionManagement {
+                    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                    repositories {
+                        mavenCentral()
+                    }
+                }
+                rootProject.name = "protocol-plugin-generate-proto-test"
+                """.trimIndent(),
+            )
+            projectDir.resolve("build.gradle.kts").writeText(
+                """
+                plugins {
+                    kotlin("jvm") version "2.3.21"
+                    id("com.google.protobuf") version "0.10.0"
+                    id("io.github.realm-labs.asteria.protobuf-protocol-codegen")
+                }
+
+                asteriaProtobufProtocol {
+                    addDependencies.set(false)
+
+                    gateway {
+                        enabled.set(true)
+                        metadataFile.set(layout.projectDirectory.file("protocol/gateway.json"))
+                    }
+
+                    rpc {
+                        enabled.set(true)
+                        metadataFile.set(layout.projectDirectory.file("protocol/rpc.json"))
+                    }
+                }
+                """.trimIndent(),
+            )
+            val protocolDir = projectDir.resolve("protocol").also { it.createDirectories() }
+            protocolDir.resolve("gateway.json").writeText(
+                """
+                {
+                  "messages": [
+                    {
+                      "id": 1001,
+                      "type": "test.TestMessage",
+                      "direction": "C2S",
+                      "target": { "type": "ENTITY", "name": "test" }
+                    }
+                  ],
+                  "routes": []
+                }
+                """.trimIndent(),
+            )
+            protocolDir.resolve("rpc.json").writeText(
+                """
+                {
+                  "messages": [
+                    {
+                      "id": 2001,
+                      "type": "test.TestMessage"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            )
+            projectDir.resolve("src/main/proto").createDirectories()
+            projectDir.resolve("src/main/proto/test.proto").writeText(
+                """
+                syntax = "proto3";
+
+                package test;
+
+                message TestMessage {
+                  string id = 1;
+                }
+                """.trimIndent(),
+            )
+
+            val result = GradleRunner.create()
+                .withProjectDir(projectDir.toFile())
+                .withPluginClasspath()
+                .withArguments(taskName, "--stacktrace")
+                .build()
+
+            assertTrue(
+                result.task(":generateProto") != null,
+                "$taskName should depend on generateProto\n${result.output}",
+            )
+        }
+    }
+
+    @Test
     fun `generates protocol sources and client metadata`() {
         val projectDir = createTempDirectory("asteria-protobuf-protocol-plugin")
         projectDir.resolve("settings.gradle.kts").writeText(
