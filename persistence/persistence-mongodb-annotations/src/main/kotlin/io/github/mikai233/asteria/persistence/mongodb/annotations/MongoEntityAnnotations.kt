@@ -1,4 +1,4 @@
-package io.github.mikai233.asteria.persistence
+package io.github.mikai233.asteria.persistence.mongodb.annotations
 
 /**
  * Marks a storage DTO as a Mongo document that should receive a generated tracked wrapper.
@@ -27,8 +27,8 @@ annotation class AsteriaMongoEntity(
 /**
  * Marks the document id property.
  *
- * A generated tracked wrapper requires exactly one id property. In most cases this is the same property used to
- * implement [Entity.id].
+ * A generated tracked wrapper requires exactly one id property. In most cases this is the same property used as the
+ * business entity id.
  */
 @Target(AnnotationTarget.PROPERTY)
 @Retention(AnnotationRetention.BINARY)

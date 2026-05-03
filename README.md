@@ -150,6 +150,7 @@ Standalone modules:
 - `:protocol:protobuf-codegen-gradle-plugin`: Gradle plugin that wires protobuf gateway/RPC metadata code generation.
 - `:gateway:gateway-netty`: Netty gateway session and packet/protobuf codecs.
 - `:persistence:persistence-core`: entity, mem data, data scope, data manager, persistence provider contracts.
+- `:persistence:persistence-mongodb-annotations`: Mongo document annotations used by storage DTOs and KSP.
 - `:persistence:persistence-mongodb`: MongoDB tracked document, row cache, dirty patch, flush, and WAL support.
 - `:persistence:persistence-mongodb-ksp`: KSP processor that generates Mongo tracked wrappers from storage DTOs.
 
@@ -356,6 +357,10 @@ Mongo tracked wrappers can be generated from storage DTOs. The DTO remains the M
 generated wrapper is the mutable actor-local view that records dirty fields.
 
 ```kotlin
+import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoEntity
+import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoField
+import io.github.mikai233.asteria.persistence.mongodb.annotations.AsteriaMongoId
+
 @AsteriaMongoEntity(collection = "players")
 data class PlayerEntity(
     @AsteriaMongoId
@@ -421,10 +426,13 @@ Business modules enable it with KSP:
 ```kotlin
 dependencies {
     implementation("io.github.mikai233:persistence-core:<version>")
+    implementation("io.github.mikai233:persistence-mongodb-annotations:<version>")
     implementation("io.github.mikai233:persistence-mongodb:<version>")
     ksp("io.github.mikai233:persistence-mongodb-ksp:<version>")
 }
 ```
+
+DTO-only modules can depend on `persistence-mongodb-annotations` without pulling in the Mongo driver or runtime.
 
 Observability is optional and defaults to no-op tracing and metrics:
 
