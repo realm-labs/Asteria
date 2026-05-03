@@ -179,6 +179,8 @@ The workflow expects these repository secrets:
 - `MAVEN_CENTRAL_PASSWORD`
 - `SIGNING_IN_MEMORY_KEY`
 - `SIGNING_IN_MEMORY_KEY_PASSWORD`
+- `RELEASE_GITHUB_TOKEN`: GitHub PAT used only to create the release tag. It needs repository contents write permission
+  and workflow permission because the tag may point at commits that changed `.github/workflows/*.yml`.
 
 Before the first release, make sure the `io.github.realm-labs` namespace is verified in Central Portal. Asteria artifacts
 are published under the `io.github.realm-labs.asteria` group. Also make sure the signing public key has been distributed.

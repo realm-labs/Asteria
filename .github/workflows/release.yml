@@ -159,15 +159,30 @@ jobs:
           ./gradlew --no-daemon build detekt \
             -PVERSION_NAME="${{ steps.release.outputs.version }}"
 
+      - name: Validate release GitHub token
+        if: steps.release.outputs.create-tag == 'true'
+        env:
+          RELEASE_GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${RELEASE_GITHUB_TOKEN}" ]]; then
+            echo "RELEASE_GITHUB_TOKEN is empty." >&2
+            echo "Create a GitHub PAT with contents write permission and workflow permission, then add it as the RELEASE_GITHUB_TOKEN secret." >&2
+            exit 1
+          fi
+
       - name: Create release tag
         if: steps.release.outputs.create-tag == 'true'
+        env:
+          RELEASE_GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "${{ steps.release.outputs.tag }}" -m "Release ${{ steps.release.outputs.version }}"
-          git push origin "${{ steps.release.outputs.tag }}"
+          git push "https://x-access-token:${RELEASE_GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "${{ steps.release.outputs.tag }}"
 
       - name: Publish
         env:
