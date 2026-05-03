@@ -1,5 +1,6 @@
 package io.github.realmlabs.asteria.message
 
+import io.github.realmlabs.asteria.core.EntityKind
 import io.github.realmlabs.asteria.core.NodeRuntime
 import io.github.realmlabs.asteria.core.NodeState
 import io.github.realmlabs.asteria.core.RoleKey
@@ -14,7 +15,7 @@ class MessageDispatcherTest {
     @Test
     fun dispatcherUsesCurrentRegistryHandle() = runBlocking {
         val events = mutableListOf<String>()
-        val registry = PatchableMessageHandlerRegistry<GameMessage>()
+        val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
         registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
         val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
@@ -36,7 +37,7 @@ class MessageDispatcherTest {
     @Test
     fun removingPatchRestoresPreviousHandlerLayer() = runBlocking {
         val events = mutableListOf<String>()
-        val registry = PatchableMessageHandlerRegistry<GameMessage>()
+        val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
         registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
         val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
@@ -58,6 +59,23 @@ class MessageDispatcherTest {
         dispatcher.dispatch(context(), LoginReq("p3"))
 
         assertEquals(listOf("second:p1", "first:p2", "base:p3"), events)
+    }
+
+    @Test
+    fun handlerCanDeclareSpecificContextType() {
+        val events = mutableListOf<String>()
+        val registry = PatchableMessageHandlerRegistry<EntityHandlerContext, GameMessage>()
+        registry.register<EntityMessage> { context, message ->
+            events += "${context.entityKind.value}:${context.entityId}:${message.value}"
+        }
+        val dispatcher = MessageDispatcher(registry)
+
+        dispatcher.dispatch(
+            DefaultEntityHandlerContext(TestRuntime, EntityKind("player"), "p1"),
+            EntityMessage("loaded"),
+        )
+
+        assertEquals(listOf("player:p1:loaded"), events)
     }
 
     private fun context(): HandlerContext {
@@ -98,10 +116,14 @@ class MessageDispatcherTest {
         val playerId: String,
     ) : GameMessage
 
+    private data class EntityMessage(
+        val value: String,
+    ) : GameMessage
+
     private class LoginHandler(
         private val events: MutableList<String>,
         private val name: String,
-    ) : MessageHandler<LoginReq> {
+    ) : MessageHandler<HandlerContext, LoginReq> {
         override fun handle(context: HandlerContext, message: LoginReq) {
             events += "$name:${message.playerId}"
         }

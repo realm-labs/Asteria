@@ -6,6 +6,6 @@ package io.github.realmlabs.asteria.message
  * Message handlers are registered explicitly instead of discovered by reflection. Business code or generated route code
  * should register each message type in a [PatchableMessageHandlerRegistry].
  */
-fun interface MessageHandler<in M : Any> {
-    fun handle(context: HandlerContext, message: M)
+fun interface MessageHandler<in C : HandlerContext, in M : Any> {
+    fun handle(context: C, message: M)
 }

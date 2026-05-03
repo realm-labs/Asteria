@@ -9,19 +9,19 @@ import kotlin.reflect.KClass
 /**
  * A statically registered message handler slot.
  */
-class MessageHandle<M : Any> private constructor(
+class MessageHandle<C : HandlerContext, M : Any> private constructor(
     val messageType: KClass<out M>,
-    private val dispatch: (HandlerContext, M) -> Unit,
+    private val dispatch: (C, M) -> Unit,
 ) {
-    fun invoke(context: HandlerContext, message: M) {
+    fun invoke(context: C, message: M) {
         dispatch(context, message)
     }
 
     companion object {
-        fun <M : Any, T : M> of(
+        fun <C : HandlerContext, M : Any, T : M> of(
             messageType: KClass<T>,
-            handler: MessageHandler<T>,
-        ): MessageHandle<M> {
+            handler: MessageHandler<C, T>,
+        ): MessageHandle<C, M> {
             return MessageHandle(messageType) { context, message ->
                 @Suppress("UNCHECKED_CAST")
                 handler.handle(context, message as T)
@@ -30,24 +30,24 @@ class MessageHandle<M : Any> private constructor(
     }
 }
 
-interface MessageHandleRegistry<M : Any> {
-    fun get(messageType: KClass<out M>): MessageHandle<M>?
+interface MessageHandleRegistry<C : HandlerContext, M : Any> {
+    fun get(messageType: KClass<out M>): MessageHandle<C, M>?
 
-    fun all(): Collection<MessageHandle<M>>
+    fun all(): Collection<MessageHandle<C, M>>
 }
 
-class MessageDispatcher<M : Any>(
-    private val handles: MessageHandleRegistry<M>,
+class MessageDispatcher<C : HandlerContext, M : Any>(
+    private val handles: MessageHandleRegistry<C, M>,
 ) {
     private val logger = LoggerFactory.getLogger(MessageDispatcher::class.java)
 
     fun canDispatch(messageType: KClass<out M>): Boolean = handles.get(messageType) != null
 
-    fun dispatch(context: HandlerContext, message: M) {
+    fun dispatch(context: C, message: M) {
         dispatch(context, message::class, message)
     }
 
-    fun dispatch(context: HandlerContext, messageType: KClass<out M>, message: M) {
+    fun dispatch(context: C, messageType: KClass<out M>, message: M) {
         val metrics = context.runtime.metricsOrNoop()
         val tags = MetricTags.of(
             "runtime" to context.runtime.name,
@@ -83,39 +83,39 @@ class MessageDispatcher<M : Any>(
  * the base handlers registered by business code or generated route code. When patch runtime is installed,
  * [PatchInstallContext.replace] can replace one message slot and later rollback to the previous layer.
  */
-class PatchableMessageHandlerRegistry<M : Any>(
-    handles: Iterable<MessageHandle<M>> = emptyList(),
-) : MessageHandleRegistry<M>, PatchSlotRegistry<KClass<out M>, MessageHandle<M>> {
+class PatchableMessageHandlerRegistry<C : HandlerContext, M : Any>(
+    handles: Iterable<MessageHandle<C, M>> = emptyList(),
+) : MessageHandleRegistry<C, M>, PatchSlotRegistry<KClass<out M>, MessageHandle<C, M>> {
     private val registry = PatchableRegistry(handles.associateBy { it.messageType })
 
-    override fun get(messageType: KClass<out M>): MessageHandle<M>? {
+    override fun get(messageType: KClass<out M>): MessageHandle<C, M>? {
         return registry.get(messageType)
     }
 
-    override fun all(): Collection<MessageHandle<M>> {
+    override fun all(): Collection<MessageHandle<C, M>> {
         return registry.snapshot().values
     }
 
-    fun register(handle: MessageHandle<M>) {
+    fun register(handle: MessageHandle<C, M>) {
         registry.register(handle.messageType, handle)
     }
 
     fun <T : M> register(
         messageType: KClass<T>,
-        handler: MessageHandler<T>,
+        handler: MessageHandler<C, T>,
     ) {
         register(MessageHandle.of(messageType, handler))
     }
 
-    inline fun <reified T : M> register(handler: MessageHandler<T>) {
+    inline fun <reified T : M> register(handler: MessageHandler<C, T>) {
         register(T::class, handler)
     }
 
-    override fun current(key: KClass<out M>): MessageHandle<M>? {
+    override fun current(key: KClass<out M>): MessageHandle<C, M>? {
         return registry.current(key)
     }
 
-    override fun replace(key: KClass<out M>, value: MessageHandle<M>, order: PatchOrder) {
+    override fun replace(key: KClass<out M>, value: MessageHandle<C, M>, order: PatchOrder) {
         registry.replace(key, value, order)
     }
 
@@ -127,17 +127,17 @@ class PatchableMessageHandlerRegistry<M : Any>(
 /**
  * Replaces the handler slot for [messageType].
  */
-fun <M : Any, T : M> PatchInstallContext.replaceHandler(
-    registry: PatchableMessageHandlerRegistry<M>,
+fun <C : HandlerContext, M : Any, T : M> PatchInstallContext.replaceHandler(
+    registry: PatchableMessageHandlerRegistry<C, M>,
     messageType: KClass<T>,
-    handler: MessageHandler<T>,
+    handler: MessageHandler<C, T>,
 ) {
     replace(registry, messageType, MessageHandle.of(messageType, handler))
 }
 
-inline fun <M : Any, reified T : M> PatchInstallContext.replaceHandler(
-    registry: PatchableMessageHandlerRegistry<M>,
-    handler: MessageHandler<T>,
+inline fun <C : HandlerContext, M : Any, reified T : M> PatchInstallContext.replaceHandler(
+    registry: PatchableMessageHandlerRegistry<C, M>,
+    handler: MessageHandler<C, T>,
 ) {
     replaceHandler(registry, T::class, handler)
 }
