@@ -78,6 +78,24 @@ class MessageDispatcherTest {
         assertEquals(listOf("player:p1:loaded"), events)
     }
 
+    @Test
+    fun actorDispatchBuildsActorContext() {
+        val events = mutableListOf<String>()
+        val registry = ActorMessageHandlerRegistry<TestActor, GameMessage>()
+        registry.register<ActorMessage> { context, message ->
+            events += "${context.runtime.name}:${context.actor.id}:${message.value}"
+        }
+        val dispatcher = MessageDispatcher(registry)
+
+        dispatcher.dispatchActor(TestRuntime, TestActor("a1"), ActorMessage("hello"))
+        dispatcher.dispatchActor(TestRuntime, TestActor("a2"), ActorMessage::class, ActorMessage("world"))
+
+        assertEquals(
+            listOf("test:a1:hello", "test:a2:world"),
+            events,
+        )
+    }
+
     private fun context(): HandlerContext {
         return DefaultHandlerContext(TestRuntime)
     }
@@ -119,6 +137,14 @@ class MessageDispatcherTest {
     private data class EntityMessage(
         val value: String,
     ) : GameMessage
+
+    private data class ActorMessage(
+        val value: String,
+    ) : GameMessage
+
+    private data class TestActor(
+        val id: String,
+    )
 
     private class LoginHandler(
         private val events: MutableList<String>,

@@ -1,5 +1,6 @@
 package io.github.realmlabs.asteria.message
 
+import io.github.realmlabs.asteria.core.NodeRuntime
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.metricsOrNoop
 import io.github.realmlabs.asteria.patch.*
@@ -74,6 +75,23 @@ class MessageDispatcher<C : HandlerContext, M : Any>(
                 .record((System.nanoTime() - startedAt) / 1_000_000)
         }
     }
+}
+
+fun <A : Any, M : Any> MessageDispatcher<ActorHandlerContext<A>, M>.dispatchActor(
+    runtime: NodeRuntime,
+    actor: A,
+    message: M,
+) {
+    dispatch(DefaultActorHandlerContext(runtime, actor), message)
+}
+
+fun <A : Any, M : Any> MessageDispatcher<ActorHandlerContext<A>, M>.dispatchActor(
+    runtime: NodeRuntime,
+    actor: A,
+    messageType: KClass<out M>,
+    message: M,
+) {
+    dispatch(DefaultActorHandlerContext(runtime, actor), messageType, message)
 }
 
 /**

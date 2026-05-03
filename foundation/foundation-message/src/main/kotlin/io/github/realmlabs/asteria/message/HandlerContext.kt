@@ -59,3 +59,21 @@ data class DefaultSessionHandlerContext<S : Any>(
     override val runtime: NodeRuntime,
     override val session: S,
 ) : SessionHandlerContext<S>
+
+/**
+ * Context for handlers running inside or on behalf of an actor-like in-memory object.
+ *
+ * The framework keeps the actor type generic so business runtimes can expose their own actor base types without
+ * introducing a dependency from `foundation-message` onto a specific actor framework.
+ */
+interface ActorHandlerContext<A : Any> : HandlerContext {
+    val actor: A
+}
+
+data class DefaultActorHandlerContext<A : Any>(
+    override val runtime: NodeRuntime,
+    override val actor: A,
+) : ActorHandlerContext<A>
+
+typealias ActorMessageHandler<A, M> = MessageHandler<ActorHandlerContext<A>, M>
+typealias ActorMessageHandlerRegistry<A, M> = PatchableMessageHandlerRegistry<ActorHandlerContext<A>, M>
