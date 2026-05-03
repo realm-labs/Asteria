@@ -140,13 +140,11 @@ class AsteriaProtobufProtocolCodegenPluginTest {
             val result = GradleRunner.create()
                 .withProjectDir(projectDir.toFile())
                 .withPluginClasspath()
-                .withArguments(taskName, "--stacktrace")
+                .withArguments(taskName, "--dry-run", "--stacktrace")
                 .build()
 
-            assertTrue(
-                result.task(":generateProto") != null,
-                "$taskName should depend on generateProto\n${result.output}",
-            )
+            assertContains(result.output, ":generateProto SKIPPED")
+            assertContains(result.output, ":$taskName SKIPPED")
         }
     }
 
