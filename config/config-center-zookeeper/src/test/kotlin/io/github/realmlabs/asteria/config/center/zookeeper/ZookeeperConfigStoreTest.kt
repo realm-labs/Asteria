@@ -18,27 +18,33 @@ class ZookeeperConfigStoreTest {
     fun `store supports get children watch and revision check`() = runBlocking {
         withZookeeper { client ->
             val store = ZookeeperConfigStore(AsyncCuratorFramework.wrap(client))
-            val root = configPath("/asteria/nodes")
+            val namespace = configPath("/asteria/zookeeper-store-${System.nanoTime()}")
+            val root = namespace / "nodes"
             val child = root / "player-1"
             val watch = store.watch(root, ConfigWatchMode.Children)
-            val event = async(start = CoroutineStart.UNDISPATCHED) {
-                watch.events.first()
+            try {
+                val event = async(start = CoroutineStart.UNDISPATCHED) {
+                    watch.events.first()
+                }
+
+                val revision = store.put(child, "one".encodeToByteArray())
+
+                assertEquals("one", store.get(child)?.bytes?.decodeToString())
+                assertEquals(listOf(child), store.children(root).map { it.path })
+                assertIs<ConfigEvent.Upserted>(event.await())
+
+                assertFailsWith<ConfigRevisionMismatchException> {
+                    store.put(child, "two".encodeToByteArray(), ConfigRevision("999"))
+                }
+
+                store.put(child, "two".encodeToByteArray(), revision)
+                assertEquals("two", store.get(child)?.bytes?.decodeToString())
+            } finally {
+                watch.close()
+                store.delete(child)
+                store.delete(root)
+                store.delete(namespace)
             }
-
-            val revision = store.put(child, "one".encodeToByteArray())
-
-            assertEquals("one", store.get(child)?.bytes?.decodeToString())
-            assertEquals(listOf(child), store.children(root).map { it.path })
-            assertIs<ConfigEvent.Upserted>(event.await())
-
-            assertFailsWith<ConfigRevisionMismatchException> {
-                store.put(child, "two".encodeToByteArray(), ConfigRevision("999"))
-            }
-
-            store.put(child, "two".encodeToByteArray(), revision)
-            assertEquals("two", store.get(child)?.bytes?.decodeToString())
-
-            watch.close()
         }
     }
 
@@ -71,10 +77,8 @@ class ZookeeperConfigStoreTest {
                 ExponentialBackoffRetry(100, 3),
             )
             client.start()
-            try {
+            client.use { client ->
                 block(client)
-            } finally {
-                client.close()
             }
         }
     }
