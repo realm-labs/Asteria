@@ -156,8 +156,8 @@ Standalone modules:
 
 ## Publishing
 
-Release artifacts start at `0.1.0`. The repository default is `0.1.0-SNAPSHOT`; release builds override it from the Git
-tag, so `v0.1.0` publishes version `0.1.0`.
+Release artifacts start at `0.1.0`. The repository default is `0.1.0-SNAPSHOT`; release builds override it from the
+release workflow version.
 
 Local verification:
 
@@ -165,8 +165,15 @@ Local verification:
 ./gradlew publishToMavenLocal
 ```
 
-Maven Central releases are handled by `.github/workflows/release.yml` on `v*` tags. The workflow expects these repository
-secrets:
+Maven Central releases are handled by manually running `.github/workflows/release.yml` from GitHub Actions:
+
+- choose `major`, `minor`, or `patch`;
+- optionally provide an explicit version such as `0.1.0`;
+- when the version is empty, the workflow bumps from the latest `vX.Y.Z` tag;
+- the workflow rejects duplicate tags and versions already visible on Maven Central;
+- the workflow creates the release tag automatically before publishing.
+
+The workflow expects these repository secrets:
 
 - `MAVEN_CENTRAL_USERNAME`
 - `MAVEN_CENTRAL_PASSWORD`

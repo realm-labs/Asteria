@@ -1,12 +1,24 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump to apply when version is empty."
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+      version:
+        description: "Explicit release version, for example 0.1.0. Leave empty to auto-bump."
+        required: false
+        type: string
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -16,11 +28,13 @@ jobs:
     timeout-minutes: 60
 
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -31,6 +45,100 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Prepare release version
+        id: release
+        env:
+          INPUT_BUMP: ${{ inputs.bump }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags
+
+          VERSION_NAME="$(echo "${INPUT_VERSION#v}" | xargs)"
+          BUMP="${INPUT_BUMP:-patch}"
+
+          if [[ -z "${VERSION_NAME}" ]]; then
+            LATEST_VERSION="$(
+              git tag -l 'v*' \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+                | sed -E 's/^v//' \
+                | sort -V \
+                | tail -n 1 \
+                || true
+            )"
+
+            if [[ -z "${LATEST_VERSION}" ]]; then
+              LATEST_VERSION="0.0.0"
+            fi
+
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST_VERSION}"
+            case "${BUMP}" in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+              *)
+                echo "Unsupported bump: ${BUMP}" >&2
+                exit 1
+                ;;
+            esac
+
+            VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}"
+          fi
+
+          TAG_NAME="v${VERSION_NAME}"
+
+          if [[ ! "${VERSION_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: ${VERSION_NAME}" >&2
+            exit 1
+          fi
+
+          if [[ "${VERSION_NAME}" == *"-SNAPSHOT" ]]; then
+            echo "Release version must not end with -SNAPSHOT: ${VERSION_NAME}" >&2
+            exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${TAG_NAME}" >/dev/null; then
+            echo "Release tag already exists: ${TAG_NAME}" >&2
+            exit 1
+          fi
+
+          CENTRAL_POM_URL="https://repo1.maven.org/maven2/io/github/realm-labs/foundation-core/${VERSION_NAME}/foundation-core-${VERSION_NAME}.pom"
+          if curl --silent --fail --location --head "${CENTRAL_POM_URL}" >/dev/null; then
+            echo "Release version already exists on Maven Central: ${VERSION_NAME}" >&2
+            exit 1
+          fi
+
+          {
+            echo "version=${VERSION_NAME}"
+            echo "tag=${TAG_NAME}"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "Preparing release ${VERSION_NAME} (${TAG_NAME})"
+
+      - name: Verify
+        run: |
+          ./gradlew --no-daemon build detekt \
+            -PVERSION_NAME="${{ steps.release.outputs.version }}"
+
+      - name: Create release tag
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.release.outputs.tag }}" -m "Release ${{ steps.release.outputs.version }}"
+          git push origin "${{ steps.release.outputs.tag }}"
+
       - name: Publish
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
@@ -39,7 +147,6 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
         run: |
-          VERSION_NAME="${GITHUB_REF_NAME#v}"
-          ./gradlew --no-daemon build detekt publishAndReleaseToMavenCentral \
-            -PVERSION_NAME="${VERSION_NAME}" \
+          ./gradlew --no-daemon publishAndReleaseToMavenCentral \
+            -PVERSION_NAME="${{ steps.release.outputs.version }}" \
             -PsignAllPublications=true
