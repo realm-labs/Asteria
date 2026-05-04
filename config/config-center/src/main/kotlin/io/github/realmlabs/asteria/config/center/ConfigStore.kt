@@ -45,6 +45,11 @@ enum class ConfigWatchMode {
 sealed interface ConfigEvent {
     val path: ConfigPath
 
+    data class Resynced(
+        override val path: ConfigPath,
+        val mode: ConfigWatchMode,
+    ) : ConfigEvent
+
     data class Upserted(
         override val path: ConfigPath,
         val entry: ConfigEntry,

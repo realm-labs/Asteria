@@ -3,11 +3,17 @@ package io.github.realmlabs.asteria.config.center
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.isActive
 import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 data class Versioned<T : Any>(
     val path: ConfigPath,
@@ -37,6 +43,7 @@ class RuntimeConfigRepository(
     private val store: ConfigStore,
     private val codec: ConfigCodec,
     private val metrics: Metrics = NoopMetrics,
+    private val watchRetryDelay: Duration = 5.seconds,
 ) {
     private val logger = LoggerFactory.getLogger(RuntimeConfigRepository::class.java)
 
@@ -75,6 +82,7 @@ class RuntimeConfigRepository(
     ): Flow<RuntimeConfigEvent<T>> {
         return watch(path, ConfigWatchMode.Value).mapNotNull { event ->
             when (event) {
+                is ConfigEvent.Resynced -> null
                 is ConfigEvent.Upserted -> RuntimeConfigEvent.Upserted(path, event.entry.toVersioned(type))
                 is ConfigEvent.Deleted -> RuntimeConfigEvent.Deleted(path)
             }
@@ -142,21 +150,48 @@ class RuntimeConfigRepository(
     ): Flow<ConfigEvent> {
         return flow {
             val tags = MetricTags.of("operation" to "watch", "mode" to mode.name)
-            metrics.counter("asteria.config.center.operation.total", tags).increment()
-            val watch = store.watch(path, mode)
-            try {
-                watch.events.collect { event ->
-                    metrics.counter("asteria.config.center.watch.event.total", MetricTags.of("mode" to mode.name))
-                        .increment()
-                    emit(event)
+            var attempt = 0
+            while (currentCoroutineContext().isActive) {
+                metrics.counter("asteria.config.center.operation.total", tags).increment()
+                val watch = try {
+                    store.watch(path, mode)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    metrics.counter("asteria.config.center.operation.failed.total", tags).increment()
+                    logger.error("config center watch create failed mode={} path={}", mode.name, path.value, error)
+                    attempt++
+                    delayRetry()
+                    continue
                 }
-            } catch (error: Throwable) {
-                metrics.counter("asteria.config.center.operation.failed.total", tags).increment()
-                logger.error("config center watch failed mode={}", mode.name, error)
-                throw error
-            } finally {
-                watch.close()
+
+                try {
+                    if (attempt > 0) {
+                        emit(ConfigEvent.Resynced(path, mode))
+                    }
+                    watch.events.collect { event ->
+                        metrics.counter("asteria.config.center.watch.event.total", MetricTags.of("mode" to mode.name))
+                            .increment()
+                        emit(event)
+                    }
+                    logger.warn("config center watch completed mode={} path={}; rebuilding", mode.name, path.value)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    metrics.counter("asteria.config.center.operation.failed.total", tags).increment()
+                    logger.error("config center watch failed mode={} path={}; rebuilding", mode.name, path.value, error)
+                } finally {
+                    watch.close()
+                }
+                attempt++
+                delayRetry()
             }
+        }
+    }
+
+    private suspend fun delayRetry() {
+        if (watchRetryDelay > Duration.ZERO) {
+            delay(watchRetryDelay)
         }
     }
 

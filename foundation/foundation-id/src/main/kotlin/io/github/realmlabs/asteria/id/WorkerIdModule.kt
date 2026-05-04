@@ -3,12 +3,15 @@ package io.github.realmlabs.asteria.id
 import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
 import io.github.realmlabs.asteria.observability.MetricTags
+import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.metricsOrNoop
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.time.Duration
+import java.time.Instant
 import java.util.*
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Duration.Companion.milliseconds
 
 class WorkerIdModule(
     private val repository: WorkerIdRepository,
@@ -36,29 +39,17 @@ class WorkerIdModule(
             acquired.owner.value,
             acquired.expiresAt,
         )
-        val generator = options.generator(acquired.id)
-        val workerIdRuntime = WorkerIdRuntime(acquired, generator)
+        val workerIdRuntime = WorkerIdRuntime(acquired, options.generator(acquired.id))
         lease = acquired
         runtime = workerIdRuntime
         context.services.register(WorkerIdRuntime::class, workerIdRuntime)
-        context.services.register(IdGenerator::class, generator)
+        context.services.register(IdGenerator::class, workerIdRuntime.idGenerator)
         scope = CoroutineScope(Dispatchers.Default + SupervisorJob()).also { scope ->
             renewJob = scope.launch {
                 var current = acquired
                 while (isActive) {
-                    delay(options.renewInterval.toMillis())
-                    val renewed = repository.renew(current, options.ttl)
-                    if (renewed == null) {
-                        metrics.counter("asteria.worker_id.renew.failed.total", current.metricTags(context.name))
-                            .increment()
-                        logger.error(
-                            "worker id lease lost app={} id={} owner={}",
-                            context.name,
-                            current.id.value,
-                            current.owner.value,
-                        )
-                        error("worker id lease ${current.id} for ${current.owner} was lost")
-                    }
+                    delay(options.renewInterval.toMillis().milliseconds)
+                    val renewed = renewLease(context.name, current, workerIdRuntime, metrics) ?: return@launch
                     metrics.counter("asteria.worker_id.renewed.total", renewed.metricTags(context.name)).increment()
                     current = renewed
                     lease = renewed
@@ -66,6 +57,74 @@ class WorkerIdModule(
                 }
             }
         }
+    }
+
+    private suspend fun renewLease(
+        appName: String,
+        current: WorkerIdLease,
+        runtime: WorkerIdRuntime,
+        metrics: Metrics,
+    ): WorkerIdLease? {
+        while (currentCoroutineContext().isActive) {
+            try {
+                val renewed = repository.renew(current, options.ttl)
+                if (renewed != null) {
+                    return renewed
+                }
+                metrics.counter("asteria.worker_id.renew.failed.total", current.metricTags(appName)).increment()
+                markLeaseLost(appName, current, runtime, null)
+                return null
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                val now = Instant.now()
+                if (!current.expiresAt.isAfter(now)) {
+                    metrics.counter("asteria.worker_id.renew.failed.total", current.metricTags(appName)).increment()
+                    markLeaseLost(appName, current, runtime, error)
+                    return null
+                }
+                metrics.counter("asteria.worker_id.renew.failed.total", current.metricTags(appName)).increment()
+                logger.warn(
+                    "worker id renew failed app={} id={} owner={} expiresAt={}; retrying",
+                    appName,
+                    current.id.value,
+                    current.owner.value,
+                    current.expiresAt,
+                    error,
+                )
+                delay(retryDelayMillis(now, current).milliseconds)
+            }
+        }
+        return null
+    }
+
+    private fun markLeaseLost(
+        appName: String,
+        current: WorkerIdLease,
+        runtime: WorkerIdRuntime,
+        cause: Throwable?,
+    ) {
+        runtime.markLost(cause)
+        logger.error(
+            "worker id lease lost app={} id={} owner={} expiresAt={}",
+            appName,
+            current.id.value,
+            current.owner.value,
+            current.expiresAt,
+            cause,
+        )
+    }
+
+    private fun retryDelayMillis(
+        now: Instant,
+        current: WorkerIdLease,
+    ): Long {
+        val untilExpiry = Duration.between(now, current.expiresAt).toMillis()
+        return minOf(
+            DEFAULT_RENEW_RETRY_DELAY.toMillis(),
+            options.renewInterval.toMillis(),
+            untilExpiry,
+        ).coerceAtLeast(1)
     }
 
     override suspend fun stop(context: ModuleContext) {
@@ -107,17 +166,64 @@ private fun WorkerIdLease.metricTags(appName: String): MetricTags {
  */
 class WorkerIdRuntime internal constructor(
     initialLease: WorkerIdLease,
-    val idGenerator: IdGenerator,
+    initialGenerator: IdGenerator,
 ) {
-    private val leaseRef = AtomicReference(initialLease)
+    private val stateRef = AtomicReference<WorkerIdRuntimeState>(
+        WorkerIdRuntimeState.Active(initialLease, initialGenerator),
+    )
 
-    val lease: WorkerIdLease get() = leaseRef.get()
+    val lease: WorkerIdLease get() = stateRef.get().lease
     val id: WorkerId get() = lease.id
+    val lost: Boolean get() = stateRef.get() is WorkerIdRuntimeState.Lost
+    val idGenerator: IdGenerator = LeaseAwareIdGenerator(stateRef)
 
     internal fun update(lease: WorkerIdLease) {
-        leaseRef.set(lease)
+        while (true) {
+            val current = stateRef.get()
+            val active = current as? WorkerIdRuntimeState.Active ?: return
+            if (stateRef.compareAndSet(current, active.copy(lease = lease))) {
+                return
+            }
+        }
+    }
+
+    internal fun markLost(cause: Throwable?) {
+        val current = stateRef.get()
+        stateRef.set(WorkerIdRuntimeState.Lost(current.lease, cause))
     }
 }
+
+class WorkerIdLeaseLostException(
+    val lease: WorkerIdLease,
+    cause: Throwable? = null,
+) : IllegalStateException("worker id lease ${lease.id} for ${lease.owner} is lost", cause)
+
+private sealed interface WorkerIdRuntimeState {
+    val lease: WorkerIdLease
+
+    data class Active(
+        override val lease: WorkerIdLease,
+        val generator: IdGenerator,
+    ) : WorkerIdRuntimeState
+
+    data class Lost(
+        override val lease: WorkerIdLease,
+        val cause: Throwable?,
+    ) : WorkerIdRuntimeState
+}
+
+private class LeaseAwareIdGenerator(
+    private val stateRef: AtomicReference<WorkerIdRuntimeState>,
+) : IdGenerator {
+    override fun nextId(): Long {
+        return when (val state = stateRef.get()) {
+            is WorkerIdRuntimeState.Active -> state.generator.nextId()
+            is WorkerIdRuntimeState.Lost -> throw WorkerIdLeaseLostException(state.lease, state.cause)
+        }
+    }
+}
+
+private val DEFAULT_RENEW_RETRY_DELAY: Duration = Duration.ofSeconds(1)
 
 data class WorkerIdModuleOptions(
     val range: WorkerIdRange = WorkerIdRange.of(0, 1023),

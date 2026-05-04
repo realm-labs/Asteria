@@ -3,9 +3,14 @@ package io.github.realmlabs.asteria.config.center
 import io.github.realmlabs.asteria.core.gameApplication
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlin.reflect.KClass
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.*
 
 class ConfigCenterTest {
@@ -61,6 +66,19 @@ class ConfigCenterTest {
         repository.put(root / "player", TestConfig("player"))
 
         assertEquals("player", snapshots.await().values.getValue("player").value.value)
+    }
+
+    @Test
+    fun `repository child watch resyncs after watch failure`() = runBlocking {
+        val root = configPath("/settings")
+        val store = FailingOnceWatchStore(root)
+        val repository = RuntimeConfigRepository(store, TestCodec, watchRetryDelay = 10.milliseconds)
+
+        val snapshot = repository.watchChildren<TestConfig>(root)
+            .drop(1)
+            .first { "gateway" in it.values }
+
+        assertEquals("gate", snapshot.values.getValue("gateway").value.value)
     }
 
     @Test
@@ -120,6 +138,46 @@ class ConfigCenterTest {
         override fun <T : Any> encode(value: T, type: KClass<T>): ByteArray {
             require(type == TestConfig::class) { "unsupported type $type" }
             return (value as TestConfig).value.encodeToByteArray()
+        }
+    }
+
+    private class FailingOnceWatchStore(
+        private val root: ConfigPath,
+    ) : ConfigStore {
+        private var watches: Int = 0
+
+        override suspend fun get(path: ConfigPath): ConfigEntry? {
+            return entry().takeIf { it.path == path }
+        }
+
+        override suspend fun children(path: ConfigPath): List<ConfigEntry> {
+            return if (path == root && watches > 1) listOf(entry()) else emptyList()
+        }
+
+        override fun watch(path: ConfigPath, mode: ConfigWatchMode): ConfigWatch {
+            watches++
+            val events: Flow<ConfigEvent> = if (watches == 1) {
+                flow { throw IllegalStateException("watch unavailable") }
+            } else {
+                MutableSharedFlow()
+            }
+            return object : ConfigWatch {
+                override val events: Flow<ConfigEvent> = events
+
+                override fun close() = Unit
+            }
+        }
+
+        override suspend fun put(path: ConfigPath, bytes: ByteArray, expectedRevision: ConfigRevision?): ConfigRevision {
+            error("not supported")
+        }
+
+        override suspend fun delete(path: ConfigPath, expectedRevision: ConfigRevision?) {
+            error("not supported")
+        }
+
+        private fun entry(): ConfigEntry {
+            return ConfigEntry(root / "gateway", "gate".encodeToByteArray(), ConfigRevision("1"))
         }
     }
 }

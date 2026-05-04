@@ -3,6 +3,8 @@ package io.github.realmlabs.asteria.config.center.etcd
 import io.etcd.jetcd.ByteSequence
 import io.etcd.jetcd.Client
 import io.etcd.jetcd.KeyValue
+import io.etcd.jetcd.Watch
+import io.etcd.jetcd.Watch.Watcher
 import io.etcd.jetcd.op.Cmp
 import io.etcd.jetcd.op.CmpTarget
 import io.etcd.jetcd.op.Op
@@ -11,10 +13,13 @@ import io.etcd.jetcd.options.GetOption
 import io.etcd.jetcd.options.PutOption
 import io.etcd.jetcd.options.WatchOption
 import io.github.realmlabs.asteria.config.center.*
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.future.await
 import java.nio.charset.StandardCharsets.UTF_8
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 class EtcdConfigStore(
     private val client: Client,
@@ -41,38 +46,56 @@ class EtcdConfigStore(
         path: ConfigPath,
         mode: ConfigWatchMode,
     ): ConfigWatch {
-        val flow = MutableSharedFlow<ConfigEvent>(extraBufferCapacity = 64)
-        val optionBuilder = WatchOption.builder().withPrevKV(true)
-        if (mode != ConfigWatchMode.Value) {
-            optionBuilder.isPrefix(true)
-        }
-        val watcher = client.watchClient.watch(
-            watchKey(path, mode),
-            optionBuilder.build(),
-        ) { response ->
-            response.events.forEach { event ->
-                val configEvent = when (event.eventType) {
-                    io.etcd.jetcd.watch.WatchEvent.EventType.PUT ->
-                        event.keyValue.toEntryOrNull()?.let { ConfigEvent.Upserted(it.path, it) }
+        val closed = AtomicBoolean(false)
+        val watcherRef = AtomicReference<Watcher?>()
+        val events = callbackFlow {
+            if (closed.get()) {
+                close()
+                return@callbackFlow
+            }
+            val optionBuilder = WatchOption.builder().withPrevKV(true)
+            if (mode != ConfigWatchMode.Value) {
+                optionBuilder.isPrefix(true)
+            }
+            val watcher = client.watchClient.watch(
+                watchKey(path, mode),
+                optionBuilder.build(),
+                Watch.listener(
+                    { response ->
+                        response.events.forEach { event ->
+                            val configEvent = when (event.eventType) {
+                                io.etcd.jetcd.watch.WatchEvent.EventType.PUT ->
+                                    event.keyValue.toEntryOrNull()?.let { ConfigEvent.Upserted(it.path, it) }
 
-                    io.etcd.jetcd.watch.WatchEvent.EventType.DELETE -> {
-                        val previous = event.prevKV.toEntryOrNull()
-                        val deletedPath = previous?.path ?: event.keyValue.toPathOrNull()
-                        deletedPath?.let { ConfigEvent.Deleted(it, previous) }
-                    }
+                                io.etcd.jetcd.watch.WatchEvent.EventType.DELETE -> {
+                                    val previous = event.prevKV.toEntryOrNull()
+                                    val deletedPath = previous?.path ?: event.keyValue.toPathOrNull()
+                                    deletedPath?.let { ConfigEvent.Deleted(it, previous) }
+                                }
 
-                    else -> null
-                }
-                if (configEvent != null && matches(path, mode, configEvent.path)) {
-                    flow.tryEmit(configEvent)
-                }
+                                else -> null
+                            }
+                            if (configEvent != null && matches(path, mode, configEvent.path)) {
+                                trySend(configEvent)
+                            }
+                        }
+                    },
+                    { error -> close(error) },
+                    { close() },
+                ),
+            )
+            watcherRef.set(watcher)
+            awaitClose {
+                watcherRef.compareAndSet(watcher, null)
+                watcher.close()
             }
         }
         return object : ConfigWatch {
-            override val events: Flow<ConfigEvent> = flow
+            override val events: Flow<ConfigEvent> = events
 
             override fun close() {
-                watcher.close()
+                closed.set(true)
+                watcherRef.getAndSet(null)?.close()
             }
         }
     }

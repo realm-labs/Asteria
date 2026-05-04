@@ -1,8 +1,9 @@
 package io.github.realmlabs.asteria.config.center.zookeeper
 
 import io.github.realmlabs.asteria.config.center.*
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.future.await
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.cache.ChildData
@@ -12,6 +13,8 @@ import org.apache.curator.x.async.AsyncCuratorFramework
 import org.apache.curator.x.async.api.CreateOption
 import org.apache.zookeeper.KeeperException
 import org.apache.zookeeper.data.Stat
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 class ZookeeperConfigStore(
     private val client: AsyncCuratorFramework,
@@ -43,25 +46,44 @@ class ZookeeperConfigStore(
         path: ConfigPath,
         mode: ConfigWatchMode,
     ): ConfigWatch {
-        val cache = when (mode) {
-            ConfigWatchMode.Value -> CuratorCache.build(syncClient, path.value, CuratorCache.Options.SINGLE_NODE_CACHE)
-            ConfigWatchMode.Children,
-            ConfigWatchMode.Tree,
-                -> CuratorCache.build(syncClient, path.value)
-        }
-        val flow = MutableSharedFlow<ConfigEvent>(extraBufferCapacity = 64)
-        cache.listenable().addListener { type, oldData, data ->
-            val event = eventOf(type, oldData, data)
-            if (event != null && matches(path, mode, event.path)) {
-                flow.tryEmit(event)
+        val closed = AtomicBoolean(false)
+        val cacheRef = AtomicReference<CuratorCache?>()
+        val events = callbackFlow {
+            if (closed.get()) {
+                close()
+                return@callbackFlow
+            }
+            val cache = when (mode) {
+                ConfigWatchMode.Value -> CuratorCache.builder(syncClient, path.value)
+                    .withOptions(CuratorCache.Options.SINGLE_NODE_CACHE)
+                    .withExceptionHandler { error -> close(error) }
+                    .build()
+
+                ConfigWatchMode.Children,
+                ConfigWatchMode.Tree,
+                    -> CuratorCache.builder(syncClient, path.value)
+                    .withExceptionHandler { error -> close(error) }
+                    .build()
+            }
+            cache.listenable().addListener { type, oldData, data ->
+                val event = eventOf(type, oldData, data)
+                if (event != null && matches(path, mode, event.path)) {
+                    trySend(event)
+                }
+            }
+            cacheRef.set(cache)
+            cache.start()
+            awaitClose {
+                cacheRef.compareAndSet(cache, null)
+                cache.close()
             }
         }
-        cache.start()
         return object : ConfigWatch {
-            override val events: Flow<ConfigEvent> = flow
+            override val events: Flow<ConfigEvent> = events
 
             override fun close() {
-                cache.close()
+                closed.set(true)
+                cacheRef.getAndSet(null)?.close()
             }
         }
     }
