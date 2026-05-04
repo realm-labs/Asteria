@@ -19,6 +19,8 @@ include(
     "foundation:foundation-id-mongodb",
     "foundation:foundation-id-zookeeper",
     "foundation:foundation-message",
+    "foundation:foundation-message-ksp",
+    "foundation:foundation-message-gradle-plugin",
     "foundation:foundation-protobuf",
     "observability:observability-core",
     "observability:observability-opentelemetry",

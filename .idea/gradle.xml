@@ -48,6 +48,8 @@
             <option value="$PROJECT_DIR$/foundation/foundation-id-mongodb" />
             <option value="$PROJECT_DIR$/foundation/foundation-id-zookeeper" />
             <option value="$PROJECT_DIR$/foundation/foundation-message" />
+            <option value="$PROJECT_DIR$/foundation/foundation-message-gradle-plugin" />
+            <option value="$PROJECT_DIR$/foundation/foundation-message-ksp" />
             <option value="$PROJECT_DIR$/foundation/foundation-protobuf" />
             <option value="$PROJECT_DIR$/gateway" />
             <option value="$PROJECT_DIR$/gateway/gateway-core" />
