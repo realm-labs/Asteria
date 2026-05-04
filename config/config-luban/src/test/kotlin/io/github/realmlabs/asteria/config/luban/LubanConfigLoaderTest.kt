@@ -2,7 +2,7 @@ package io.github.realmlabs.asteria.config.luban
 
 import com.fasterxml.jackson.databind.JsonNode
 import io.github.realmlabs.asteria.config.ConfigService
-import io.github.realmlabs.asteria.config.requireComponent
+import io.github.realmlabs.asteria.config.component
 import io.github.realmlabs.asteria.core.gameApplication
 import kotlinx.coroutines.runBlocking
 import java.io.IOException
@@ -31,8 +31,8 @@ class LubanConfigLoaderTest {
             dataSource = DirectoryLubanDataSource(dataDir),
         ).load()
 
-        val tables = snapshot.requireComponent<FakeTables>()
-        val items = snapshot.requireComponent<FakeTbItem>()
+        val tables = snapshot.component<FakeTables>()
+        val items = snapshot.component<FakeTbItem>()
         assertEquals("Sword", tables.getTbItem().get(1).name)
         assertEquals("Potion", items.get(2).name)
         assertEquals(1, snapshot.components().count { it is FakeTables })
@@ -51,7 +51,7 @@ class LubanConfigLoaderTest {
         val second = loader.load()
 
         assertNotEquals(first.revision.checksum, second.revision.checksum)
-        assertEquals("Axe", second.requireComponent<FakeTbItem>().get(1).name)
+        assertEquals("Axe", second.component<FakeTbItem>().get(1).name)
     }
 
     @Test
@@ -72,7 +72,7 @@ class LubanConfigLoaderTest {
 
         val items = app.services.get<ConfigService>()
             .current()
-            .requireComponent<FakeTbItem>()
+            .component<FakeTbItem>()
         assertEquals("Sword", items.get(1).name)
 
         app.stop()
@@ -88,8 +88,8 @@ class LubanConfigLoaderTest {
             dataSource = DirectoryLubanDataSource(dataDir),
         ).load()
 
-        val tables = snapshot.requireComponent<FakeBinaryTables>()
-        val items = snapshot.requireComponent<FakeBinaryTbItem>()
+        val tables = snapshot.component<FakeBinaryTables>()
+        val items = snapshot.component<FakeBinaryTbItem>()
         assertEquals("Sword", tables.getTbItem().get(1).name)
         assertEquals("Potion", items.get(2).name)
     }
@@ -103,7 +103,7 @@ class LubanConfigLoaderTest {
             ),
         ).load()
 
-        val items = snapshot.requireComponent<FakeBinaryTbItem>()
+        val items = snapshot.component<FakeBinaryTbItem>()
         assertEquals("Sword", items.get(1).name)
         assertEquals("Potion", items.get(2).name)
     }
@@ -128,7 +128,7 @@ class LubanConfigLoaderTest {
 
         val items = app.services.get<ConfigService>()
             .current()
-            .requireComponent<FakeBinaryTbItem>()
+            .component<FakeBinaryTbItem>()
         assertEquals("Sword", items.get(1).name)
 
         app.stop()

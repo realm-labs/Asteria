@@ -81,20 +81,6 @@ inline fun <reified R : Any> rowConfigTableRef(name: String): RowConfigTableRef<
 }
 
 /**
- * Returns an untyped table by generated [ref] or throws with revision context.
- */
-fun ConfigSnapshot.requireAnyTable(ref: ConfigTableRef<*, *>): ConfigTable<*> {
-    return requireAnyTable(ref.name)
-}
-
-/**
- * Returns an untyped table by generated [ref] or throws with revision context.
- */
-fun ConfigSnapshot.requireAnyTable(ref: RowConfigTableRef<*>): ConfigTable<*> {
-    return requireAnyTable(ref.name)
-}
-
-/**
  * Returns a typed table by generated [ref], or `null` when it is absent.
  *
  * The stored table must match the row type declared by [ref].

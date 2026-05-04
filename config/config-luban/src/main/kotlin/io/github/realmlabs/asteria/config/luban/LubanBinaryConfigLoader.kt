@@ -4,6 +4,7 @@ import io.github.realmlabs.asteria.config.ConfigLoader
 import io.github.realmlabs.asteria.config.ConfigRevision
 import io.github.realmlabs.asteria.config.ConfigSnapshot
 import io.github.realmlabs.asteria.config.DefaultConfigSnapshot
+import io.github.realmlabs.asteria.config.SnapshotEntry
 import kotlin.reflect.KClass
 
 class LubanBinaryConfigLoader(
@@ -37,8 +38,13 @@ class LubanBinaryConfigLoader(
 
         return DefaultConfigSnapshot(
             revision = revisionFactory(report),
-            components = components,
-            componentsByType = mapOf(tablesType to tables),
+            entries = components.map { component ->
+                if (component === tables) {
+                    SnapshotEntry.Component(component, tablesType)
+                } else {
+                    SnapshotEntry.Component(component)
+                }
+            },
         )
     }
 }

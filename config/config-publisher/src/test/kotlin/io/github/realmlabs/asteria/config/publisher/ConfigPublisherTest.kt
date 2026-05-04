@@ -104,8 +104,8 @@ class ConfigPublisherTest {
         ).load()
 
         assertEquals(revision, bundle.manifest.revision)
-        assertEquals("Sword", snapshot.requireComponent<FakeBinaryTbItem>().get(1).name)
-        assertEquals("Potion", snapshot.requireComponent<FakeBinaryTbItem>().get(2).name)
+        assertEquals("Sword", snapshot.component<FakeBinaryTbItem>().get(1).name)
+        assertEquals("Potion", snapshot.component<FakeBinaryTbItem>().get(2).name)
     }
 
     @Test
@@ -130,7 +130,7 @@ class ConfigPublisherTest {
         val snapshot = configPublicationLubanBinaryLoader<FakeBinaryTables>(store, layout).load()
 
         assertEquals(revision, snapshot.revision)
-        assertEquals("Sword", snapshot.requireComponent<FakeBinaryTbItem>().get(1).name)
+        assertEquals("Sword", snapshot.component<FakeBinaryTbItem>().get(1).name)
     }
 
     @Test

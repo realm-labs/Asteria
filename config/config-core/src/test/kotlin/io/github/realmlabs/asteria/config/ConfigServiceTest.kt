@@ -24,7 +24,7 @@ class ConfigServiceTest {
         assertEquals("Sword", table.require(1).name)
         assertEquals(2, table.size)
         assertEquals(ConfigTableName("items"), TestConfigTables.Items.name)
-        assertEquals("project-configs", result.current.requireComponent<GeneratedTables>().name)
+        assertEquals("project-configs", result.current.component<GeneratedTables>().name)
         assertEquals(result, notified)
         val diff = ConfigSnapshotDiff.between(result.previous, result.current)
         assertEquals(listOf("items"), diff.addedTables.map { it.name.value })
@@ -97,6 +97,38 @@ class ConfigServiceTest {
     }
 
     @Test
+    fun `snapshot returns table by concrete table type`() {
+        val table = ItemConfigTable(
+            listOf(
+                1 to ItemConfig(1, "Sword", 10),
+                2 to ItemConfig(2, "Potion", 5),
+            ),
+        )
+        val snapshot = DefaultConfigSnapshot(
+            revision = ConfigRevision("v1"),
+            tables = listOf(table),
+        )
+
+        assertSame(table, snapshot.table(ItemConfigTable::class))
+        assertSame(table, snapshot.table<ItemConfigTable>())
+    }
+
+    @Test
+    fun `snapshot does not treat generic table implementations as concrete table types`() {
+        val table = mapConfigTable(
+            ref = TestConfigTables.Items,
+            rows = mapOf(1 to ItemConfig(1, "Sword", 10)),
+        )
+        val snapshot = DefaultConfigSnapshot(
+            revision = ConfigRevision("v1"),
+            tables = listOf(table),
+        )
+
+        assertNull(snapshot.table(MapConfigTable::class))
+        assertSame(table, snapshot[TestConfigTables.Items])
+    }
+
+    @Test
     fun `reload rejects component build failure before publishing`() = runBlocking {
         var version = 0
         val service = ConfigService(
@@ -121,7 +153,7 @@ class ConfigServiceTest {
 
         assertEquals("component build failed", error.message)
         assertEquals("v1", service.current().revision.version)
-        assertEquals("v1", service.current().requireComponent<GeneratedTables>().name)
+        assertEquals("v1", service.current().component<GeneratedTables>().name)
     }
 
     @Test
@@ -154,7 +186,7 @@ class ConfigServiceTest {
             loader = TestConfigLoader(),
             validators = listOf(
                 configValidator { snapshot ->
-                    val items = snapshot.requireTable<Int, ItemConfig>(ConfigTableName("items"))
+                    val items = snapshot.requireTable(TestConfigTables.Items)
                     items.all().forEach { item ->
                         check(item.price > 100, "price must be greater than 100", items.name, item.id)
                     }
@@ -306,9 +338,9 @@ class ConfigServiceTest {
 
         val service = app.services.get<ConfigService>()
         val monitor = app.services.get<ConfigReloadMonitor>()
-        val items = service.current().requireTable<Int, ItemConfig>(ConfigTableName("items"))
+        val items = service.current().requireTable(TestConfigTables.Items)
         assertNotNull(items[1])
-        assertEquals("project-configs", service.current().requireComponent<GeneratedTables>().name)
+        assertEquals("project-configs", service.current().component<GeneratedTables>().name)
         assertEquals("v1", monitor.status(service.current()).lastSuccess?.currentRevision?.version)
 
         app.stop()
@@ -339,6 +371,15 @@ class ConfigServiceTest {
     private object TestConfigTables {
         val Items = configTableRef<Int, ItemConfig>("items")
     }
+
+    private class ItemConfigTable(
+        rows: Iterable<Pair<Int, ItemConfig>>,
+    ) : OrderedMapConfigTable<Int, ItemConfig>(
+        name = TestConfigTables.Items.name,
+        keyType = Int::class,
+        rowType = ItemConfig::class,
+        rows = rows,
+    )
 
     private inner class TestConfigLoader : ConfigLoader {
         override suspend fun load(): ConfigSnapshot {

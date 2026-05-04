@@ -85,7 +85,7 @@ interface KeyedConfigTable<K : Any, R : Any> : ConfigTable<R> {
 /**
  * [KeyedConfigTable] backed by an immutable copy of a [Map].
  */
-class MapConfigTable<K : Any, R : Any>(
+open class MapConfigTable<K : Any, R : Any>(
     override val name: ConfigTableName,
     override val keyType: KClass<K>,
     override val rowType: KClass<R>,
@@ -125,7 +125,7 @@ class MapConfigTable<K : Any, R : Any>(
  *
  * [keys], [entries], [values], and [all] iterate in the order supplied to the constructor.
  */
-class OrderedMapConfigTable<K : Any, R : Any>(
+open class OrderedMapConfigTable<K : Any, R : Any>(
     override val name: ConfigTableName,
     override val keyType: KClass<K>,
     override val rowType: KClass<R>,
@@ -162,7 +162,7 @@ class OrderedMapConfigTable<K : Any, R : Any>(
 /**
  * [ConfigTable] backed by an immutable ordered copy of a [List].
  */
-class ListConfigTable<R : Any> private constructor(
+open class ListConfigTable<R : Any> private constructor(
     override val name: ConfigTableName,
     override val rowType: KClass<R>,
     private val rows: List<R>,
@@ -181,7 +181,7 @@ class ListConfigTable<R : Any> private constructor(
 /**
  * [ConfigTable] containing exactly one row object.
  */
-class SingleConfigTable<R : Any>(
+open class SingleConfigTable<R : Any>(
     override val name: ConfigTableName,
     override val rowType: KClass<R>,
     val row: R,

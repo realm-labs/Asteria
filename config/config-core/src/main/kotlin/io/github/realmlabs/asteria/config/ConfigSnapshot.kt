@@ -39,6 +39,11 @@ interface ConfigSnapshot {
     fun table(name: ConfigTableName): ConfigTable<*>?
 
     /**
+     * Returns a table by exact runtime [type].
+     */
+    fun <T : ConfigTable<*>> table(type: KClass<T>): T?
+
+    /**
      * Returns all tables in this snapshot.
      */
     fun tables(): Collection<ConfigTable<*>>
@@ -62,21 +67,59 @@ interface ConfigSnapshot {
  */
 class DefaultConfigSnapshot(
     override val revision: ConfigRevision,
-    tables: Iterable<ConfigTable<*>> = emptyList(),
-    components: Iterable<Any> = emptyList(),
-    componentsByType: Map<KClass<*>, Any> = emptyMap(),
+    entries: Iterable<SnapshotEntry> = emptyList(),
 ) : ConfigSnapshot {
+    constructor(
+        revision: ConfigRevision,
+        tables: Iterable<ConfigTable<*>> = emptyList(),
+        components: Iterable<Any> = emptyList(),
+    ) : this(
+        revision = revision,
+        entries = tables.map { SnapshotEntry.Table(it) } +
+                components.map { SnapshotEntry.Component(it) },
+    )
+
+    private val explicitTablesByType: Map<KClass<out ConfigTable<*>>, ConfigTable<*>> = entries
+        .filterIsInstance<SnapshotEntry.Table>()
+        .mapNotNull { entry -> entry.type?.let { it to entry.value } }
+        .associateUniqueBy(
+            keyOf = { it.first },
+            errorOf = { "duplicate config table type ${it.first.qualifiedName}" },
+        )
+        .mapValues { it.value.second }
+    private val explicitComponentsByType: Map<KClass<*>, Any> = entries
+        .filterIsInstance<SnapshotEntry.Component>()
+        .associateUniqueBy(
+            keyOf = { it.type },
+            errorOf = { "duplicate config component ${it.type.qualifiedName}" },
+        )
+        .mapValues { it.value.value }
+    private val tables: List<ConfigTable<*>> = entries
+        .filterIsInstance<SnapshotEntry.Table>()
+        .map { it.value }
+        .distinctByIdentity()
+    private val components: List<Any> = entries
+        .filterIsInstance<SnapshotEntry.Component>()
+        .map { it.value }
+        .distinctByIdentity()
     private val tablesByName: Map<ConfigTableName, ConfigTable<*>> = tables.associateUniqueBy(
         keyOf = { it.name },
         errorOf = { "duplicate config table ${it.name}" },
     )
+    private val tablesByType: Map<KClass<out ConfigTable<*>>, ConfigTable<*>> =
+        tables.associateUniqueTableSubclasses() + explicitTablesByType.validateTableTypes()
     private val componentsByType: Map<KClass<*>, Any> = components.associateUniqueBy(
         keyOf = { it::class },
         errorOf = { "duplicate config component ${it::class.qualifiedName}" },
-    ) + componentsByType
+    ) + explicitComponentsByType
 
     override fun table(name: ConfigTableName): ConfigTable<*>? {
         return tablesByName[name]
+    }
+
+    override fun <T : ConfigTable<*>> table(type: KClass<T>): T? {
+        @Suppress("UNCHECKED_CAST")
+        return tablesByType[type] as T?
     }
 
     override fun tables(): Collection<ConfigTable<*>> {
@@ -94,51 +137,45 @@ class DefaultConfigSnapshot(
 }
 
 /**
- * Returns an untyped table or throws with revision context.
+ * Typed table or component entry for [DefaultConfigSnapshot].
  */
-fun ConfigSnapshot.requireAnyTable(name: ConfigTableName): ConfigTable<*> {
-    return table(name) ?: error("config table $name not found in revision ${revision.version}")
+sealed interface SnapshotEntry {
+    data class Table(
+        val value: ConfigTable<*>,
+        val type: KClass<out ConfigTable<*>>? = null,
+    ) : SnapshotEntry {
+        init {
+            require(type == null || type.isInstance(value)) {
+                "config table ${value.name} is not an instance of ${type?.qualifiedName}"
+            }
+        }
+    }
+
+    data class Component(
+        val value: Any,
+        val type: KClass<*> = value::class,
+    ) : SnapshotEntry {
+        init {
+            require(type.isInstance(value)) {
+                "config component ${value::class.qualifiedName} is not an instance of ${type.qualifiedName}"
+            }
+        }
+    }
 }
 
 /**
- * Returns a typed table by [name], or `null` when it is absent.
- *
- * The stored key and row types must match [K] and [R].
+ * Returns a table by exact runtime type or throws with revision context.
  */
-inline fun <reified K : Any, reified R : Any> ConfigSnapshot.table(name: ConfigTableName): KeyedConfigTable<K, R>? {
-    val table = table(name) ?: return null
-    require(table is KeyedConfigTable<*, *>) {
-        "config table $name is not keyed"
-    }
-    require(table.keyType == K::class) {
-        "config table $name key type mismatch, expected ${K::class.qualifiedName}, actual ${table.keyType.qualifiedName}"
-    }
-    require(table.rowType == R::class) {
-        "config table $name row type mismatch, expected ${R::class.qualifiedName}, actual ${table.rowType.qualifiedName}"
-    }
-    @Suppress("UNCHECKED_CAST")
-    return table as KeyedConfigTable<K, R>
-}
-
-/**
- * Returns a typed table by [name] or throws with revision context.
- */
-inline fun <reified K : Any, reified R : Any> ConfigSnapshot.requireTable(name: ConfigTableName): KeyedConfigTable<K, R> {
-    return table<K, R>(name) ?: error("config table $name not found in revision ${revision.version}")
-}
-
-/**
- * Returns a component by reified type, or `null` when it is absent.
- */
-inline fun <reified T : Any> ConfigSnapshot.component(): T? {
-    return component(T::class)
+inline fun <reified T : ConfigTable<*>> ConfigSnapshot.table(): T {
+    return table(T::class)
+        ?: error("config table ${T::class.qualifiedName} not found in revision ${revision.version}")
 }
 
 /**
  * Returns a component by reified type or throws with revision context.
  */
-inline fun <reified T : Any> ConfigSnapshot.requireComponent(): T {
-    return component<T>()
+inline fun <reified T : Any> ConfigSnapshot.component(): T {
+    return component(T::class)
         ?: error("config component ${T::class.qualifiedName} not found in revision ${revision.version}")
 }
 
@@ -153,4 +190,46 @@ private fun <K : Any, V : Any> Iterable<V>.associateUniqueBy(
         result[key] = value
     }
     return result
+}
+
+private fun Iterable<ConfigTable<*>>.associateUniqueTableSubclasses(): Map<KClass<out ConfigTable<*>>, ConfigTable<*>> {
+    val result = linkedMapOf<KClass<out ConfigTable<*>>, ConfigTable<*>>()
+    for (table in this) {
+        val type = table::class
+        if (type.isGenericConfigTableImplementation()) {
+            continue
+        }
+        require(!result.containsKey(type)) {
+            "duplicate config table type ${type.qualifiedName}"
+        }
+        result[type] = table
+    }
+    return result
+}
+
+private fun <T : Any> Iterable<T>.distinctByIdentity(): List<T> {
+    val seen = java.util.IdentityHashMap<T, Unit>()
+    val result = mutableListOf<T>()
+    for (value in this) {
+        if (seen.put(value, Unit) == null) {
+            result += value
+        }
+    }
+    return result
+}
+
+private fun KClass<out ConfigTable<*>>.isGenericConfigTableImplementation(): Boolean {
+    return this == MapConfigTable::class ||
+            this == OrderedMapConfigTable::class ||
+            this == ListConfigTable::class ||
+            this == SingleConfigTable::class
+}
+
+private fun Map<KClass<out ConfigTable<*>>, ConfigTable<*>>.validateTableTypes(): Map<KClass<out ConfigTable<*>>, ConfigTable<*>> {
+    for ((type, table) in this) {
+        require(type.isInstance(table)) {
+            "config table ${table.name} is not an instance of ${type.qualifiedName}"
+        }
+    }
+    return this
 }

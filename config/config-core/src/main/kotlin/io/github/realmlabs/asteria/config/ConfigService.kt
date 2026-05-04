@@ -227,6 +227,10 @@ private class RuntimeComponentConfigSnapshot(
         return base.table(name)
     }
 
+    override fun <T : ConfigTable<*>> table(type: kotlin.reflect.KClass<T>): T? {
+        return base.table(type)
+    }
+
     override fun tables(): Collection<ConfigTable<*>> {
         return base.tables()
     }
