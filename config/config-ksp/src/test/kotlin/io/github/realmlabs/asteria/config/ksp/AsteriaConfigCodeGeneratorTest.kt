@@ -35,10 +35,10 @@ class AsteriaConfigCodeGeneratorTest {
         assertContains(code, "val Items: ConfigTableRef<Int, ItemConfig> = configTableRef(\"items\")")
         assertContains(code, "val DailyTasks: ConfigTableRef<Int, TaskConfig> = configTableRef(\"daily_tasks\")")
         assertContains(code, "class GameConfigs(")
-        assertContains(code, "val items: ConfigTable<Int, ItemConfig>")
+        assertContains(code, "val items: KeyedConfigTable<Int, ItemConfig>")
         assertContains(code, "get() = configService.current().requireTable(GameConfigTables.Items)")
-        assertContains(code, "fun ConfigSnapshot.items(): ConfigTable<Int, ItemConfig>")
-        assertContains(code, "fun ConfigService.dailyTasks(): ConfigTable<Int, TaskConfig>")
+        assertContains(code, "fun ConfigSnapshot.items(): KeyedConfigTable<Int, ItemConfig>")
+        assertContains(code, "fun ConfigService.dailyTasks(): KeyedConfigTable<Int, TaskConfig>")
     }
 
     private companion object {

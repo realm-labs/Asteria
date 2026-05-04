@@ -110,12 +110,12 @@ object AsteriaConfigCodeGenerator {
     }
 
     private fun ConfigTableModel.tableType(): TypeName {
-        return CONFIG_TABLE.parameterizedBy(keyType, rowType)
+        return KEYED_CONFIG_TABLE.parameterizedBy(keyType, rowType)
     }
 
     private val CONFIG_SERVICE = ClassName("io.github.realmlabs.asteria.config", "ConfigService")
     private val CONFIG_SNAPSHOT = ClassName("io.github.realmlabs.asteria.config", "ConfigSnapshot")
-    private val CONFIG_TABLE = ClassName("io.github.realmlabs.asteria.config", "ConfigTable")
+    private val KEYED_CONFIG_TABLE = ClassName("io.github.realmlabs.asteria.config", "KeyedConfigTable")
     private val CONFIG_TABLE_REF = ClassName("io.github.realmlabs.asteria.config", "ConfigTableRef")
     private val CONFIG_TABLE_REF_FACTORY = MemberName("io.github.realmlabs.asteria.config", "configTableRef")
     private val REQUIRE_TABLE = MemberName("io.github.realmlabs.asteria.config", "requireTable")

@@ -64,39 +64,49 @@ data class ConfigSnapshotDiff(
  */
 data class ConfigTableChange(
     val name: ConfigTableName,
-    val keyType: String,
+    val keyType: String?,
     val rowType: String,
     val previousSize: Int?,
     val currentSize: Int?,
 )
 
-private fun ConfigTable<*, *>.toChange(
+private fun ConfigTable<*>.toChange(
     previousSize: Int? = size,
     currentSize: Int? = size,
 ): ConfigTableChange {
     return ConfigTableChange(
         name = name,
-        keyType = keyType.qualifiedName ?: keyType.simpleName ?: "unknown",
+        keyType = (this as? KeyedConfigTable<*, *>)?.keyType?.let {
+            it.qualifiedName ?: it.simpleName ?: "unknown"
+        },
         rowType = rowType.qualifiedName ?: rowType.simpleName ?: "unknown",
         previousSize = previousSize,
         currentSize = currentSize,
     )
 }
 
-private fun ConfigTable<*, *>.fingerprint(): ConfigTableFingerprint {
-    @Suppress("UNCHECKED_CAST")
-    val typed = this as ConfigTable<Any, Any>
+private fun ConfigTable<*>.fingerprint(): ConfigTableFingerprint {
+    val keyedRows = when (this) {
+        is KeyedConfigTable<*, *> -> {
+            @Suppress("UNCHECKED_CAST")
+            val keyed = this as KeyedConfigTable<Any, Any>
+            keyed.keys.map { key -> key to keyed[key] }
+        }
+        else -> null
+    }
     return ConfigTableFingerprint(
-        keyType = keyType,
+        keyType = (this as? KeyedConfigTable<*, *>)?.keyType,
         rowType = rowType,
         size = size,
-        rows = typed.ids.associateWith { id -> typed[id] },
+        rows = all().toList(),
+        keyedRows = keyedRows,
     )
 }
 
 private data class ConfigTableFingerprint(
-    val keyType: Any,
+    val keyType: Any?,
     val rowType: Any,
     val size: Int,
-    val rows: Map<Any, Any?>,
+    val rows: List<Any>,
+    val keyedRows: List<Pair<Any?, Any?>>?,
 )

@@ -31,6 +31,72 @@ class ConfigServiceTest {
     }
 
     @Test
+    fun `map config table exposes read only map api`() {
+        val table = mapConfigTable(
+            ref = TestConfigTables.Items,
+            rows = listOf(
+                ItemConfig(1, "Sword", 10),
+                ItemConfig(2, "Potion", 5),
+            ).associateBy { it.id },
+        )
+
+        assertEquals(setOf(1, 2), table.keys)
+        assertEquals(table.keys, table.ids)
+        assertEquals(listOf("Sword", "Potion"), table.values.map { it.name })
+        assertEquals(table.values, table.all())
+        assertTrue(table.containsKey(1))
+        assertTrue(table.contains(2))
+        assertFalse(table.isEmpty())
+        assertEquals(mapOf(1 to "Sword", 2 to "Potion"), table.mapValues { it.value.name })
+        assertEquals(mapOf(2 to ItemConfig(2, "Potion", 5)), table.filterKeys { it == 2 })
+    }
+
+    @Test
+    fun `ordered map config table preserves supplied iteration order`() {
+        val table = orderedMapConfigTable(
+            ref = TestConfigTables.Items,
+            rows = listOf(
+                2 to ItemConfig(2, "Potion", 5),
+                1 to ItemConfig(1, "Sword", 10),
+            ),
+        )
+
+        assertEquals(listOf(2, 1), table.keys.toList())
+        assertEquals(listOf("Potion", "Sword"), table.all().map { it.name })
+        assertEquals("Sword", table.require(1).name)
+    }
+
+    @Test
+    fun `list and single config tables expose unkeyed row shapes`() {
+        val dropsRef = rowConfigTableRef<ItemConfig>("drops")
+        val globalRef = rowConfigTableRef<ItemConfig>("global")
+        val list = listConfigTable(
+            ref = dropsRef,
+            rows = listOf(
+                ItemConfig(1, "Gold", 1),
+                ItemConfig(2, "Gem", 2),
+            ),
+        )
+        val single = singleConfigTable(
+            ref = globalRef,
+            row = ItemConfig(1, "Server", 0),
+        )
+        val snapshot = DefaultConfigSnapshot(
+            revision = ConfigRevision("v1"),
+            tables = listOf(list, single),
+        )
+
+        assertEquals(2, list.size)
+        assertEquals(listOf("Gold", "Gem"), list.all().map { it.name })
+        assertEquals("Gem", list[1].name)
+        assertEquals(1, single.size)
+        assertEquals("Server", single.get().name)
+        assertEquals(listOf(single.row), single.all())
+        assertEquals(list, snapshot.requireTable(dropsRef))
+        assertEquals(single, snapshot[globalRef])
+    }
+
+    @Test
     fun `reload rejects component build failure before publishing`() = runBlocking {
         var version = 0
         val service = ConfigService(

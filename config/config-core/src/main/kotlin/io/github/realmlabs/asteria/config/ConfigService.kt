@@ -223,11 +223,11 @@ private class RuntimeComponentConfigSnapshot(
     override val revision: ConfigRevision
         get() = base.revision
 
-    override fun table(name: ConfigTableName): ConfigTable<*, *>? {
+    override fun table(name: ConfigTableName): ConfigTable<*>? {
         return base.table(name)
     }
 
-    override fun tables(): Collection<ConfigTable<*, *>> {
+    override fun tables(): Collection<ConfigTable<*>> {
         return base.tables()
     }
 

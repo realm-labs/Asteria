@@ -46,7 +46,7 @@ class SnapshotGmConfigInspector(
             .map {
                 GmConfigTableSummary(
                     name = it.name.value,
-                    keyType = it.keyType.qualifiedName ?: it.keyType.simpleName ?: "unknown",
+                    keyType = it.keyTypeName(),
                     rowType = it.rowType.qualifiedName ?: it.rowType.simpleName ?: "unknown",
                     size = it.size,
                 )
@@ -141,7 +141,7 @@ private fun ConfigReloadResult.toGm(): GmConfigReloadRecord {
 private fun ConfigTableChange.toGm(): GmConfigChangedTable {
     return GmConfigChangedTable(
         name = name.value,
-        keyType = keyType,
+        keyType = keyType ?: "none",
         rowType = rowType,
         previousSize = previousSize,
         currentSize = currentSize,
@@ -156,7 +156,7 @@ private class GmConfigViewCache(
 
     fun view(
         revision: ConfigRevision,
-        table: ConfigTable<*, *>,
+        table: ConfigTable<*>,
     ): GmConfigTableView {
         if (this.revision != revision) {
             this.revision = revision
@@ -173,13 +173,24 @@ private data class GmConfigTableView(
     val rowsById: Map<String, GmConfigRow> = rows.associateBy { it.id }
 }
 
-private fun ConfigTable<*, *>.toView(projector: ConfigRowProjector): GmConfigTableView {
-    @Suppress("UNCHECKED_CAST")
-    val typed = this as ConfigTable<Any, Any>
-    val rows = typed.ids.mapNotNull { id ->
-        typed[id]?.let { row ->
+private fun ConfigTable<*>.toView(projector: ConfigRowProjector): GmConfigTableView {
+    val rows = when (this) {
+        is KeyedConfigTable<*, *> -> {
+            @Suppress("UNCHECKED_CAST")
+            val typed = this as KeyedConfigTable<Any, Any>
+            typed.keys.mapNotNull { id ->
+                typed[id]?.let { row ->
+                    GmConfigRow(
+                        id = id.toString(),
+                        values = projector.project(row),
+                    )
+                }
+            }
+        }
+
+        else -> all().mapIndexed { index, row ->
             GmConfigRow(
-                id = id.toString(),
+                id = index.toString(),
                 values = projector.project(row),
             )
         }
@@ -187,13 +198,18 @@ private fun ConfigTable<*, *>.toView(projector: ConfigRowProjector): GmConfigTab
     return GmConfigTableView(
         descriptor = GmConfigTableDescriptor(
             name = name.value,
-            keyType = keyType.qualifiedName ?: keyType.simpleName ?: "unknown",
+            keyType = keyTypeName(),
             rowType = rowType.qualifiedName ?: rowType.simpleName ?: "unknown",
             size = size,
             fields = projector.describe(rowType),
         ),
         rows = rows,
     )
+}
+
+private fun ConfigTable<*>.keyTypeName(): String {
+    val keyType = (this as? KeyedConfigTable<*, *>)?.keyType ?: return "none"
+    return keyType.qualifiedName ?: keyType.simpleName ?: "unknown"
 }
 
 private fun GmConfigRow.matchesKeyword(keyword: String): Boolean {

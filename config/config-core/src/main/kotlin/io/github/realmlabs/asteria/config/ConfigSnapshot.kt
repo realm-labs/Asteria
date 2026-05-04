@@ -36,12 +36,12 @@ interface ConfigSnapshot {
     /**
      * Returns an untyped table by name.
      */
-    fun table(name: ConfigTableName): ConfigTable<*, *>?
+    fun table(name: ConfigTableName): ConfigTable<*>?
 
     /**
      * Returns all tables in this snapshot.
      */
-    fun tables(): Collection<ConfigTable<*, *>>
+    fun tables(): Collection<ConfigTable<*>>
 
     /**
      * Returns a typed runtime component by exact [type].
@@ -62,11 +62,11 @@ interface ConfigSnapshot {
  */
 class DefaultConfigSnapshot(
     override val revision: ConfigRevision,
-    tables: Iterable<ConfigTable<*, *>> = emptyList(),
+    tables: Iterable<ConfigTable<*>> = emptyList(),
     components: Iterable<Any> = emptyList(),
     componentsByType: Map<KClass<*>, Any> = emptyMap(),
 ) : ConfigSnapshot {
-    private val tablesByName: Map<ConfigTableName, ConfigTable<*, *>> = tables.associateUniqueBy(
+    private val tablesByName: Map<ConfigTableName, ConfigTable<*>> = tables.associateUniqueBy(
         keyOf = { it.name },
         errorOf = { "duplicate config table ${it.name}" },
     )
@@ -75,11 +75,11 @@ class DefaultConfigSnapshot(
         errorOf = { "duplicate config component ${it::class.qualifiedName}" },
     ) + componentsByType
 
-    override fun table(name: ConfigTableName): ConfigTable<*, *>? {
+    override fun table(name: ConfigTableName): ConfigTable<*>? {
         return tablesByName[name]
     }
 
-    override fun tables(): Collection<ConfigTable<*, *>> {
+    override fun tables(): Collection<ConfigTable<*>> {
         return tablesByName.values
     }
 
@@ -96,7 +96,7 @@ class DefaultConfigSnapshot(
 /**
  * Returns an untyped table or throws with revision context.
  */
-fun ConfigSnapshot.requireAnyTable(name: ConfigTableName): ConfigTable<*, *> {
+fun ConfigSnapshot.requireAnyTable(name: ConfigTableName): ConfigTable<*> {
     return table(name) ?: error("config table $name not found in revision ${revision.version}")
 }
 
@@ -105,8 +105,11 @@ fun ConfigSnapshot.requireAnyTable(name: ConfigTableName): ConfigTable<*, *> {
  *
  * The stored key and row types must match [K] and [R].
  */
-inline fun <reified K : Any, reified R : Any> ConfigSnapshot.table(name: ConfigTableName): ConfigTable<K, R>? {
+inline fun <reified K : Any, reified R : Any> ConfigSnapshot.table(name: ConfigTableName): KeyedConfigTable<K, R>? {
     val table = table(name) ?: return null
+    require(table is KeyedConfigTable<*, *>) {
+        "config table $name is not keyed"
+    }
     require(table.keyType == K::class) {
         "config table $name key type mismatch, expected ${K::class.qualifiedName}, actual ${table.keyType.qualifiedName}"
     }
@@ -114,13 +117,13 @@ inline fun <reified K : Any, reified R : Any> ConfigSnapshot.table(name: ConfigT
         "config table $name row type mismatch, expected ${R::class.qualifiedName}, actual ${table.rowType.qualifiedName}"
     }
     @Suppress("UNCHECKED_CAST")
-    return table as ConfigTable<K, R>
+    return table as KeyedConfigTable<K, R>
 }
 
 /**
  * Returns a typed table by [name] or throws with revision context.
  */
-inline fun <reified K : Any, reified R : Any> ConfigSnapshot.requireTable(name: ConfigTableName): ConfigTable<K, R> {
+inline fun <reified K : Any, reified R : Any> ConfigSnapshot.requireTable(name: ConfigTableName): KeyedConfigTable<K, R> {
     return table<K, R>(name) ?: error("config table $name not found in revision ${revision.version}")
 }
 
