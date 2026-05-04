@@ -12,15 +12,22 @@ class AsteriaMessageCodegenPlugin : Plugin<Project> {
         )
         extension.asteriaVersion.convention(pluginVersion())
 
-        project.pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+        var configured = false
+        fun configureOnce() {
+            if (configured) {
+                return
+            }
+            configured = true
             project.pluginManager.apply(KSP_PLUGIN_ID)
+            if (extension.addDependencies.get()) {
+                addAsteriaDependencies(project, extension.asteriaVersion.get())
+            }
             project.afterEvaluate {
                 configureKsp(project, extension)
-                if (extension.addDependencies.get()) {
-                    addAsteriaDependencies(project, extension.asteriaVersion.get())
-                }
             }
         }
+        project.pluginManager.withPlugin("org.jetbrains.kotlin.jvm") { configureOnce() }
+        project.pluginManager.withPlugin("kotlin") { configureOnce() }
     }
 
     private fun configureKsp(project: Project, extension: AsteriaMessageCodegenExtension) {
