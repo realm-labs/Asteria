@@ -5,6 +5,61 @@ message dispatch, cluster adapters, protocol codecs, gateway sessions, persisten
 Game projects own their topology and domain model, so concepts like `World`, `Home`, `Player`, `Room`, or `Match` are
 application-level choices instead of framework requirements.
 
+## Quick Start
+
+Start with the core runtime and add feature modules only when the server needs them:
+
+```kotlin
+dependencies {
+    implementation("io.github.realm-labs.asteria:foundation-core:<version>")
+
+    // Add these when needed:
+    implementation("io.github.realm-labs.asteria:config-core:<version>")
+    implementation("io.github.realm-labs.asteria:cluster-pekko:<version>")
+    implementation("io.github.realm-labs.asteria:gateway-netty:<version>")
+}
+```
+
+Create an application, install modules, and launch it:
+
+```kotlin
+import io.github.realmlabs.asteria.core.AsteriaModule
+import io.github.realmlabs.asteria.core.ModuleContext
+import io.github.realmlabs.asteria.core.gameApplication
+
+class GameClock {
+    fun start() {
+        // Start game-local runtime work here.
+    }
+}
+
+class GameRuntimeModule : AsteriaModule {
+    override val name = "game-runtime"
+
+    override suspend fun install(context: ModuleContext) {
+        context.services.register(GameClock())
+    }
+
+    override suspend fun start(context: ModuleContext) {
+        context.services.get<GameClock>().start()
+    }
+}
+
+suspend fun main() {
+    val app = gameApplication {
+        name = "demo-game"
+        role("player")
+        install(GameRuntimeModule())
+    }
+
+    app.launch()
+}
+```
+
+From there, plug in the modules you need: `ConfigModule` for config snapshots and hot reload, `PekkoRuntimeModule` for
+cluster actors, `gateway-netty` transport pieces for client sessions, persistence modules for storage, and GM modules
+for internal tools. The sections below show the available modules and deeper setup examples.
+
 ## Modules
 
 Foundation modules:
