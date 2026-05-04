@@ -67,8 +67,7 @@ abstract class AsteriaGenerateGatewayProtocolTask : DefaultTask() {
     }
 
     private fun writeClientMetadata(metadataFile: File, outputFile: File) {
-        val root = JsonSlurper().parse(metadataFile)
-        val messages = when (root) {
+        val messages = when (val root = JsonSlurper().parse(metadataFile)) {
             is Map<*, *> -> root["messages"] as? List<*>
                 ?: error("gateway protocol metadata must contain a messages array")
 
