@@ -10,12 +10,12 @@ import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import kotlin.reflect.KClass
 
-class LubanJsonConfigLoader(
-    private val tablesType: KClass<out Any>,
+class LubanJsonConfigLoader<T : Any, L : Any>(
+    private val tablesType: KClass<T>,
     private val dataSource: LubanDataSource,
+    private val bridge: LubanSnapshotBridge<T, L>,
     private val objectMapper: ObjectMapper = ObjectMapper(),
     private val charset: Charset = StandardCharsets.UTF_8,
-    private val includeTableComponents: Boolean = true,
     private val revisionFactory: (LubanJsonLoadReport) -> ConfigRevision = { report ->
         ConfigRevision(version = report.checksum, checksum = report.checksum)
     },
@@ -23,7 +23,7 @@ class LubanJsonConfigLoader(
     override suspend fun load(): ConfigSnapshot {
         val sourceFiles = dataSource.list(".json")
         val loadedFiles = linkedMapOf<String, ByteArray>()
-        val tables = instantiateLubanTables(tablesType, "AsteriaLubanJsonLoader") { file, returnType ->
+        val tables = createLubanTables(bridge, "AsteriaLubanJsonLoader") { file, returnType ->
             val name = fileNameWithExtension(file, ".json")
             val bytes = requireNotNull(sourceFiles[name]) { "Luban json data file $name not found" }
             loadedFiles[name] = bytes
@@ -38,21 +38,11 @@ class LubanJsonConfigLoader(
             files = loadedFiles.keys.toList(),
             checksum = checksumByName(loadedFiles),
         )
-        val components = buildList {
-            add(tables)
-            if (includeTableComponents) {
-                addAll(extractTableComponents(tables))
-            }
-        }
-
         return DefaultConfigSnapshot(
             revision = revisionFactory(report),
-            entries = components.map { component ->
-                if (component === tables) {
-                    SnapshotEntry.Component(component, tablesType)
-                } else {
-                    SnapshotEntry.Component(component)
-                }
+            entries = buildList {
+                add(SnapshotEntry.Component(tables, tablesType))
+                addAll(bridge.buildEntries(tables))
             },
         )
     }

@@ -1,11 +1,10 @@
 package io.github.realmlabs.asteria.config.luban
 
+import io.github.realmlabs.asteria.config.SnapshotEntry
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
-import java.lang.reflect.Modifier
 import java.lang.reflect.Proxy
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -26,6 +25,14 @@ data class LubanPreloadOptions(
 interface LubanLoadReport {
     val files: List<String>
     val checksum: String
+}
+
+interface LubanSnapshotBridge<T : Any, L : Any> {
+    val loaderType: KClass<L>
+
+    fun createTables(loader: L): T
+
+    fun buildEntries(tables: T): List<SnapshotEntry>
 }
 
 /**
@@ -90,14 +97,12 @@ class DirectoryLubanDataSource(
     }
 }
 
-internal fun instantiateLubanTables(
-    tablesType: KClass<out Any>,
+internal fun <T : Any, L : Any> createLubanTables(
+    bridge: LubanSnapshotBridge<T, L>,
     loaderName: String,
     load: (file: String, returnType: Class<*>) -> Any,
-): Any {
-    val constructor = tablesType.java.constructors.firstOrNull { it.parameterCount == 1 }
-        ?: error("Luban tables type ${tablesType.qualifiedName} must have a single-argument loader constructor")
-    val loaderType = constructor.parameterTypes.single()
+): T {
+    val loaderType = bridge.loaderType.java
     require(loaderType.isInterface) {
         "Luban tables loader type ${loaderType.name} must be an interface"
     }
@@ -112,26 +117,7 @@ internal fun instantiateLubanTables(
         }
     }
 
-    return try {
-        constructor.trySetAccessible()
-        constructor.newInstance(loader)
-    } catch (e: InvocationTargetException) {
-        throw e.targetException
-    }
-}
-
-internal fun extractTableComponents(tables: Any): List<Any> {
-    return tables.javaClass.methods
-        .asSequence()
-        .filter { method ->
-            Modifier.isPublic(method.modifiers) &&
-                    method.parameterCount == 0 &&
-                    method.name.startsWith("getTb") &&
-                    method.returnType != Void.TYPE &&
-                    method.declaringClass != Any::class.java
-        }
-        .mapNotNull { method -> method.invoke(tables) }
-        .toList()
+    return bridge.createTables(bridge.loaderType.java.cast(loader))
 }
 
 internal fun checksumByName(files: Map<String, ByteArray>): String {

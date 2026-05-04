@@ -6,6 +6,7 @@ import io.github.realmlabs.asteria.config.center.ConfigCodec
 import io.github.realmlabs.asteria.config.center.ConfigStore
 import io.github.realmlabs.asteria.config.center.JacksonConfigCodec
 import io.github.realmlabs.asteria.config.luban.LubanBinaryConfigLoader
+import io.github.realmlabs.asteria.config.luban.LubanSnapshotBridge
 import kotlin.reflect.KClass
 
 /**
@@ -15,21 +16,21 @@ import kotlin.reflect.KClass
  * the manifest and raw artifacts before handing bytes to Luban, then keeps the resulting snapshot revision equal to the
  * published revision instead of recomputing a local loader revision.
  */
-class ConfigPublicationLubanBinaryLoader(
-    private val tablesType: KClass<out Any>,
+class ConfigPublicationLubanBinaryLoader<T : Any, L : Any>(
+    private val tablesType: KClass<T>,
     private val consumer: ConfigPublicationConsumer,
-    private val includeTableComponents: Boolean = true,
+    private val bridge: LubanSnapshotBridge<T, L>,
 ) : ConfigLoader {
     constructor(
-        tablesType: KClass<out Any>,
+        tablesType: KClass<T>,
         store: ConfigStore,
+        bridge: LubanSnapshotBridge<T, L>,
         layout: ConfigPublicationLayout = ConfigPublicationLayout(),
         codec: ConfigCodec = JacksonConfigCodec(),
-        includeTableComponents: Boolean = true,
     ) : this(
         tablesType = tablesType,
         consumer = ConfigPublicationConsumer(store, layout, codec),
-        includeTableComponents = includeTableComponents,
+        bridge = bridge,
     )
 
     override suspend fun load(): ConfigSnapshot {
@@ -37,7 +38,7 @@ class ConfigPublicationLubanBinaryLoader(
         return LubanBinaryConfigLoader(
             tablesType = tablesType,
             dataSource = bundle.lubanDataSource(),
-            includeTableComponents = includeTableComponents,
+            bridge = bridge,
             revisionFactory = { bundle.manifest.revision },
         ).load()
     }
@@ -45,15 +46,16 @@ class ConfigPublicationLubanBinaryLoader(
 
 inline fun <reified T : Any> configPublicationLubanBinaryLoader(
     store: ConfigStore,
+    bridge: LubanSnapshotBridge<T, *>,
     layout: ConfigPublicationLayout = ConfigPublicationLayout(),
     codec: ConfigCodec = JacksonConfigCodec(),
-    includeTableComponents: Boolean = true,
-): ConfigPublicationLubanBinaryLoader {
+): ConfigPublicationLubanBinaryLoader<T, Any> {
+    @Suppress("UNCHECKED_CAST")
     return ConfigPublicationLubanBinaryLoader(
         tablesType = T::class,
         store = store,
+        bridge = bridge as LubanSnapshotBridge<T, Any>,
         layout = layout,
         codec = codec,
-        includeTableComponents = includeTableComponents,
     )
 }

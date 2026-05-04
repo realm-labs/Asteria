@@ -18,20 +18,21 @@ class LubanConfigModule private constructor(
     override suspend fun install(context: ModuleContext) {
         val tablesType = options.tablesType ?: error("Luban tables type must be configured")
         val dataSource = options.dataSource ?: error("Luban data source must be configured")
+        val bridge = options.bridge ?: error("Luban snapshot bridge must be configured")
         val loader = when (options.format) {
             LubanConfigFormat.Json -> LubanJsonConfigLoader(
                 tablesType = tablesType,
                 dataSource = dataSource,
+                bridge = bridge,
                 objectMapper = options.objectMapper,
                 charset = options.charset,
-                includeTableComponents = options.includeTableComponents,
                 revisionFactory = { report -> options.revisionFactory(report) },
             )
 
             LubanConfigFormat.Binary -> LubanBinaryConfigLoader(
                 tablesType = tablesType,
                 dataSource = dataSource,
-                includeTableComponents = options.includeTableComponents,
+                bridge = bridge,
                 revisionFactory = { report -> options.revisionFactory(report) },
             )
         }
@@ -55,12 +56,12 @@ class LubanConfigModule private constructor(
 }
 
 data class LubanConfigModuleOptions(
-    val tablesType: KClass<out Any>?,
+    val tablesType: KClass<Any>?,
     val dataSource: LubanDataSource?,
+    val bridge: LubanSnapshotBridge<Any, Any>?,
     val format: LubanConfigFormat,
     val objectMapper: ObjectMapper,
     val charset: Charset,
-    val includeTableComponents: Boolean,
     val revisionFactory: (LubanLoadReport) -> ConfigRevision,
     val validators: List<ConfigValidator>,
     val loadOnStart: Boolean,
@@ -78,23 +79,41 @@ class LubanConfigModuleBuilder {
     var objectMapper: ObjectMapper = ObjectMapper()
     var preload: Boolean = true
     var preloadConcurrency: Int = 4
-    var includeTableComponents: Boolean = true
     var loadOnStart: Boolean = true
 
-    private var tablesType: KClass<out Any>? = null
+    private var tablesType: KClass<Any>? = null
     private var dataDir: Path? = null
     private var dataSource: LubanDataSource? = null
+    private var bridge: LubanSnapshotBridge<Any, Any>? = null
     private var revisionFactory: (LubanLoadReport) -> ConfigRevision = { report ->
         ConfigRevision(version = report.checksum, checksum = report.checksum)
     }
     private val validators: MutableList<ConfigValidator> = mutableListOf()
 
-    fun tables(type: KClass<out Any>) {
-        tablesType = type
+    fun <T : Any> tables(type: KClass<T>) {
+        @Suppress("UNCHECKED_CAST")
+        tablesType = type as KClass<Any>
+    }
+
+    fun <T : Any> tables(
+        type: KClass<T>,
+        bridge: LubanSnapshotBridge<T, *>,
+    ) {
+        tables(type)
+        bridge(bridge)
     }
 
     inline fun <reified T : Any> tables() {
         tables(T::class)
+    }
+
+    inline fun <reified T : Any> tables(bridge: LubanSnapshotBridge<T, *>) {
+        tables(T::class, bridge)
+    }
+
+    fun <T : Any> bridge(bridge: LubanSnapshotBridge<T, *>) {
+        @Suppress("UNCHECKED_CAST")
+        this.bridge = bridge as LubanSnapshotBridge<Any, Any>
     }
 
     fun dataDir(path: Path) {
@@ -152,10 +171,10 @@ class LubanConfigModuleBuilder {
         return LubanConfigModuleOptions(
             tablesType = tablesType,
             dataSource = source,
+            bridge = bridge,
             format = format,
             objectMapper = objectMapper,
             charset = charset,
-            includeTableComponents = includeTableComponents,
             revisionFactory = revisionFactory,
             validators = validators.toList(),
             loadOnStart = loadOnStart,

@@ -7,10 +7,10 @@ import io.github.realmlabs.asteria.config.DefaultConfigSnapshot
 import io.github.realmlabs.asteria.config.SnapshotEntry
 import kotlin.reflect.KClass
 
-class LubanBinaryConfigLoader(
-    private val tablesType: KClass<out Any>,
+class LubanBinaryConfigLoader<T : Any, L : Any>(
+    private val tablesType: KClass<T>,
     private val dataSource: LubanDataSource,
-    private val includeTableComponents: Boolean = true,
+    private val bridge: LubanSnapshotBridge<T, L>,
     private val revisionFactory: (LubanBinaryLoadReport) -> ConfigRevision = { report ->
         ConfigRevision(version = report.checksum, checksum = report.checksum)
     },
@@ -18,7 +18,7 @@ class LubanBinaryConfigLoader(
     override suspend fun load(): ConfigSnapshot {
         val sourceFiles = dataSource.list(".bytes")
         val loadedFiles = linkedMapOf<String, ByteArray>()
-        val tables = instantiateLubanTables(tablesType, "AsteriaLubanBinaryLoader") { file, returnType ->
+        val tables = createLubanTables(bridge, "AsteriaLubanBinaryLoader") { file, returnType ->
             val name = fileNameWithExtension(file, ".bytes")
             val bytes = requireNotNull(sourceFiles[name]) { "Luban binary data file $name not found" }
             loadedFiles[name] = bytes
@@ -29,21 +29,11 @@ class LubanBinaryConfigLoader(
             files = loadedFiles.keys.toList(),
             checksum = checksumByName(loadedFiles),
         )
-        val components = buildList {
-            add(tables)
-            if (includeTableComponents) {
-                addAll(extractTableComponents(tables))
-            }
-        }
-
         return DefaultConfigSnapshot(
             revision = revisionFactory(report),
-            entries = components.map { component ->
-                if (component === tables) {
-                    SnapshotEntry.Component(component, tablesType)
-                } else {
-                    SnapshotEntry.Component(component)
-                }
+            entries = buildList {
+                add(SnapshotEntry.Component(tables, tablesType))
+                addAll(bridge.buildEntries(tables))
             },
         )
     }

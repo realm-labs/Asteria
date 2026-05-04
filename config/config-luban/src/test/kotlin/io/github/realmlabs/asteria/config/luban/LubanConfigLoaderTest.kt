@@ -2,6 +2,7 @@ package io.github.realmlabs.asteria.config.luban
 
 import com.fasterxml.jackson.databind.JsonNode
 import io.github.realmlabs.asteria.config.ConfigService
+import io.github.realmlabs.asteria.config.SnapshotEntry
 import io.github.realmlabs.asteria.config.component
 import io.github.realmlabs.asteria.core.gameApplication
 import kotlinx.coroutines.runBlocking
@@ -29,6 +30,7 @@ class LubanConfigLoaderTest {
         val snapshot = LubanJsonConfigLoader(
             tablesType = FakeTables::class,
             dataSource = DirectoryLubanDataSource(dataDir),
+            bridge = FakeTablesBridge,
         ).load()
 
         val tables = snapshot.component<FakeTables>()
@@ -44,7 +46,7 @@ class LubanConfigLoaderTest {
         val file = dataDir.resolve("item_tbitem.json")
         file.writeText("""[{"id": 1, "name": "Sword"}]""")
 
-        val loader = LubanJsonConfigLoader(FakeTables::class, DirectoryLubanDataSource(dataDir))
+        val loader = LubanJsonConfigLoader(FakeTables::class, DirectoryLubanDataSource(dataDir), FakeTablesBridge)
         val first = loader.load()
 
         file.writeText("""[{"id": 1, "name": "Axe"}]""")
@@ -62,7 +64,7 @@ class LubanConfigLoaderTest {
         val app = gameApplication {
             install(
                 LubanConfigModule {
-                    tables<FakeTables>()
+                    tables<FakeTables>(FakeTablesBridge)
                     dataDir(dataDir)
                 },
             )
@@ -86,6 +88,7 @@ class LubanConfigLoaderTest {
         val snapshot = LubanBinaryConfigLoader(
             tablesType = FakeBinaryTables::class,
             dataSource = DirectoryLubanDataSource(dataDir),
+            bridge = FakeBinaryTablesBridge,
         ).load()
 
         val tables = snapshot.component<FakeBinaryTables>()
@@ -101,6 +104,7 @@ class LubanConfigLoaderTest {
             dataSource = MemoryLubanDataSource(
                 mapOf("item_tbitem.bytes" to "1:Sword\n2:Potion".toByteArray()),
             ),
+            bridge = FakeBinaryTablesBridge,
         ).load()
 
         val items = snapshot.component<FakeBinaryTbItem>()
@@ -118,7 +122,7 @@ class LubanConfigLoaderTest {
                 LubanConfigModule {
                     binary()
                     preload(maxConcurrency = 2)
-                    tables<FakeBinaryTables>()
+                    tables<FakeBinaryTables>(FakeBinaryTablesBridge)
                     dataDir(dataDir)
                 },
             )
@@ -164,6 +168,18 @@ class LubanConfigLoaderTest {
         val name: String,
     )
 
+    private object FakeTablesBridge : LubanSnapshotBridge<FakeTables, FakeTables.IJsonLoader> {
+        override val loaderType = FakeTables.IJsonLoader::class
+
+        override fun createTables(loader: FakeTables.IJsonLoader): FakeTables {
+            return FakeTables(loader)
+        }
+
+        override fun buildEntries(tables: FakeTables): List<SnapshotEntry> {
+            return listOf(SnapshotEntry.Component(tables.getTbItem(), FakeTbItem::class))
+        }
+    }
+
     class FakeBinaryTables(loader: IByteBufLoader) {
         private val tbItem = FakeBinaryTbItem(loader.load("item_tbitem"))
 
@@ -195,6 +211,18 @@ class LubanConfigLoaderTest {
 
         fun get(id: Int): Item {
             return rows.getValue(id)
+        }
+    }
+
+    private object FakeBinaryTablesBridge : LubanSnapshotBridge<FakeBinaryTables, FakeBinaryTables.IByteBufLoader> {
+        override val loaderType = FakeBinaryTables.IByteBufLoader::class
+
+        override fun createTables(loader: FakeBinaryTables.IByteBufLoader): FakeBinaryTables {
+            return FakeBinaryTables(loader)
+        }
+
+        override fun buildEntries(tables: FakeBinaryTables): List<SnapshotEntry> {
+            return listOf(SnapshotEntry.Component(tables.getTbItem(), FakeBinaryTbItem::class))
         }
     }
 }

@@ -90,10 +90,26 @@ The plugin wires KSP and generates strongly typed table refs plus dynamic `Confi
 Config publication:
 
 ```kotlin
+object GameLubanBridge : LubanSnapshotBridge<GameTables, GameTables.Loader> {
+    override val loaderType = GameTables.Loader::class
+
+    override fun createTables(loader: GameTables.Loader): GameTables {
+        return GameTables(loader)
+    }
+
+    override fun buildEntries(tables: GameTables): List<SnapshotEntry> {
+        return listOf(
+            SnapshotEntry.Component(tables.getTbItem(), TbItem::class),
+            SnapshotEntry.Component(tables.getTbMonster(), TbMonster::class),
+        )
+    }
+}
+
 val publisher = ConfigPublisher(
     loader = LubanBinaryConfigLoader(
         tablesType = GameTables::class,
         dataSource = DirectoryLubanDataSource(layout.projectDirectory.dir("build/luban").asFile.toPath()),
+        bridge = GameLubanBridge,
     ),
     artifactSource = DirectoryConfigArtifactSource(layout.projectDirectory.dir("build/luban").asFile.toPath()),
     store = configStore,
@@ -115,7 +131,7 @@ temporary files:
 
 ```kotlin
 install(ConfigModule {
-    loader(configPublicationLubanBinaryLoader<GameTables>(configStore))
+    loader(configPublicationLubanBinaryLoader<GameTables>(configStore, GameLubanBridge))
     hotReload {
         trigger(configPublicationReloadTrigger(configStore))
     }

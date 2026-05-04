@@ -6,6 +6,7 @@ import io.github.realmlabs.asteria.config.center.JacksonConfigCodec
 import io.github.realmlabs.asteria.config.center.RuntimeConfigRepository
 import io.github.realmlabs.asteria.config.center.configPath
 import io.github.realmlabs.asteria.config.luban.LubanBinaryConfigLoader
+import io.github.realmlabs.asteria.config.luban.LubanSnapshotBridge
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -101,6 +102,7 @@ class ConfigPublisherTest {
         val snapshot = LubanBinaryConfigLoader(
             tablesType = FakeBinaryTables::class,
             dataSource = bundle.lubanDataSource(),
+            bridge = FakeBinaryTablesBridge,
         ).load()
 
         assertEquals(revision, bundle.manifest.revision)
@@ -127,7 +129,11 @@ class ConfigPublisherTest {
             layout = layout,
         ).publish()
 
-        val snapshot = configPublicationLubanBinaryLoader<FakeBinaryTables>(store, layout).load()
+        val snapshot = configPublicationLubanBinaryLoader<FakeBinaryTables>(
+            store = store,
+            bridge = FakeBinaryTablesBridge,
+            layout = layout,
+        ).load()
 
         assertEquals(revision, snapshot.revision)
         assertEquals("Sword", snapshot.component<FakeBinaryTbItem>().get(1).name)
@@ -365,3 +371,15 @@ data class FakeBinaryItemConfig(
     val id: Int,
     val name: String,
 )
+
+private object FakeBinaryTablesBridge : LubanSnapshotBridge<FakeBinaryTables, FakeBinaryTables.IByteBufLoader> {
+    override val loaderType = FakeBinaryTables.IByteBufLoader::class
+
+    override fun createTables(loader: FakeBinaryTables.IByteBufLoader): FakeBinaryTables {
+        return FakeBinaryTables(loader)
+    }
+
+    override fun buildEntries(tables: FakeBinaryTables): List<SnapshotEntry> {
+        return listOf(SnapshotEntry.Component(tables.getTbItem(), FakeBinaryTbItem::class))
+    }
+}
