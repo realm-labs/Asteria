@@ -69,7 +69,7 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
             it.metadataFile.set(extension.gateway.metadataFile)
             it.descriptorSetFile.set(extension.gateway.descriptorSetFile)
             it.kotlinOutputDirectory.set(generatedKotlin.map { directory -> directory.dir("gateway") })
-            it.resourcesOutputDirectory.set(generatedResources.map { directory -> directory.dir("gateway") })
+            it.resourcesOutputDirectory.set(generatedResources)
             it.packageName.set(
                 extension.gateway.packageName.orElse(extension.packageName.map { packageName -> "$packageName.gateway" }),
             )
@@ -94,7 +94,7 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
             it.metadataFile.set(extension.rpc.metadataFile)
             it.descriptorSetFile.set(extension.rpc.descriptorSetFile)
             it.kotlinOutputDirectory.set(generatedKotlin.map { directory -> directory.dir("rpc") })
-            it.resourcesOutputDirectory.set(generatedResources.map { directory -> directory.dir("rpc") })
+            it.resourcesOutputDirectory.set(generatedResources)
             it.packageName.set(
                 extension.rpc.packageName.orElse(extension.packageName.map { packageName -> "$packageName.rpc" }),
             )

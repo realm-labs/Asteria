@@ -248,12 +248,22 @@ class AsteriaProtobufProtocolCodegenPluginTest {
         val rpcSource = projectDir.resolve(
             Path("build/generated/asteria/protobufProtocol/kotlin/rpc/com/example/generated/rpc/GeneratedRpcProtocol.kt"),
         )
+        val gatewayContributor = projectDir.resolve(
+            Path("build/generated/asteria/protobufProtocol/resources/META-INF/services/io.github.realmlabs.asteria.protocol.protobuf.ProtobufGatewayProtocolContributor"),
+        )
+        val rpcContributor = projectDir.resolve(
+            Path("build/generated/asteria/protobufProtocol/resources/META-INF/services/io.github.realmlabs.asteria.rpc.protobuf.ProtobufRpcProtocolContributor"),
+        )
         val gatewayClientMetadata = projectDir.resolve(Path("build/client/gateway.json"))
         assertTrue(gatewaySource.exists())
         assertTrue(rpcSource.exists())
+        assertTrue(gatewayContributor.exists())
+        assertTrue(rpcContributor.exists())
         assertTrue(gatewayClientMetadata.exists())
         assertContains(gatewaySource.readText(), "class GeneratedGatewayProtocol : GeneratedProtobufGatewayProtocol()")
         assertContains(rpcSource.readText(), "class GeneratedRpcProtocol : GeneratedProtobufRpcProtocol()")
+        assertContains(gatewayContributor.readText(), "com.example.generated.gateway.GeneratedGatewayProtocol")
+        assertContains(rpcContributor.readText(), "com.example.generated.rpc.GeneratedRpcProtocol")
         assertContains(gatewayClientMetadata.readText(), "\"direction\": \"C2S\"")
         assertContains(gatewayClientMetadata.readText(), "\"responseTo\": \"login\"")
     }
