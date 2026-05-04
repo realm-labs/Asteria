@@ -126,9 +126,16 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }
         val dispatcherType = ClassName("io.github.realmlabs.asteria.message", "MessageDispatcher")
         val generatedMessageType = ClassName("com.google.protobuf", "GeneratedMessage")
+        val dispatchers = bindings.map { it.dispatcher }.distinct().sorted()
+        dispatchers.forEach { dispatcherKey ->
+            val dispatcherBindings = bindings.filter { it.dispatcher == dispatcherKey }
+            val messageSuperType =
+                resolveMessageSuperType(dispatcherKey, dispatcherBindings, generatedMessageType)
+            generateDispatcherHandles(rootPackage, moduleName, contextType, dispatcherKey, dispatcherBindings, messageSuperType)
+        }
         val generatedType = TypeSpec.objectBuilder("Generated${moduleName}NodeDispatchers")
             .apply {
-                bindings.map { it.dispatcher }.distinct().sorted().forEach { dispatcherKey ->
+                dispatchers.forEach { dispatcherKey ->
                     val dispatcherBindings = bindings.filter { it.dispatcher == dispatcherKey }
                     val messageSuperType =
                         resolveMessageSuperType(dispatcherKey, dispatcherBindings, generatedMessageType)
@@ -137,7 +144,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
                             dispatcherKey.toDispatcherPropertyName(),
                             dispatcherType.parameterizedBy(contextType, messageSuperType),
                         )
-                            .initializer(buildDispatcherExpression(contextType, dispatcherBindings, messageSuperType))
+                            .initializer(buildDispatcherExpression(moduleName, dispatcherBindings, messageSuperType))
                             .build(),
                     )
                 }
@@ -153,6 +160,61 @@ private class AsteriaMessageHandlerSymbolProcessor(
                     *bindings.map(HandlerBinding::sourceFile).toTypedArray()
                 ),
             )
+    }
+
+    private fun generateDispatcherHandles(
+        rootPackage: String,
+        moduleName: String,
+        contextType: TypeName,
+        dispatcherKey: String,
+        bindings: List<HandlerBinding>,
+        messageSuperType: ClassName,
+    ) {
+        val generatedPackage = "$rootPackage.generated"
+        val objectName = "Generated${moduleName}${dispatcherKey.toDispatcherTypeNamePart()}MessageHandles"
+        val messageHandleType = ClassName("io.github.realmlabs.asteria.message", "MessageHandle")
+            .parameterizedBy(contextType, messageSuperType)
+        val chunkedBindings = bindings.sortedBy { it.messageClassName.canonicalName }.chunked(HANDLER_CHUNK_SIZE)
+        val generatedType = TypeSpec.objectBuilder(objectName)
+            .addFunction(
+                FunSpec.builder("all")
+                    .returns(List::class.asClassName().parameterizedBy(messageHandleType))
+                    .addCode(buildHandlesAggregatorCode(objectName, generatedPackage, chunkedBindings.size))
+                    .build(),
+            )
+            .build()
+        FileSpec.builder(generatedPackage, objectName)
+            .addType(generatedType)
+            .build()
+            .writeTo(
+                codeGenerator = codeGenerator,
+                dependencies = Dependencies(
+                    aggregating = false,
+                    *bindings.map(HandlerBinding::sourceFile).toTypedArray()
+                ),
+            )
+        chunkedBindings.forEachIndexed { index, chunk ->
+            val chunkObjectName = "${objectName}Chunk$index"
+            FileSpec.builder(generatedPackage, chunkObjectName)
+                .addType(
+                    TypeSpec.objectBuilder(chunkObjectName)
+                        .addFunction(
+                            FunSpec.builder("all")
+                                .returns(List::class.asClassName().parameterizedBy(messageHandleType))
+                                .addCode(buildHandlesChunkCode(chunk))
+                                .build(),
+                        )
+                        .build(),
+                )
+                .build()
+                .writeTo(
+                    codeGenerator = codeGenerator,
+                    dependencies = Dependencies(
+                        aggregating = false,
+                        *bindings.map(HandlerBinding::sourceFile).toTypedArray()
+                    ),
+                )
+        }
     }
 
     private fun resolveMessageSuperType(
@@ -201,22 +263,59 @@ private class AsteriaMessageHandlerSymbolProcessor(
     }
 
     private fun buildDispatcherExpression(
-        contextType: TypeName,
+        moduleName: String,
         bindings: List<HandlerBinding>,
         messageSuperType: ClassName,
     ): CodeBlock {
         val registryType = ClassName("io.github.realmlabs.asteria.message", "PatchableMessageHandlerRegistry")
         val dispatcherType = ClassName("io.github.realmlabs.asteria.message", "MessageDispatcher")
+        val handlesObject = ClassName(
+            "${bindings.first().rootPackage}.generated",
+            "Generated${moduleName}${bindings.first().dispatcher.toDispatcherTypeNamePart()}MessageHandles",
+        )
+        return CodeBlock.of(
+            "%T(%T(%T.all()))",
+            dispatcherType,
+            registryType.parameterizedBy(bindings.first().contextTypeName, messageSuperType),
+            handlesObject,
+        )
+    }
+
+    private fun buildHandlesAggregatorCode(
+        objectName: String,
+        generatedPackage: String,
+        chunkCount: Int,
+    ): CodeBlock {
         val builder = CodeBlock.builder()
-        builder.add("%T(%T<%T, %T>().apply {\n", dispatcherType, registryType, contextType, messageSuperType)
-        bindings.sortedBy { it.messageClassName.canonicalName }.forEach { binding ->
+        builder.add("return buildList {\n")
+        repeat(chunkCount) { index ->
             builder.add(
-                "  register(%T::class, %L::handle)\n",
-                binding.messageClassName,
-                instantiateExpression(binding.handler)
+                "  addAll(%T.all())\n",
+                ClassName(generatedPackage, "${objectName}Chunk$index"),
             )
         }
-        builder.add("})")
+        builder.add("}\n")
+        return builder.build()
+    }
+
+    private fun buildHandlesChunkCode(bindings: List<HandlerBinding>): CodeBlock {
+        val messageHandleType = ClassName("io.github.realmlabs.asteria.message", "MessageHandle")
+        val builder = CodeBlock.builder()
+        builder.add("return listOf(\n")
+        bindings.forEachIndexed { index, binding ->
+            builder.add(
+                "  %T.of(%T::class, %L)",
+                messageHandleType,
+                binding.messageClassName,
+                instantiateExpression(binding.handler),
+            )
+            if (index != bindings.lastIndex) {
+                builder.add(",\n")
+            } else {
+                builder.add("\n")
+            }
+        }
+        builder.add(")\n")
         return builder.build()
     }
 
@@ -283,6 +382,15 @@ private class AsteriaMessageHandlerSymbolProcessor(
         return replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
     }
 
+    private fun String.toDispatcherTypeNamePart(): String {
+        val tokens = split(Regex("[^A-Za-z0-9]+"))
+            .filter { it.isNotBlank() }
+            .ifEmpty { listOf("default") }
+        return tokens.joinToString("") { token ->
+            token.lowercase(Locale.getDefault()).replaceFirstChar { it.titlecase(Locale.getDefault()) }
+        }
+    }
+
     private fun String.toDispatcherPropertyName(): String {
         val sanitized = map { char ->
             when {
@@ -292,5 +400,9 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }.joinToString("")
         val normalized = if (sanitized.firstOrNull()?.isDigit() == true) "_$sanitized" else sanitized
         return normalized.ifBlank { "DEFAULT" }
+    }
+
+    companion object {
+        private const val HANDLER_CHUNK_SIZE = 200
     }
 }
