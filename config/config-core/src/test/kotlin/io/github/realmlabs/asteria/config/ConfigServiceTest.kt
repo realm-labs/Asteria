@@ -41,7 +41,6 @@ class ConfigServiceTest {
         )
 
         assertEquals(setOf(1, 2), table.keys)
-        assertEquals(table.keys, table.ids)
         assertEquals(listOf("Sword", "Potion"), table.values.map { it.name })
         assertEquals(table.values, table.all())
         assertTrue(table.containsKey(1))

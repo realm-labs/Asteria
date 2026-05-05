@@ -63,12 +63,6 @@ interface KeyedConfigTable<K : Any, R : Any> : ConfigTable<R> {
     val keys: Set<K>
 
     /**
-     * Legacy alias for [keys].
-     */
-    val ids: Set<K>
-        get() = keys
-
-    /**
      * Returns a row by key, or `null` when the row is absent.
      */
     operator fun get(key: K): R?
@@ -106,7 +100,6 @@ open class MapConfigTable<K : Any, R : Any>(
     override val entries: Set<Map.Entry<K, R>> get() = rows.entries
     override val keys: Set<K> get() = rows.keys
     override val values: Collection<R> get() = rows.values
-    override val ids: Set<K> get() = rows.keys
 
     override fun containsKey(key: K): Boolean {
         return rows.containsKey(key)
