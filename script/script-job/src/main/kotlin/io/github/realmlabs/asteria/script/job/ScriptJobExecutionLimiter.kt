@@ -97,7 +97,6 @@ class SemaphoreScriptJobExecutionLimiter(
  */
 class RepositoryScriptJobExecutionLimiter(
     private val repository: ScriptJobPermitRepository,
-    private val scope: CoroutineScope,
     private val pool: String = "script-job-items",
     private val maxConcurrentItems: Int = 256,
     private val permitsPerItem: Int = 1,
@@ -117,26 +116,37 @@ class RepositoryScriptJobExecutionLimiter(
 
     override suspend fun <T> limit(context: ScriptJobExecutionContext, block: suspend () -> T): T {
         val leases = acquire(context)
-        val heartbeats = leases.map { startHeartbeat(it) }
-        try {
-            return block()
-        } finally {
-            heartbeats.forEach { it.cancel() }
-            leases.forEach { repository.release(it) }
+        return coroutineScope {
+            val heartbeats = leases.map { startHeartbeat(this, it) }
+            try {
+                block()
+            } finally {
+                heartbeats.forEach { it.cancelAndJoin() }
+                leases.forEach { lease ->
+                    runCatching { repository.release(lease) }
+                }
+            }
         }
     }
 
     private suspend fun acquire(context: ScriptJobExecutionContext): List<ScriptJobPermitLease> {
         while (true) {
             val now = System.currentTimeMillis()
-            val globalLease = repository.acquire(
-                pool = pool,
-                owner = context.workerId,
-                permits = permitsPerItem,
-                limit = maxConcurrentItems,
-                leaseUntilMillis = now + leaseDuration.inWholeMilliseconds,
-                nowMillis = now,
-            )
+            val globalLease = try {
+                repository.acquire(
+                    pool = pool,
+                    owner = context.workerId,
+                    permits = permitsPerItem,
+                    limit = maxConcurrentItems,
+                    leaseUntilMillis = now + leaseDuration.inWholeMilliseconds,
+                    nowMillis = now,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                delay(retryDelay)
+                continue
+            }
             if (globalLease == null) {
                 delay(retryDelay)
                 continue
@@ -145,39 +155,87 @@ class RepositoryScriptJobExecutionLimiter(
             if (requestedLimit == null || requestedLimit >= maxConcurrentItems) {
                 return listOf(globalLease)
             }
-            val jobLease = repository.acquire(
-                pool = "$pool:job:${context.jobId.value}",
-                owner = context.workerId,
-                permits = permitsPerItem,
-                limit = requestedLimit,
-                leaseUntilMillis = now + leaseDuration.inWholeMilliseconds,
-                nowMillis = now,
-            )
+            val jobLease = try {
+                repository.acquire(
+                    pool = "$pool:job:${context.jobId.value}",
+                    owner = context.workerId,
+                    permits = permitsPerItem,
+                    limit = requestedLimit,
+                    leaseUntilMillis = now + leaseDuration.inWholeMilliseconds,
+                    nowMillis = now,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                runCatching { repository.release(globalLease) }
+                delay(retryDelay)
+                continue
+            }
             if (jobLease != null) {
                 return listOf(globalLease, jobLease)
             }
-            repository.release(globalLease)
+            runCatching { repository.release(globalLease) }
             delay(retryDelay)
         }
     }
 
-    private fun startHeartbeat(lease: ScriptJobPermitLease): Job {
+    private fun startHeartbeat(
+        scope: CoroutineScope,
+        lease: ScriptJobPermitLease,
+    ): Job {
         return scope.launch {
+            var leaseUntilMillis = lease.leaseUntilMillis
             while (isActive) {
                 delay(renewalInterval)
                 val now = System.currentTimeMillis()
-                val renewed = repository.renew(
-                    lease = lease,
-                    leaseUntilMillis = now + leaseDuration.inWholeMilliseconds,
-                    nowMillis = now,
-                )
-                if (!renewed) {
-                    return@launch
-                }
+                leaseUntilMillis = renewPermitLease(lease, leaseUntilMillis, now)
             }
         }
     }
+
+    private suspend fun renewPermitLease(
+        lease: ScriptJobPermitLease,
+        currentLeaseUntilMillis: Long,
+        startedAtMillis: Long = System.currentTimeMillis(),
+    ): Long {
+        var now = startedAtMillis
+        val leaseUntilMillis = currentLeaseUntilMillis
+        while (currentCoroutineContext().isActive) {
+            if (now >= leaseUntilMillis) {
+                throw ScriptJobPermitLeaseLostException(lease)
+            }
+            val nextLeaseUntilMillis = now + leaseDuration.inWholeMilliseconds
+            try {
+                val renewed = repository.renew(
+                    lease = lease,
+                    leaseUntilMillis = nextLeaseUntilMillis,
+                    nowMillis = now,
+                )
+                if (!renewed) {
+                    throw ScriptJobPermitLeaseLostException(lease)
+                }
+                return nextLeaseUntilMillis
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ScriptJobPermitLeaseLostException) {
+                throw error
+            } catch (error: Throwable) {
+                now = System.currentTimeMillis()
+                if (now >= leaseUntilMillis) {
+                    throw ScriptJobPermitLeaseLostException(lease, error)
+                }
+                delay(minOf(retryDelay.inWholeMilliseconds, leaseUntilMillis - now).coerceAtLeast(1).milliseconds)
+                now = System.currentTimeMillis()
+            }
+        }
+        throw CancellationException("script job permit heartbeat was cancelled")
+    }
 }
+
+class ScriptJobPermitLeaseLostException(
+    val lease: ScriptJobPermitLease,
+    cause: Throwable? = null,
+) : IllegalStateException("script job permit lease ${lease.id} for ${lease.owner} is lost", cause)
 
 private fun ScriptJobExecutionContext.requestedMaxConcurrentItems(): Int? {
     val value = command.metadata.attributes[ScriptJobExecutionAttributes.MaxConcurrentItems] ?: return null

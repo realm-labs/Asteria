@@ -346,21 +346,28 @@ class ScriptJobService(
         command: ScriptExecutionCommand,
         timeout: Duration,
     ) {
-        val heartbeat = startLeaseHeartbeat(jobId, itemId, attempt, timeout)
         try {
-            executionLimiter.limit(
-                ScriptJobExecutionContext(
-                    jobId = jobId,
-                    itemId = itemId,
-                    attempt = attempt,
-                    command = command,
-                    workerId = workerId,
-                ),
-            ) {
-                runItem(jobId, itemId, attempt, command, timeout, manageHeartbeat = false)
+            coroutineScope {
+                val heartbeat = startLeaseHeartbeat(this, jobId, itemId, attempt, timeout)
+                try {
+                    executionLimiter.limit(
+                        ScriptJobExecutionContext(
+                            jobId = jobId,
+                            itemId = itemId,
+                            attempt = attempt,
+                            command = command,
+                            workerId = workerId,
+                        ),
+                    ) {
+                        runItem(jobId, itemId, attempt, command, timeout, manageHeartbeat = false)
+                    }
+                } finally {
+                    heartbeat.cancelAndJoin()
+                }
             }
-        } finally {
-            heartbeat.cancel()
+        } catch (error: ScriptJobItemLeaseLostException) {
+            recordItemLeaseLost(jobId, itemId, attempt, command, error)
+            throw error
         }
     }
 
@@ -378,96 +385,180 @@ class ScriptJobService(
     ) {
         tracer.span("script.job.item.run", jobTraceAttributes(jobId, command)) {
             metrics.counter("asteria.script.job.item.running.total", command.metricTags()).increment()
-            val heartbeat = if (manageHeartbeat) startLeaseHeartbeat(jobId, itemId, attempt, timeout) else null
-            try {
-                val result = metrics.timer("asteria.script.job.item.duration", command.metricTags()).record {
-                    runCatching {
-                        runtime.executeAll(command, timeout)
-                    }.getOrElse {
-                        error(it)
-                        ScriptExecutionBatchResult(
-                            executionId = command.executionId,
-                            results = listOf(
-                                ScriptExecutionResult(
-                                    executionId = command.executionId,
-                                    success = false,
-                                    error = it.message,
-                                ),
-                            ),
-                        )
+            if (manageHeartbeat) {
+                try {
+                    coroutineScope {
+                        val heartbeat = startLeaseHeartbeat(this, jobId, itemId, attempt, timeout)
+                        try {
+                            runItemOnce(jobId, itemId, attempt, command, timeout)
+                        } finally {
+                            heartbeat.cancelAndJoin()
+                        }
                     }
+                } catch (error: ScriptJobItemLeaseLostException) {
+                    recordItemLeaseLost(jobId, itemId, attempt, command, error)
+                    throw error
                 }
-                val status = result.itemStatus()
-                val finished = repository.markItemFinished(
-                    jobId = jobId,
-                    itemId = itemId,
-                    attempt = attempt,
-                    leaseOwner = workerId,
-                    status = status,
-                    results = result.results,
-                    error = result.results.firstOrNull { !it.success }?.error,
-                )
-                if (finished) {
-                    val finalStatus = repository.findItem(jobId, itemId)?.status ?: status
-                    metrics.counter(
-                        "asteria.script.job.item.finished.total",
-                        command.metricTags() + MetricTags.of("status" to finalStatus.name),
-                    ).increment()
-                    audit(
-                        ScriptJobAuditEvent(
-                            type = finalStatus.auditEventType(),
-                            jobId = jobId,
-                            itemId = itemId,
-                            attempt = attempt,
-                            workerId = workerId,
-                            status = finalStatus,
-                            operatorId = command.metadata.requester,
-                            attributes = command.auditAttributes() + result.results.auditSummary(),
-                        ),
-                    )
-                } else {
-                    metrics.counter(
-                        "asteria.script.job.item.stale_finish.total",
-                        command.metricTags(),
-                    ).increment()
-                    audit(
-                        ScriptJobAuditEvent(
-                            type = ScriptJobAuditEventType.ItemStaleFinishIgnored,
-                            jobId = jobId,
-                            itemId = itemId,
-                            attempt = attempt,
-                            workerId = workerId,
-                            attributes = command.auditAttributes(),
-                        ),
-                    )
-                }
-            } finally {
-                heartbeat?.cancel()
+            } else {
+                runItemOnce(jobId, itemId, attempt, command, timeout)
             }
         }
     }
 
+    private suspend fun runItemOnce(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        command: ScriptExecutionCommand,
+        timeout: Duration,
+    ) {
+        val result = metrics.timer("asteria.script.job.item.duration", command.metricTags()).record {
+            try {
+                runtime.executeAll(command, timeout)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                error(error)
+                ScriptExecutionBatchResult(
+                    executionId = command.executionId,
+                    results = listOf(
+                        ScriptExecutionResult(
+                            executionId = command.executionId,
+                            success = false,
+                            error = error.message,
+                        ),
+                    ),
+                )
+            }
+        }
+        val status = result.itemStatus()
+        val finished = repository.markItemFinished(
+            jobId = jobId,
+            itemId = itemId,
+            attempt = attempt,
+            leaseOwner = workerId,
+            status = status,
+            results = result.results,
+            error = result.results.firstOrNull { !it.success }?.error,
+        )
+        if (finished) {
+            val finalStatus = repository.findItem(jobId, itemId)?.status ?: status
+            metrics.counter(
+                "asteria.script.job.item.finished.total",
+                command.metricTags() + MetricTags.of("status" to finalStatus.name),
+            ).increment()
+            audit(
+                ScriptJobAuditEvent(
+                    type = finalStatus.auditEventType(),
+                    jobId = jobId,
+                    itemId = itemId,
+                    attempt = attempt,
+                    workerId = workerId,
+                    status = finalStatus,
+                    operatorId = command.metadata.requester,
+                    attributes = command.auditAttributes() + result.results.auditSummary(),
+                ),
+            )
+        } else {
+            metrics.counter(
+                "asteria.script.job.item.stale_finish.total",
+                command.metricTags(),
+            ).increment()
+            audit(
+                ScriptJobAuditEvent(
+                    type = ScriptJobAuditEventType.ItemStaleFinishIgnored,
+                    jobId = jobId,
+                    itemId = itemId,
+                    attempt = attempt,
+                    workerId = workerId,
+                    attributes = command.auditAttributes(),
+                ),
+            )
+        }
+    }
+
+    private suspend fun recordItemLeaseLost(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        command: ScriptExecutionCommand,
+        error: ScriptJobItemLeaseLostException,
+    ) {
+        metrics.counter("asteria.script.job.item.lease_lost.total", command.metricTags()).increment()
+        audit(
+            ScriptJobAuditEvent(
+                type = ScriptJobAuditEventType.ItemExpired,
+                jobId = jobId,
+                itemId = itemId,
+                attempt = attempt,
+                workerId = workerId,
+                attributes = command.auditAttributes() + mapOf("error" to error.message.orEmpty()),
+            ),
+        )
+    }
+
     private fun startLeaseHeartbeat(
+        scope: CoroutineScope,
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
         attempt: Int,
         timeout: Duration,
     ): Job {
         return scope.launch {
+            var leaseUntilMillis = leaseUntilMillis(timeout)
             while (isActive) {
                 delay(leaseRenewalInterval)
+                leaseUntilMillis = renewItemLease(jobId, itemId, attempt, timeout, leaseUntilMillis)
+            }
+        }
+    }
+
+    private suspend fun renewItemLease(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        timeout: Duration,
+        currentLeaseUntilMillis: Long,
+    ): Long {
+        val leaseUntilMillis = currentLeaseUntilMillis
+        while (currentCoroutineContext().isActive) {
+            val now = System.currentTimeMillis()
+            if (now >= leaseUntilMillis) {
+                throw ScriptJobItemLeaseLostException(jobId, itemId, attempt)
+            }
+            try {
+                val nextLeaseUntilMillis = leaseUntilMillis(timeout)
                 val renewed = repository.renewRunningItemLease(
                     jobId = jobId,
                     itemId = itemId,
                     attempt = attempt,
                     leaseOwner = workerId,
-                    leaseUntilMillis = leaseUntilMillis(timeout),
+                    leaseUntilMillis = nextLeaseUntilMillis,
                 )
                 if (!renewed) {
-                    return@launch
+                    throw ScriptJobItemLeaseLostException(jobId, itemId, attempt)
                 }
+                return nextLeaseUntilMillis
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ScriptJobItemLeaseLostException) {
+                throw error
+            } catch (error: Throwable) {
+                val now = System.currentTimeMillis()
+                if (now >= leaseUntilMillis) {
+                    throw ScriptJobItemLeaseLostException(jobId, itemId, attempt, error)
+                }
+                delay(retryLeaseDelayMillis(now, leaseUntilMillis))
             }
         }
+        throw CancellationException("script job item heartbeat was cancelled")
+    }
+
+    private fun retryLeaseDelayMillis(
+        nowMillis: Long,
+        leaseUntilMillis: Long,
+    ): Long {
+        return minOf(DEFAULT_LEASE_RETRY_DELAY.inWholeMilliseconds, leaseUntilMillis - nowMillis).coerceAtLeast(1)
     }
 
     private fun ScriptExecutionBatchResult.itemStatus(): ScriptJobItemStatus {
@@ -612,3 +703,12 @@ class ScriptJobService(
         }
     }
 }
+
+class ScriptJobItemLeaseLostException(
+    val jobId: ScriptJobId,
+    val itemId: ScriptJobItemId,
+    val attempt: Int,
+    cause: Throwable? = null,
+) : IllegalStateException("script job item $itemId lease for job $jobId attempt $attempt is lost", cause)
+
+private val DEFAULT_LEASE_RETRY_DELAY: Duration = 1.seconds

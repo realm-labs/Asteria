@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.supervisorScope
 import java.security.MessageDigest
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -45,11 +46,32 @@ class NacosConfigStoreTest {
         assertEquals("two", store.get(child)?.bytes?.decodeToString())
         watch.close()
     }
+
+    @Test
+    fun `watch fails when listener refresh cannot read config`() = runBlocking {
+        supervisorScope {
+            val configService = FakeConfigService()
+            val store = NacosConfigStore(configService)
+            val path = configPath("/nodes/player-1")
+            val watch = store.watch(path, ConfigWatchMode.Value)
+            val event = async(start = CoroutineStart.UNDISPATCHED) {
+                watch.events.first()
+            }
+            val failure = IllegalStateException("nacos unavailable")
+
+            configService.readFailure = failure
+            configService.publishConfig("asteria/nodes/player-1", "DEFAULT_GROUP", "one")
+
+            assertEquals(failure.message, assertFailsWith<IllegalStateException> { event.await() }.message)
+            watch.close()
+        }
+    }
 }
 
 private class FakeConfigService : ConfigService {
     private val values = ConcurrentHashMap<Pair<String, String>, String>()
     private val listeners = ConcurrentHashMap<Pair<String, String>, MutableSet<Listener>>()
+    var readFailure: RuntimeException? = null
 
     override fun getConfig(
         dataId: String,
@@ -64,6 +86,7 @@ private class FakeConfigService : ConfigService {
         group: String,
         timeoutMs: Long,
     ): ConfigQueryResult {
+        readFailure?.let { throw it }
         val content = getConfig(dataId, group, timeoutMs)
         return ConfigQueryResult(content, content?.let(::md5))
     }
