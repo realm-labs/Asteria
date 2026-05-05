@@ -34,6 +34,11 @@ project entry point and module list; detailed module responsibilities, usage exa
 - `patch-*`: read [Runtime Patches](patch.md).
 - `observability-*`, `starter-*`, `utils-game`: read [Observability and Starter](observability-and-starter.md).
 
+## Example Project
+
+- [Antares](https://github.com/mikai233/antares): a real game-server scaffold that shows how an Asteria-based server can
+  be split into gateway, world, player, GM, configuration, protocol, and tooling areas.
+
 ## Documentation Conventions
 
 Examples show the intended framework integration style, not a complete game implementation. When business code must

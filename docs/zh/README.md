@@ -27,6 +27,10 @@
 - `patch-*`：读 [运行时补丁](patch.md)。
 - `observability-*`、`starter-*`、`utils-game`：读 [观测和启动器](observability-and-starter.md)。
 
+## 示例项目
+
+- [Antares](https://github.com/mikai233/antares)：一个真实游戏服务器脚手架，展示基于 Asteria 的服务如何拆分网关、世界、玩家、GM、配置、协议和工具等区域。
+
 ## 文档约定
 
 文档里的示例优先展示框架期望的集成方式，不覆盖业务侧完整实现。需要业务实现的地方会明确标出，比如认证、玩家绑定、脚本审批、配置事件投递、Mongo

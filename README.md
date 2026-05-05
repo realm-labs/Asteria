@@ -82,6 +82,11 @@ Start with:
 - [Runtime patches](docs/en/patch.md)
 - [Observability and starter](docs/en/observability-and-starter.md)
 
+## Example Project
+
+- [Antares](https://github.com/mikai233/antares): a real game-server scaffold that demonstrates how an Asteria-based
+  service can be organized across gateway, world, player, GM, configuration, protocol, and tooling modules.
+
 ## Runtime Contracts
 
 - Startup topology, such as node host, port, role, and seed entries, is process startup input. It is not
