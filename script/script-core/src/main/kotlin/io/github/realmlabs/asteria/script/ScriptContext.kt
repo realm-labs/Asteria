@@ -4,6 +4,13 @@ import io.github.realmlabs.asteria.actor.AsteriaActor
 import io.github.realmlabs.asteria.core.NodeRuntime
 import io.github.realmlabs.asteria.core.ServiceRegistry
 
+/**
+ * Runtime view exposed to compiled scripts.
+ *
+ * [resources] resolves through a registered [ScriptResourceResolver] when one exists; otherwise local file and `file:`
+ * references are used. [cancellation] is non-cancellable for ad-hoc executions unless a [ScriptCancellationProvider] is
+ * registered and can recognize the request metadata.
+ */
 interface ScriptContext {
     val runtime: NodeRuntime
     val services: ServiceRegistry
@@ -32,6 +39,12 @@ data class NodeScriptContext<N : NodeRuntime>(
     val nodeAddress: String? get() = request.nodeAddress
 }
 
+/**
+ * Context for scripts executed inside an actor.
+ *
+ * Actor scripts can inspect the target and actor path that routed the request, but those values are diagnostics and may
+ * be absent for direct in-process use.
+ */
 interface ActorScriptContext<A : AsteriaActor<*>> : ScriptContext {
     val actor: A
     val target: ScriptTarget?

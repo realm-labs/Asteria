@@ -12,6 +12,12 @@ import io.github.realmlabs.asteria.script.protobuf.ExecuteNodeScript as ProtoExe
 import io.github.realmlabs.asteria.script.protobuf.ExecuteScriptCommand as ProtoExecuteScriptCommand
 import io.github.realmlabs.asteria.script.protobuf.ScriptExecutionResult as ProtoScriptExecutionResult
 
+/**
+ * Cluster wire serializer for script runtime messages.
+ *
+ * The numeric [IDENTIFIER] and string manifests are part of the persistent wire contract for rolling upgrades. Change
+ * them only with an explicit migration plan that keeps older nodes able to deserialize in-flight messages.
+ */
 class PekkoScriptSerializer(
     @Suppress("unused") private val system: ExtendedActorSystem,
 ) : SerializerWithStringManifest() {

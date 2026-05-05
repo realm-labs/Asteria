@@ -13,6 +13,13 @@ import org.apache.pekko.cluster.Cluster
 import org.apache.pekko.cluster.pubsub.DistributedPubSub
 import org.apache.pekko.cluster.pubsub.DistributedPubSubMediator.*
 
+/**
+ * Pekko routing actor for script commands.
+ *
+ * Node-wide targets execute locally first and are then published to distributed pub-sub. Actor paths, sharded entities,
+ * and singletons are routed directly to their target actors. Replies are sent to the original sender, which lets
+ * `executeAll` collect results with a temporary actor while `dispatch` simply drops replies at `deadLetters`.
+ */
 class ScriptRuntimeActor(
     private val runtime: NodeRuntime,
 ) : AbstractActor() {

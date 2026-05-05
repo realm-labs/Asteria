@@ -15,6 +15,13 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
 import kotlin.io.path.outputStream
 
+/**
+ * Loads runtime patch plugins from patch artifact JARs.
+ *
+ * The resolver first looks for a `Patch-Class` manifest attribute and falls back to a `ServiceLoader` provider for
+ * [RuntimePatchPlugin]. The loaded class and its classloader are cached by patch id, but each [resolve] call returns a
+ * fresh plugin instance. Call [evict] when a patch version is no longer active so its cached classloader can be closed.
+ */
 class JarRuntimePatchPluginResolver(
     private val artifacts: PatchArtifactStore,
     private val parentClassLoader: ClassLoader = JarRuntimePatchPluginResolver::class.java.classLoader,
@@ -101,6 +108,12 @@ private fun RuntimePatch.metricTags(): MetricTags {
 }
 
 fun interface RuntimePatchPluginLoadPolicy {
+    /**
+     * Checks the selected plugin class before it is instantiated.
+     *
+     * This is a class-selection guard, not a sandbox. Patch code still runs with the permissions of this process after
+     * the plugin is loaded.
+     */
     fun allow(
         patch: RuntimePatch,
         pluginClass: Class<*>,

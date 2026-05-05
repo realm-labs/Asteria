@@ -12,6 +12,12 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
 
+/**
+ * Script engine that compiles artifact bodies as Groovy classes.
+ *
+ * The compiled class is cached by checksum when the artifact provides one, otherwise by the artifact bytes. When the
+ * cache reaches [classCacheSize], it is cleared as a whole; use stable checksums if scripts are reused frequently.
+ */
 class GroovyScriptEngine(
     override val name: String = "groovy",
     private val classCacheSize: Int = 64,

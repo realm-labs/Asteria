@@ -11,6 +11,14 @@ import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSystem
 import kotlin.time.Duration
 
+/**
+ * [ScriptRuntime] backed by the local [ScriptRuntimeActor].
+ *
+ * [execute] is limited to targets that produce one effective result according to the runtime's routing model.
+ * [executeAll] installs a temporary collector actor and returns whatever matching results arrive before the timeout,
+ * so missing actors or slow remote nodes produce partial or empty batches instead of a separate timeout exception.
+ * [dispatch] only sends the command to the runtime actor and does not report delivery or execution failures.
+ */
 class PekkoScriptRuntime(
     val actor: ActorRef,
     private val system: ActorSystem,
@@ -67,6 +75,9 @@ class PekkoScriptRuntime(
     }
 }
 
+/**
+ * Conservative local estimate used to reject obvious fan-out calls to [PekkoScriptRuntime.execute].
+ */
 private fun ScriptTarget.resultCountHint(): Int {
     return when (this) {
         ScriptTarget.AllNodes -> 1

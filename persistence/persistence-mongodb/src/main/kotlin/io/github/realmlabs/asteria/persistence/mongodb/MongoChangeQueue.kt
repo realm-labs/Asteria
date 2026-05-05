@@ -1,7 +1,10 @@
 package io.github.realmlabs.asteria.persistence.mongodb
 
 /**
- * One logical change to a Mongo document.
+ * One dirty operation against a Mongo document.
+ *
+ * [Set] and [Unset] operate on a field path inside one document. [Delete] removes the whole document and suppresses any
+ * pending field updates for the same key.
  */
 sealed class MongoChangeOp {
     abstract val key: MongoDocumentKey
@@ -25,6 +28,10 @@ fun interface MongoChangeQueue {
 
 /**
  * Merged pending update for one Mongo document.
+ *
+ * [journalSequences] tracks the journal entries covered by this write so a successful flush can acknowledge only the
+ * entries that actually reached Mongo. Requeued writes keep their existing sequence ids and do not append new journal
+ * entries.
  */
 data class MongoPendingWrite(
     val key: MongoDocumentKey,
@@ -44,7 +51,8 @@ data class MongoPendingWrite(
  * Actor-local dirty queue that collapses repeated writes to the same document.
  *
  * This type is not thread-safe. It is expected to be used by one owning actor or row cache on its serialized execution
- * context.
+ * context. Field-path merges are hierarchical: a set or unset on `profile` makes later operations on `profile.name`
+ * redundant, and a later set or unset on `profile` removes earlier descendant operations.
  */
 class MongoPendingWriteQueue(
     private val journal: MongoWriteJournal = NoopMongoWriteJournal,
@@ -66,6 +74,9 @@ class MongoPendingWriteQueue(
         onDirty()
     }
 
+    /**
+     * Returns the current merged writes and clears the queue.
+     */
     fun drain(): List<MongoPendingWrite> {
         val writes = patches.map { (key, patch) -> patch.toWrite(key) }
             .filterNot { it.empty }
@@ -73,6 +84,9 @@ class MongoPendingWriteQueue(
         return writes
     }
 
+    /**
+     * Puts failed writes back at the tail without appending new journal entries.
+     */
     fun requeue(writes: Iterable<MongoPendingWrite>) {
         writes.forEach { write ->
             val patch = patches.getOrPut(write.key) { PendingMongoPatch() }
@@ -90,6 +104,9 @@ class MongoPendingWriteQueue(
         }
     }
 
+    /**
+     * Returns the current merged writes without clearing the queue.
+     */
     fun snapshot(): List<MongoPendingWrite> {
         return patches.map { (key, patch) -> patch.toWrite(key) }
             .filterNot { it.empty }

@@ -11,6 +11,12 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration as KotlinDuration
 
+/**
+ * Temporary reply actor used by `executeAll`.
+ *
+ * It records only results with the requested execution id and completes with the results accumulated when the timeout
+ * fires. Late replies are ignored because the collector stops immediately after completion.
+ */
 internal class ScriptResultCollectorActor(
     private val executionId: String,
     private val future: CompletableFuture<List<ScriptExecutionResult>>,

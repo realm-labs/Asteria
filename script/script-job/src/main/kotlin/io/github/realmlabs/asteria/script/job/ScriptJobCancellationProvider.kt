@@ -5,6 +5,13 @@ import io.github.realmlabs.asteria.script.ScriptCancellationProvider
 import io.github.realmlabs.asteria.script.ScriptCancellationToken
 import io.github.realmlabs.asteria.script.ScriptExecutionRequest
 
+/**
+ * Cancellation bridge for script executions launched by [ScriptJobService].
+ *
+ * Job executions carry `script.jobId`, `script.itemId`, and `script.attempt` metadata. Requests without those keys stay
+ * non-cancellable through this provider. Once a job item is cancelled, deleted, or retried under a newer attempt, the
+ * old execution token reports cancellation so scripts can stop cooperatively.
+ */
 class ScriptJobCancellationProvider(
     private val repository: ScriptJobRepository,
 ) : ScriptCancellationProvider {

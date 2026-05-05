@@ -37,7 +37,10 @@ data class ScriptResourceRef(
 }
 
 /**
- * Resource resolved on the current node.
+ * Resource after node-local resolution.
+ *
+ * [localPath] is present when the resource can be read from the filesystem. Remote resolvers may still return only a
+ * URI when they stream data directly and do not materialize a local copy.
  */
 data class ScriptResolvedResource(
     val ref: ScriptResourceRef,
@@ -50,7 +53,9 @@ data class ScriptResolvedResource(
 }
 
 /**
- * Resolves script resource references into data accessible from the current node.
+ * Resolves resource references in the environment of the current node.
+ *
+ * Implementations should verify checksums before returning local files or downloaded copies.
  */
 fun interface ScriptResourceResolver {
     suspend fun resolve(ref: ScriptResourceRef): ScriptResolvedResource
@@ -123,7 +128,10 @@ private suspend fun downloadUrl(uri: URI, destination: Path) {
 }
 
 /**
- * Default remote downloader.
+ * Downloader set used by [CachingScriptResourceResolver] when no custom downloader is supplied.
+ *
+ * HTTP and HTTPS are fetched directly. Object-store schemes require callers to provide a pre-signed URL in resource
+ * attributes so the core script module does not depend on a cloud SDK.
  */
 object DefaultScriptResourceDownloader : ScriptResourceDownloader {
     private val delegate = SchemeScriptResourceDownloader(
@@ -142,7 +150,10 @@ object DefaultScriptResourceDownloader : ScriptResourceDownloader {
 }
 
 /**
- * Routes downloads by URI scheme.
+ * Routes downloads by lower-cased URI scheme.
+ *
+ * Missing schemes are rejected instead of falling back to local paths, which keeps remote resource declarations
+ * explicit.
  */
 class SchemeScriptResourceDownloader(
     private val downloaders: Map<String, ScriptResourceDownloader>,
@@ -219,7 +230,10 @@ class CompositeScriptResourceResolver(
 }
 
 /**
- * Convenience access to resources attached to a script execution.
+ * Resource facade attached to a script execution.
+ *
+ * Name lookup is strict. If no resolver is registered in the service registry, [resolve] falls back to local file and
+ * `file:` URI handling through [LocalScriptResourceResolver].
  */
 class ScriptResources(
     private val refs: List<ScriptResourceRef>,

@@ -81,11 +81,8 @@ data class ConfigModuleOptions(
 )
 
 /**
- * Builder for [ConfigModule].
- *
- * Use this builder to describe one complete config lifecycle: where the snapshot comes from, how it is validated, what
- * runtime components should be derived from it, and whether external triggers should keep the snapshot fresh after
- * startup.
+ * Describes one complete config lifecycle: where the snapshot comes from, how it is validated, what runtime components
+ * are derived from it, and whether external triggers keep the snapshot fresh after startup.
  */
 @AsteriaDsl
 class ConfigModuleBuilder {
@@ -186,7 +183,10 @@ class ConfigModuleBuilder {
 }
 
 /**
- * Builder for config hot reload.
+ * Hot-reload wiring for [ConfigModule].
+ *
+ * The trigger stream is kept alive by the module service. Reload failures are reported to listeners and do not stop the
+ * subscription loop.
  */
 @AsteriaDsl
 class ConfigHotReloadBuilder {

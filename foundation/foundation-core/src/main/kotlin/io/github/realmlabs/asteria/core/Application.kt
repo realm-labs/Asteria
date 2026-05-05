@@ -232,10 +232,9 @@ class AsteriaApplicationBuilder {
 }
 
 /**
- * Builder for [EntitySpec].
+ * Captures portable entity metadata.
  *
- * This builder only captures portable entity metadata. Runtime-specific execution details belong in attributes or
- * adapter-specific extension DSLs layered on top.
+ * Runtime-specific execution details belong in attributes or adapter-specific extension DSLs layered on top.
  */
 @AsteriaDsl
 class EntitySpecBuilder<ID : Any> internal constructor(
@@ -287,10 +286,9 @@ class EntitySpecBuilder<ID : Any> internal constructor(
 }
 
 /**
- * Builder for [SingletonSpec].
+ * Captures portable singleton metadata.
  *
- * Like [EntitySpecBuilder], this builder stores portable metadata and leaves runtime-specific meaning to cluster
- * adapters.
+ * Runtime-specific meaning belongs to cluster adapters, usually through typed extension DSLs.
  */
 @AsteriaDsl
 class SingletonSpecBuilder internal constructor(

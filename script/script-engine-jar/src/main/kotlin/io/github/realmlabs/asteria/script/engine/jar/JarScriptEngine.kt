@@ -14,6 +14,12 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
 import kotlin.reflect.KClass
 
+/**
+ * Script engine that loads compiled script classes from artifact JAR bytes.
+ *
+ * The JAR manifest must contain `Script-Class` naming a class supported by `toCompiledScript`. The selected class is
+ * cached by checksum when available, otherwise by artifact bytes; cache eviction clears all loaded classes at once.
+ */
 class JarScriptEngine(
     override val name: String = "jar",
     private val classCacheSize: Int = 64,
@@ -76,6 +82,9 @@ class JarScriptEngine(
     }
 
     companion object {
+        /**
+         * Manifest attribute containing the executable script class name.
+         */
         const val SCRIPT_CLASS_NAME = "Script-Class"
     }
 }
