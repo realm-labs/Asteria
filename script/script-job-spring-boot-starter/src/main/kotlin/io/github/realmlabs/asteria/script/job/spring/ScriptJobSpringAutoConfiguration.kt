@@ -53,13 +53,11 @@ class ScriptJobSpringAutoConfiguration {
     fun scriptJobExecutionLimiter(
         properties: ScriptJobSpringProperties,
         permitRepository: ObjectProvider<ScriptJobPermitRepository>,
-        @Qualifier("asteriaScriptJobCoroutineScope") scope: ScriptJobCoroutineScope,
     ): ScriptJobExecutionLimiter {
         val sharedPermits = permitRepository.ifAvailable
         if (properties.distributedPermitsEnabled && sharedPermits != null) {
             return RepositoryScriptJobExecutionLimiter(
                 repository = sharedPermits,
-                scope = scope,
                 pool = properties.permitPool,
                 maxConcurrentItems = properties.maxConcurrentItems,
                 leaseDuration = properties.permitLeaseDuration.toKotlinDuration(),
@@ -99,7 +97,7 @@ class ScriptJobSpringAutoConfiguration {
             leaseDuration = properties.leaseDuration.toKotlinDuration(),
             leaseRenewalInterval = properties.leaseRenewalInterval.toKotlinDuration(),
             executionLimiter = executionLimiter,
-            auditSink = auditSink.ifAvailable ?: io.github.realmlabs.asteria.script.job.NoopScriptJobAuditSink,
+            auditSink = auditSink.ifAvailable ?: NoopScriptJobAuditSink,
         )
     }
 

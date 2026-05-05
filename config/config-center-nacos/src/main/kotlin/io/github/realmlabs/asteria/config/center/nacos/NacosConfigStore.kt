@@ -4,8 +4,9 @@ import com.alibaba.nacos.api.config.ConfigQueryResult
 import com.alibaba.nacos.api.config.ConfigService
 import com.alibaba.nacos.api.config.listener.Listener
 import io.github.realmlabs.asteria.config.center.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import java.nio.charset.StandardCharsets.UTF_8
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
@@ -77,44 +78,45 @@ class NacosConfigStore(
     }
 
     private fun watchValue(path: ConfigPath): ConfigWatch {
-        val flow = MutableSharedFlow<ConfigEvent>(extraBufferCapacity = 64)
-        val listener = listenerOf {
+        val channel = Channel<ConfigEvent>(Channel.BUFFERED)
+        val listener = listenerOf(channel::close) {
             val entry = getBlocking(path)
             if (entry == null) {
-                flow.tryEmit(ConfigEvent.Deleted(path, null))
+                channel.trySend(ConfigEvent.Deleted(path, null))
             } else {
-                flow.tryEmit(ConfigEvent.Upserted(path, entry))
+                channel.trySend(ConfigEvent.Upserted(path, entry))
             }
         }
         configService.addListener(dataIdOf(path), group, listener)
         return object : ConfigWatch {
-            override val events: Flow<ConfigEvent> = flow
+            override val events: Flow<ConfigEvent> = channel.receiveAsFlow()
 
             override fun close() {
                 configService.removeListener(dataIdOf(path), group, listener)
+                channel.close()
             }
         }
     }
 
     private fun watchChildren(path: ConfigPath): ConfigWatch {
-        val flow = MutableSharedFlow<ConfigEvent>(extraBufferCapacity = 64)
+        val channel = Channel<ConfigEvent>(Channel.BUFFERED)
         val childListeners = ConcurrentHashMap<String, Listener>()
 
         fun emitSnapshotTrigger() {
-            flow.tryEmit(ConfigEvent.Upserted(path, indexEntry(path)))
+            channel.trySend(ConfigEvent.Upserted(path, indexEntry(path)))
         }
 
         fun refreshChildListeners() {
             val names = childNames(path).toSet()
             names.forEach { child ->
                 childListeners.computeIfAbsent(child) {
-                    listenerOf {
+                    listenerOf(channel::close) {
                         val childPath = path / child
                         val entry = getBlocking(childPath)
                         if (entry == null) {
-                            flow.tryEmit(ConfigEvent.Deleted(childPath, null))
+                            channel.trySend(ConfigEvent.Deleted(childPath, null))
                         } else {
-                            flow.tryEmit(ConfigEvent.Upserted(childPath, entry))
+                            channel.trySend(ConfigEvent.Upserted(childPath, entry))
                         }
                     }.also { listener ->
                         configService.addListener(dataIdOf(path / child), group, listener)
@@ -130,15 +132,19 @@ class NacosConfigStore(
                 }
         }
 
-        val indexListener = listenerOf {
+        val indexListener = listenerOf(channel::close) {
             refreshChildListeners()
             emitSnapshotTrigger()
         }
-        refreshChildListeners()
-        configService.addListener(indexDataIdOf(path), group, indexListener)
+        try {
+            refreshChildListeners()
+            configService.addListener(indexDataIdOf(path), group, indexListener)
+        } catch (error: Throwable) {
+            channel.close(error)
+        }
 
         return object : ConfigWatch {
-            override val events: Flow<ConfigEvent> = flow
+            override val events: Flow<ConfigEvent> = channel.receiveAsFlow()
 
             override fun close() {
                 configService.removeListener(indexDataIdOf(path), group, indexListener)
@@ -146,6 +152,7 @@ class NacosConfigStore(
                     configService.removeListener(dataIdOf(path / child), group, listener)
                 }
                 childListeners.clear()
+                channel.close()
             }
         }
     }
@@ -195,12 +202,19 @@ class NacosConfigStore(
         return ConfigEntry(path, bytes, revisionOf(bytes))
     }
 
-    private fun listenerOf(block: () -> Unit): Listener {
+    private fun listenerOf(
+        onError: (Throwable) -> Unit,
+        block: () -> Unit,
+    ): Listener {
         return object : Listener {
             override fun getExecutor(): Executor? = null
 
             override fun receiveConfigInfo(configInfo: String?) {
-                block()
+                try {
+                    block()
+                } catch (error: Throwable) {
+                    onError(error)
+                }
             }
         }
     }

@@ -47,7 +47,6 @@ class ScriptJobModule private constructor(
             executionLimiter = options.executionLimiter ?: permitRepository?.let {
                 RepositoryScriptJobExecutionLimiter(
                     repository = it,
-                    scope = jobScope,
                     pool = options.permitPool,
                     maxConcurrentItems = options.maxConcurrentItems,
                     leaseDuration = options.permitLeaseDuration,

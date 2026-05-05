@@ -4,10 +4,7 @@ import io.github.realmlabs.asteria.script.*
 import kotlinx.coroutines.*
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -461,7 +458,6 @@ class ScriptJobServiceTest {
             workerId = "worker-1",
             executionLimiter = RepositoryScriptJobExecutionLimiter(
                 repository = permitRepository,
-                scope = scope1,
                 maxConcurrentItems = 2,
                 retryDelay = 5.milliseconds,
             ),
@@ -473,7 +469,6 @@ class ScriptJobServiceTest {
             workerId = "worker-2",
             executionLimiter = RepositoryScriptJobExecutionLimiter(
                 repository = permitRepository,
-                scope = scope2,
                 maxConcurrentItems = 2,
                 retryDelay = 5.milliseconds,
             ),
@@ -493,6 +488,72 @@ class ScriptJobServiceTest {
     }
 
     @Test
+    fun permitLimiterRetriesTransientAcquireFailures() = runBlocking {
+        val permitRepository = FlakyPermitRepository(acquireFailures = 2)
+        val limiter = RepositoryScriptJobExecutionLimiter(
+            repository = permitRepository,
+            retryDelay = 5.milliseconds,
+        )
+        var ran = false
+
+        limiter.limit(executionContext()) {
+            ran = true
+        }
+
+        assertTrue(ran)
+        assertEquals(3, permitRepository.acquireAttempts.get())
+    }
+
+    @Test
+    fun permitLimiterCancelsExecutionWhenLeaseIsLost() = runBlocking {
+        val permitRepository = LostRenewPermitRepository()
+        val limiter = RepositoryScriptJobExecutionLimiter(
+            repository = permitRepository,
+            leaseDuration = 100.milliseconds,
+            renewalInterval = 10.milliseconds,
+            retryDelay = 5.milliseconds,
+        )
+        val started = CompletableDeferred<Unit>()
+
+        assertFailsWith<ScriptJobPermitLeaseLostException> {
+            withTimeout(1_000.milliseconds) {
+                limiter.limit(executionContext()) {
+                    started.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+        }
+        assertTrue(started.isCompleted)
+    }
+
+    @Test
+    fun runningItemIsCancelledWhenLeaseIsLost() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val repository = LostRenewScriptJobRepository(InMemoryScriptJobRepository())
+        val runtime = CancellableScriptRuntime()
+        val service = ScriptJobService(
+            runtime = runtime,
+            repository = repository,
+            scope = scope,
+            leaseDuration = 100.milliseconds,
+            leaseRenewalInterval = 10.milliseconds,
+        )
+
+        try {
+            service.submit(command("job-1", listOf("node-1")))
+            withTimeout(1_000) {
+                runtime.started.await()
+                runtime.cancelled.await()
+            }
+
+            val item = assertNotNull(repository.findItem(ScriptJobId("job-1"), ScriptJobItemId("1")))
+            assertEquals(ScriptJobItemStatus.Running, item.status)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun perJobConcurrencyOptionCapsOnlyThatJob() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val repository = InMemoryScriptJobRepository()
@@ -505,7 +566,6 @@ class ScriptJobServiceTest {
             workerId = "worker-1",
             executionLimiter = RepositoryScriptJobExecutionLimiter(
                 repository = permitRepository,
-                scope = scope,
                 maxConcurrentItems = 8,
                 retryDelay = 5.milliseconds,
             ),
@@ -736,6 +796,92 @@ class ScriptJobServiceTest {
             metadata = ScriptExecutionMetadata(requester = requester, attributes = attributes),
         )
     }
+
+    private fun executionContext(): ScriptJobExecutionContext {
+        return ScriptJobExecutionContext(
+            jobId = ScriptJobId("job-1"),
+            itemId = ScriptJobItemId("1"),
+            attempt = 1,
+            command = command("job-1.1.1", listOf("node-1")),
+            workerId = "worker-1",
+        )
+    }
+}
+
+private class FlakyPermitRepository(
+    private var acquireFailures: Int,
+) : ScriptJobPermitRepository {
+    private val delegate = InMemoryScriptJobPermitRepository()
+    val acquireAttempts = AtomicInteger()
+
+    override suspend fun acquire(
+        pool: String,
+        owner: String,
+        permits: Int,
+        limit: Int,
+        leaseUntilMillis: Long,
+        nowMillis: Long,
+    ): ScriptJobPermitLease? {
+        acquireAttempts.incrementAndGet()
+        if (acquireFailures > 0) {
+            acquireFailures--
+            throw IllegalStateException("permit repository unavailable")
+        }
+        return delegate.acquire(pool, owner, permits, limit, leaseUntilMillis, nowMillis)
+    }
+
+    override suspend fun renew(
+        lease: ScriptJobPermitLease,
+        leaseUntilMillis: Long,
+        nowMillis: Long,
+    ): Boolean {
+        return delegate.renew(lease, leaseUntilMillis, nowMillis)
+    }
+
+    override suspend fun release(lease: ScriptJobPermitLease): Boolean {
+        return delegate.release(lease)
+    }
+}
+
+private class LostRenewPermitRepository : ScriptJobPermitRepository {
+    private val delegate = InMemoryScriptJobPermitRepository()
+
+    override suspend fun acquire(
+        pool: String,
+        owner: String,
+        permits: Int,
+        limit: Int,
+        leaseUntilMillis: Long,
+        nowMillis: Long,
+    ): ScriptJobPermitLease? {
+        return delegate.acquire(pool, owner, permits, limit, leaseUntilMillis, nowMillis)
+    }
+
+    override suspend fun renew(
+        lease: ScriptJobPermitLease,
+        leaseUntilMillis: Long,
+        nowMillis: Long,
+    ): Boolean {
+        return false
+    }
+
+    override suspend fun release(lease: ScriptJobPermitLease): Boolean {
+        return delegate.release(lease)
+    }
+}
+
+private class LostRenewScriptJobRepository(
+    private val delegate: ScriptJobRepository,
+) : ScriptJobRepository by delegate {
+    override suspend fun renewRunningItemLease(
+        jobId: ScriptJobId,
+        itemId: ScriptJobItemId,
+        attempt: Int,
+        leaseOwner: String,
+        leaseUntilMillis: Long,
+    ): Boolean {
+        return false
+    }
 }
 
 private class FakeScriptRuntime(
@@ -750,6 +896,28 @@ private class FakeScriptRuntime(
     override suspend fun executeAll(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionBatchResult {
         return requireNotNull(results[command.executionId]) {
             "script execution result for ${command.executionId} not found"
+        }
+    }
+
+    override fun dispatch(command: ScriptExecutionCommand) {
+    }
+}
+
+private class CancellableScriptRuntime : ScriptRuntime {
+    val started = CompletableDeferred<Unit>()
+    val cancelled = CompletableDeferred<Unit>()
+
+    override suspend fun execute(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionResult {
+        return executeAll(command, timeout).results.single()
+    }
+
+    override suspend fun executeAll(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionBatchResult {
+        started.complete(Unit)
+        return try {
+            awaitCancellation()
+        } catch (error: CancellationException) {
+            cancelled.complete(Unit)
+            throw error
         }
     }
 
