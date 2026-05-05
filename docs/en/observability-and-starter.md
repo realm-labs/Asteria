@@ -1,0 +1,68 @@
+# Observability and Starter
+
+## Observability
+
+`observability-core` provides the metrics and tracing abstractions used by framework modules. Modules read
+implementations through `context.metricsOrNoop()` and `context.tracerOrNoop()`; if no observability module is installed,
+the runtime falls back to noop implementations.
+
+```kotlin
+install(ObservabilityModule {
+    observability(OpenTelemetryObservability(openTelemetry))
+})
+```
+
+`observability-opentelemetry` provides an OpenTelemetry adapter. Business code owns SDK setup, exporters, resource
+attributes, and sampling policy.
+
+Metric names and tags should stay low-cardinality. `NoopMetrics` validates metric names and tag keys but does not report
+data; do not ignore production exporter cardinality costs just because local noop runs successfully.
+
+## Starter
+
+`starter-game-server-pekko` is startup glue for game servers:
+
+```kotlin
+suspend fun main() {
+    val app = clusterGameApplication {
+        name = "game"
+        nodeId = "world-1"
+
+        role("world")
+
+        routes {
+            route<EnterWorldReq> {
+                toEntity("world") { it.id }
+            }
+        }
+
+        install(GameRuntimeModule())
+    }
+
+    app.launch()
+}
+```
+
+`localGameApplication` is for local development and tests; `clusterGameApplication` is for Pekko cluster runtime.
+`LocalGameCluster` can start multiple application instances in one JVM for integration tests and topology debugging.
+
+Local multi-node startup uses the first node as the seed by default unless seeds are declared explicitly.
+`publishClusterTopology()` only writes current node records; it does not clean old nodes from the config center, so
+repeated local runs should account for stale topology.
+
+## RouteModule
+
+`RouteModule` registers the business route registry into the service container. It only describes route targets; it does
+not handle network protocol decoding, authentication, authorization, or actor business logic.
+
+## Patch Starter
+
+`runtimePatches { ... }` is a convenience DSL for `PatchModule`. Production deployments should still explicitly
+configure repositories, artifact stores, and cluster-control implementations.
+
+## Utils Game
+
+`utils-game` contains small game-oriented helpers such as `Rate`, `WeightedTable`, `Fraction`, `GameTimeRange`,
+`GameDayRule`, and `Cooldown`. These helpers have explicit boundaries: `Rate.percent(33).applyTo(10)` truncates integer
+output, `GameTimeRange` is a half-open interval `[start, end)`, and cross-region time rules should pass an explicit
+`ZoneId`.
