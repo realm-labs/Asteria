@@ -102,15 +102,16 @@ class AsteriaApplication internal constructor(
      * Installs and starts all modules.
      *
      * A stopped application can be launched again, but concurrent launch/stop calls are serialized.
-     * If launch fails part-way through, the exception is propagated and already started modules are not automatically
-     * rolled back by this method.
+     * If launch fails part-way through, the exception is propagated after best-effort rollback of already started and
+     * installed modules. Startup failure is fatal to the current launch attempt; callers should usually let the process
+     * exit instead of continuing with a partially available service.
      */
     suspend fun launch() {
         lifecycle.launch()
     }
 
     /**
-     * Stops all modules in reverse order.
+     * Stops and uninstalls all modules in reverse order.
      *
      * Calling [stop] on an unstarted or already stopped application is a no-op.
      */

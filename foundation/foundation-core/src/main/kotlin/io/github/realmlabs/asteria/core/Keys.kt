@@ -59,8 +59,8 @@ data class NodeAddress(
 /**
  * Lifecycle state of an [AsteriaApplication].
  *
- * State transitions normally follow `Unstarted -> Starting -> Started -> Stopping -> Stopped`. Failed launches may
- * leave the lifecycle in an intermediate state until the caller decides how to recover.
+ * State transitions normally follow `Unstarted -> Starting -> Started -> Stopping -> Stopped`. Failed launches roll
+ * back started/installed modules on a best-effort basis and then rethrow the startup error.
  */
 enum class NodeState {
     Unstarted,

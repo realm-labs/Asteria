@@ -23,6 +23,7 @@ class AsteriaModuleLifecycle(
     private val logger = LoggerFactory.getLogger(AsteriaModuleLifecycle::class.java)
     private val modules: List<AsteriaModule> = modules.toList()
     private val stateListeners: MutableMap<NodeState, MutableList<suspend () -> Unit>> = linkedMapOf()
+    private val installedModuleIndexes: MutableSet<Int> = linkedSetOf()
     private val startedModuleIndexes: MutableSet<Int> = linkedSetOf()
     private val lifecycleLock = Mutex()
 
@@ -45,8 +46,8 @@ class AsteriaModuleLifecycle(
     /**
      * Installs and starts modules in declaration order.
      *
-     * Launch is valid only from [NodeState.Unstarted] or [NodeState.Stopped]. Failures are propagated immediately and
-     * do not trigger automatic rollback of already started modules.
+     * Launch is valid only from [NodeState.Unstarted] or [NodeState.Stopped]. Startup failures are fatal: the original
+     * error is propagated after best-effort rollback of modules that already installed or started.
      */
     suspend fun launch() {
         lifecycleLock.withLock {
@@ -62,11 +63,14 @@ class AsteriaModuleLifecycle(
                 topology.entities.size,
                 topology.singletons.size,
             )
-            changeState(NodeState.Starting)
+            val context = moduleContext()
             try {
-                val context = moduleContext()
+                changeState(NodeState.Starting)
                 runtime.services.register(AsteriaModuleLifecycle::class, this)
-                modules.forEachIndexed { _, module -> module.install(context) }
+                modules.forEachIndexed { index, module ->
+                    module.install(context)
+                    installedModuleIndexes += index
+                }
                 modules.forEachIndexed { index, module ->
                     module.start(context)
                     startedModuleIndexes += index
@@ -79,15 +83,18 @@ class AsteriaModuleLifecycle(
                 )
             } catch (error: Throwable) {
                 logger.error("runtime {} failed to launch", runtime.name, error)
+                rollbackFailedLaunch(context, error)
                 throw error
             }
         }
     }
 
     /**
-     * Stops all started modules in reverse declaration order.
+     * Stops started modules and uninstalls installed modules in reverse declaration order.
      *
-     * This is idempotent for already stopped or never started lifecycles.
+     * This is idempotent for already stopped or never started lifecycles. Cleanup is best-effort: all remaining modules
+     * are attempted even if one stop/uninstall call fails, then the first cleanup failure is thrown with later failures
+     * attached as suppressed exceptions.
      */
     suspend fun stop() {
         lifecycleLock.withLock {
@@ -99,13 +106,14 @@ class AsteriaModuleLifecycle(
             changeState(NodeState.Stopping)
             try {
                 val context = moduleContext()
-                stopStartedModules(context, modules.indices.reversed())
+                val cleanupError = cleanupRuntime(context)
                 changeState(NodeState.Stopped)
                 logger.info(
                     "runtime {} stopped in {} ms",
                     runtime.name,
                     (System.nanoTime() - startedAt) / 1_000_000,
                 )
+                cleanupError?.let { throw it }
             } catch (error: Throwable) {
                 logger.error("runtime {} failed to stop", runtime.name, error)
                 throw error
@@ -161,6 +169,68 @@ class AsteriaModuleLifecycle(
                 modules[index].stop(context)
                 startedModuleIndexes -= index
             }
+        }
+    }
+
+    private suspend fun cleanupRuntime(context: ModuleContext): Throwable? {
+        var cleanupError: Throwable? = null
+        modules.indices.reversed().forEach { index ->
+            if (index in startedModuleIndexes) {
+                cleanupError = collectCleanupError(cleanupError, "stop module ${modules[index].name}") {
+                    modules[index].stop(context)
+                }
+                startedModuleIndexes -= index
+            }
+        }
+        modules.indices.reversed().forEach { index ->
+            if (index in installedModuleIndexes) {
+                cleanupError = collectCleanupError(cleanupError, "uninstall module ${modules[index].name}") {
+                    modules[index].uninstall(context)
+                }
+                installedModuleIndexes -= index
+            }
+        }
+        return cleanupError
+    }
+
+    private suspend fun rollbackFailedLaunch(
+        context: ModuleContext,
+        startupError: Throwable,
+    ) {
+        logger.warn("rolling back failed runtime {} launch", runtime.name)
+        runCleanupStep(startupError, "change state to stopping") {
+            changeState(NodeState.Stopping)
+        }
+        cleanupRuntime(context)?.let(startupError::addSuppressed)
+        runCleanupStep(startupError, "change state to stopped") {
+            changeState(NodeState.Stopped)
+        }
+    }
+
+    private suspend fun collectCleanupError(
+        cleanupError: Throwable?,
+        operation: String,
+        block: suspend () -> Unit,
+    ): Throwable? {
+        return try {
+            block()
+            cleanupError
+        } catch (error: Throwable) {
+            logger.error("runtime {} cleanup failed during {}", runtime.name, operation, error)
+            cleanupError?.also { it.addSuppressed(error) } ?: error
+        }
+    }
+
+    private suspend fun runCleanupStep(
+        startupError: Throwable,
+        operation: String,
+        block: suspend () -> Unit,
+    ) {
+        try {
+            block()
+        } catch (cleanupError: Throwable) {
+            logger.error("runtime {} rollback failed during {}", runtime.name, operation, cleanupError)
+            startupError.addSuppressed(cleanupError)
         }
     }
 

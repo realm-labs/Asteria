@@ -78,6 +78,14 @@ class PekkoRuntimeModule(
     }
 
     override suspend fun stop(context: ModuleContext) {
+        shutdownActorSystem()
+    }
+
+    override suspend fun uninstall(context: ModuleContext) {
+        shutdownActorSystem()
+    }
+
+    private suspend fun shutdownActorSystem() {
         val system = runtime?.system ?: return
         FutureConverters.asJava(system.terminate()).await()
         runtime = null

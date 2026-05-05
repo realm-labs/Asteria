@@ -72,6 +72,7 @@ suspend fun main() {
 ## 运行约定
 
 - 节点 host、port、role、seed 等启动拓扑是进程启动输入，不会热更新到已经运行的 Pekko actor system。
+- 启动失败是致命错误。`launch()` 会先 best-effort 回滚已经 install/start 的模块，再抛出原始启动异常；应用通常应该让进程退出。
 - 配置表默认只加载一次。只有业务明确支持热更时才启用 `ConfigModule.hotReload`。热更发布的是完整且校验通过的快照。
 - 配置中心 watch 只是通知源。后台常驻服务应优先使用 `RuntimeConfigRepository` 和 `ConfigCenterReloadTrigger`，它们会在
   watch 失败后重建并重新读取状态。

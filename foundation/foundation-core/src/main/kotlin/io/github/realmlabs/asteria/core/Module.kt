@@ -3,9 +3,9 @@ package io.github.realmlabs.asteria.core
 /**
  * Extension point for framework and application runtime features.
  *
- * Modules are installed in declaration order, then started in declaration order. They are stopped in
- * reverse order. Put service registration and dependency lookup in [install], and start background
- * work or runtime actors in [start].
+ * Modules are installed in declaration order, then started in declaration order. They are stopped and uninstalled in
+ * reverse order. Put service registration and dependency lookup in [install], start background work or runtime actors
+ * in [start], and release resources allocated during [install] in [uninstall].
  *
  * Modules communicate through [ModuleContext.services], not by calling each other directly. This keeps lifecycle order
  * explicit and lets applications replace concrete module implementations without rewriting downstream code.
@@ -20,7 +20,7 @@ interface AsteriaModule {
      * Registers services and prepares resources before the application is started.
      *
      * All modules finish [install] before any module enters [start], so it is safe to look up services registered by
-     * earlier modules during this phase.
+     * earlier modules during this phase. If [install] allocates external resources, [uninstall] must release them.
      */
     suspend fun install(context: ModuleContext) = Unit
 
@@ -37,6 +37,14 @@ interface AsteriaModule {
      * Stop is only invoked for modules whose [start] completed successfully.
      */
     suspend fun stop(context: ModuleContext) = Unit
+
+    /**
+     * Releases resources allocated by [install].
+     *
+     * This is called in reverse installation order during normal shutdown and during failed startup rollback. It may be
+     * called even when [start] was never invoked.
+     */
+    suspend fun uninstall(context: ModuleContext) = Unit
 }
 
 /**

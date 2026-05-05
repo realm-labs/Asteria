@@ -37,6 +37,14 @@ class ZookeeperConfigCenterModule private constructor(
     }
 
     override suspend fun stop(context: ModuleContext) {
+        closeOwnedClient()
+    }
+
+    override suspend fun uninstall(context: ModuleContext) {
+        closeOwnedClient()
+    }
+
+    private fun closeOwnedClient() {
         ownedClient?.close()
         ownedClient = null
     }

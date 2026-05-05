@@ -42,11 +42,16 @@ suspend fun main() {
 ## Lifecycle Contract
 
 Use `install` to create and register services. Use `start` for runtime work that depends on other modules already being
-installed. Use `stop` to release resources. Modules are installed and started in declaration order; stop runs in reverse
-order.
+installed. Use `stop` to stop runtime work and `uninstall` to release resources allocated during install. Modules are
+installed and started in declaration order, then stopped and uninstalled in reverse order.
 
 `AsteriaApplication` is an application definition, not the full runtime state of a node. Pekko or business runtimes can
 call `bind(runtime)` to reuse the same module lifecycle while storing services in their own `NodeRuntime.services`.
+
+Startup failure is fatal to the launch attempt. If any module fails during `install` or `start`, `launch()` stops modules
+whose `start` completed, uninstalls modules whose `install` completed, attaches cleanup failures as suppressed
+exceptions, and rethrows the original startup error. Production entry points should usually let that error terminate the
+process.
 
 ## Topology Declaration
 

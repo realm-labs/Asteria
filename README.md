@@ -84,8 +84,9 @@ Start with:
 ## Runtime Contracts
 
 - Startup topology, such as node host, port, role, and seed entries, is process startup input. It is not
-  hot-reconfigured
-  into an already running Pekko actor system.
+  hot-reconfigured into an already running Pekko actor system.
+- Startup failure is fatal. `launch()` rethrows the original startup error after best-effort rollback of modules that
+  already installed or started; applications should usually let the process exit.
 - Config tables are loaded once by default. Enable `ConfigModule.hotReload` only when the game explicitly supports
   reloading those tables. Hot reload publishes complete validated snapshots.
 - Config-center watches are notification sources. Prefer `RuntimeConfigRepository` and `ConfigCenterReloadTrigger` for

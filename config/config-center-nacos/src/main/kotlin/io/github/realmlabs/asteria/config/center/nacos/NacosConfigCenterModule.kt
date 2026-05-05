@@ -41,6 +41,14 @@ class NacosConfigCenterModule private constructor(
     }
 
     override suspend fun stop(context: ModuleContext) {
+        closeOwnedConfigService()
+    }
+
+    override suspend fun uninstall(context: ModuleContext) {
+        closeOwnedConfigService()
+    }
+
+    private fun closeOwnedConfigService() {
         ownedConfigService?.shutDown()
         ownedConfigService = null
     }
