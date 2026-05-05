@@ -30,6 +30,8 @@ class AsteriaConfigCodegenPlugin : Plugin<Project> {
             "generateAsteriaLubanConfigMarkers",
             AsteriaLubanConfigMarkerTask::class.java,
         ) { task ->
+            task.group = ASTERIA_TASK_GROUP
+            task.description = "Generates Asteria config table marker sources from Luban metadata."
             task.generationEnabled.set(extension.luban.enabled)
             task.metadataFile.set(extension.luban.metadataFile)
             task.outputDirectory.set(project.layout.buildDirectory.dir("generated/asteria/lubanConfigMarkers"))
@@ -118,6 +120,7 @@ class AsteriaConfigCodegenPlugin : Plugin<Project> {
     companion object {
         const val DEFAULT_ASTERIA_VERSION = "1.0-SNAPSHOT"
         private const val ASTERIA_GROUP = "io.github.realm-labs"
+        private const val ASTERIA_TASK_GROUP = "asteria"
         private const val KSP_PLUGIN_ID = "com.google.devtools.ksp"
     }
 }

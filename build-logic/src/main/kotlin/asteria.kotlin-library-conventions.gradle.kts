@@ -37,6 +37,7 @@ extensions.configure<DetektExtension> {
 
 tasks.withType<Detekt>().configureEach {
     jvmTarget.set("21")
+    description = description ?: "Runs Detekt static analysis."
     reports {
         checkstyle.required.set(true)
         html.required.set(true)
@@ -47,6 +48,10 @@ tasks.withType<Detekt>().configureEach {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+}
+
+tasks.matching { it.name.startsWith("checkPomFileFor") }.configureEach {
+    description = description ?: "Checks the generated Maven POM file for a publication."
 }
 
 plugins.withId("com.google.protobuf") {

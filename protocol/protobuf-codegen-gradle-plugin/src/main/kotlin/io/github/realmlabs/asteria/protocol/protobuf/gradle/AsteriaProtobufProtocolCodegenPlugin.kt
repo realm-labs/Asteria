@@ -65,6 +65,8 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
             "generateAsteriaGatewayProtocol",
             AsteriaGenerateGatewayProtocolTask::class.java
         ) {
+            it.group = ASTERIA_TASK_GROUP
+            it.description = "Generates Asteria gateway protocol registries from protobuf metadata."
             it.generationEnabled.set(extension.gateway.enabled)
             it.metadataFile.set(extension.gateway.metadataFile)
             it.descriptorSetFile.set(extension.gateway.descriptorSetFile)
@@ -90,6 +92,8 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
         generatedResources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
     ): org.gradle.api.tasks.TaskProvider<AsteriaGenerateRpcProtocolTask> {
         return project.tasks.register("generateAsteriaRpcProtocol", AsteriaGenerateRpcProtocolTask::class.java) {
+            it.group = ASTERIA_TASK_GROUP
+            it.description = "Generates Asteria RPC protocol registries from protobuf metadata."
             it.generationEnabled.set(extension.rpc.enabled)
             it.metadataFile.set(extension.rpc.metadataFile)
             it.descriptorSetFile.set(extension.rpc.descriptorSetFile)
@@ -141,6 +145,7 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
 
     companion object {
         const val DEFAULT_ASTERIA_VERSION = "1.0-SNAPSHOT"
+        private const val ASTERIA_TASK_GROUP = "asteria"
         private const val ASTERIA_GROUP = "io.github.realm-labs.asteria"
     }
 }
