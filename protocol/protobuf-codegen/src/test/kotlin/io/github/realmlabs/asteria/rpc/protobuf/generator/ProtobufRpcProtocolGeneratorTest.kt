@@ -105,6 +105,40 @@ class ProtobufRpcProtocolGeneratorTest {
         assertContains(generatedCode, "message.playerId.toString()")
     }
 
+    @Test
+    fun `splits large rpc protocol mappings into chunk files`() {
+        val files = ProtobufRpcProtocolGenerator.buildFiles(
+            config = ProtobufRpcGeneratorConfig(
+                metadata = Path("metadata.json"),
+                kotlinOutput = Path("build/generated"),
+                resourcesOutput = Path("build/resources"),
+                packageName = "com.example.generated",
+                className = "GeneratedRpcProtocol",
+            ),
+            metadata = RpcProtocolMetadata(
+                messages = (0..200).map { index ->
+                    RpcMessageSpec(
+                        id = 9000 + index,
+                        type = "com.example.protocol.Message$index",
+                    )
+                },
+            ),
+        )
+
+        val fileNames = files.map { it.fileName }
+        val aggregator = files.first { it.fileName == "GeneratedRpcProtocol" }.file.toString()
+        val chunk0 = files.first { it.fileName == "GeneratedRpcProtocolChunk0" }.file.toString()
+        val chunk1 = files.first { it.fileName == "GeneratedRpcProtocolChunk1" }.file.toString()
+
+        assertContains(fileNames, "GeneratedRpcProtocol")
+        assertContains(fileNames, "GeneratedRpcProtocolChunk0")
+        assertContains(fileNames, "GeneratedRpcProtocolChunk1")
+        assertContains(aggregator, "GeneratedRpcProtocolChunk0.contribute(builder)")
+        assertContains(aggregator, "GeneratedRpcProtocolChunk1.contribute(builder)")
+        assertContains(chunk0, "internal object GeneratedRpcProtocolChunk0")
+        assertContains(chunk1, "internal object GeneratedRpcProtocolChunk1")
+    }
+
     private fun testDescriptorSet(): DescriptorProtos.FileDescriptorSet {
         val loginReq = DescriptorProtos.DescriptorProto.newBuilder()
             .setName("LoginReq")

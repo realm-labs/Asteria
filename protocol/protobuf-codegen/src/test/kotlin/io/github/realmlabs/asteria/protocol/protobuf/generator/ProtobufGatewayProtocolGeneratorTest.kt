@@ -89,6 +89,39 @@ class ProtobufGatewayProtocolGeneratorTest {
         assertContains(contributorFile.readText(), "com.example.generated.GeneratedGatewayProtocol")
     }
 
+    @Test
+    fun `splits large gateway protocol mappings into chunk files`() {
+        val files = ProtobufGatewayProtocolGenerator.buildFiles(
+            config = ProtobufGatewayGeneratorConfig(
+                metadata = Path("metadata.json"),
+                kotlinOutput = Path("build/generated"),
+                resourcesOutput = Path("build/resources"),
+                packageName = "com.example.generated",
+                className = "GeneratedGatewayProtocol",
+            ),
+            messages = (0..200).map { index ->
+                GatewayMessageSpec(
+                    id = 1000 + index,
+                    type = "com.example.protocol.Message$index",
+                    direction = GatewayMessageDirection.SERVER,
+                )
+            },
+        )
+
+        val fileNames = files.map { it.fileName }
+        val aggregator = files.first { it.fileName == "GeneratedGatewayProtocol" }.file.toString()
+        val chunk0 = files.first { it.fileName == "GeneratedGatewayProtocolChunk0" }.file.toString()
+        val chunk1 = files.first { it.fileName == "GeneratedGatewayProtocolChunk1" }.file.toString()
+
+        assertContains(fileNames, "GeneratedGatewayProtocol")
+        assertContains(fileNames, "GeneratedGatewayProtocolChunk0")
+        assertContains(fileNames, "GeneratedGatewayProtocolChunk1")
+        assertContains(aggregator, "GeneratedGatewayProtocolChunk0.contribute(builder)")
+        assertContains(aggregator, "GeneratedGatewayProtocolChunk1.contribute(builder)")
+        assertContains(chunk0, "internal object GeneratedGatewayProtocolChunk0")
+        assertContains(chunk1, "internal object GeneratedGatewayProtocolChunk1")
+    }
+
     private fun testDescriptorSet(): DescriptorProtos.FileDescriptorSet {
         val loginReq = DescriptorProtos.DescriptorProto.newBuilder()
             .setName("LoginReq")

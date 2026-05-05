@@ -34,26 +34,87 @@ object ProtobufGatewayProtocolGenerator {
         config.descriptorSet?.let { descriptorSet ->
             validateAgainstDescriptorSet(messages, descriptorSet)
         }
-        val file = buildFile(config, messages)
-        file.writeTo(config.kotlinOutput)
+        buildFiles(config, messages).forEach { generated ->
+            generated.file.writeTo(config.kotlinOutput)
+        }
         writeServiceProvider(config)
+    }
+
+    fun buildFiles(
+        config: ProtobufGatewayGeneratorConfig,
+        messages: List<GatewayMessageSpec>,
+    ): List<GeneratedGatewayProtocolFile> {
+        validateMessages(messages)
+        val sortedMessages = messages.sortedBy { it.id }
+        val chunks = sortedMessages.chunked(MESSAGE_CHUNK_SIZE)
+        if (chunks.size <= 1) {
+            return listOf(GeneratedGatewayProtocolFile(config.className, buildSingleFile(config, sortedMessages)))
+        }
+        return listOf(GeneratedGatewayProtocolFile(config.className, buildAggregatorFile(config, chunks.size))) +
+                chunks.mapIndexed { index, chunk ->
+                    val chunkName = "${config.className}Chunk$index"
+                    GeneratedGatewayProtocolFile(chunkName, buildChunkFile(config, chunkName, chunk))
+                }
     }
 
     fun buildFile(
         config: ProtobufGatewayGeneratorConfig,
         messages: List<GatewayMessageSpec>,
     ): FileSpec {
-        validateMessages(messages)
+        return buildFiles(config, messages).first { it.fileName == config.className }.file
+    }
+
+    private fun buildSingleFile(
+        config: ProtobufGatewayGeneratorConfig,
+        messages: List<GatewayMessageSpec>,
+    ): FileSpec {
         val contributeFunction = FunSpec.builder("contribute")
             .addModifiers(KModifier.OVERRIDE)
             .addParameter("builder", ProtobufGatewayProtocolBuilder::class)
-            .addCode(buildContributorCode(messages.sortedBy { it.id }))
+            .addCode(buildContributorCode(messages))
             .build()
         val type = TypeSpec.classBuilder(config.className)
             .superclass(GeneratedProtobufGatewayProtocol::class)
             .addFunction(contributeFunction)
             .build()
         return FileSpec.builder(config.packageName, config.className)
+            .addType(type)
+            .build()
+    }
+
+    private fun buildAggregatorFile(
+        config: ProtobufGatewayGeneratorConfig,
+        chunkCount: Int,
+    ): FileSpec {
+        val contributeFunction = FunSpec.builder("contribute")
+            .addModifiers(KModifier.OVERRIDE)
+            .addParameter("builder", ProtobufGatewayProtocolBuilder::class)
+            .addCode(buildChunkAggregatorCode(config.className, chunkCount))
+            .build()
+        val type = TypeSpec.classBuilder(config.className)
+            .superclass(GeneratedProtobufGatewayProtocol::class)
+            .addFunction(contributeFunction)
+            .build()
+        return FileSpec.builder(config.packageName, config.className)
+            .addType(type)
+            .build()
+    }
+
+    private fun buildChunkFile(
+        config: ProtobufGatewayGeneratorConfig,
+        chunkName: String,
+        messages: List<GatewayMessageSpec>,
+    ): FileSpec {
+        val type = TypeSpec.objectBuilder(chunkName)
+            .addModifiers(KModifier.INTERNAL)
+            .addFunction(
+                FunSpec.builder("contribute")
+                    .addParameter("builder", ProtobufGatewayProtocolBuilder::class)
+                    .addCode(buildContributorCode(messages))
+                    .build(),
+            )
+            .build()
+        return FileSpec.builder(config.packageName, chunkName)
             .addType(type)
             .build()
     }
@@ -123,6 +184,17 @@ object ProtobufGatewayProtocolGenerator {
         return builder.build()
     }
 
+    private fun buildChunkAggregatorCode(
+        className: String,
+        chunkCount: Int,
+    ): CodeBlock {
+        val builder = CodeBlock.builder()
+        repeat(chunkCount) { index ->
+            builder.addStatement("%LChunk%L.contribute(builder)", className, index)
+        }
+        return builder.build()
+    }
+
     private fun routeTargetCode(target: GatewayRouteTargetSpec): CodeBlock {
         return when (target.type) {
             GatewayRouteTargetType.ENTITY -> CodeBlock.of(
@@ -169,7 +241,14 @@ object ProtobufGatewayProtocolGenerator {
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
         .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS, true)
         .build()
+
+    private const val MESSAGE_CHUNK_SIZE = 200
 }
+
+data class GeneratedGatewayProtocolFile(
+    val fileName: String,
+    val file: FileSpec,
+)
 
 data class ProtobufGatewayGeneratorConfig(
     val metadata: Path,
