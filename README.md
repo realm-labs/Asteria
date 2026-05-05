@@ -658,6 +658,23 @@ install(ClusterConfigModule {
 })
 ```
 
+Config watch semantics:
+
+- `ConfigStore.watch(...)` is edge-triggered only. It reports future changes and does not emit an initial snapshot.
+- `ConfigWatchMode.Value` watches exactly one path.
+- `ConfigWatchMode.Children` watches direct children only.
+- `ConfigWatchMode.Tree` watches the root plus descendants, except on Nacos where it currently behaves like `Children`
+  because Nacos has no native recursive tree watch.
+- `RuntimeConfigRepository.watchValue(...)` recreates dead watches after failures, waits `watchRetryDelay`, and then
+  continues from a rebuilt watch. It does not emit a typed initial value automatically.
+- `RuntimeConfigRepository.watchChildren(...)` is the higher-level API for most callers: it can emit an initial full
+  child snapshot and re-reads the whole child set after every event or watch resync.
+- `ConfigCenterReloadTrigger` also recreates dead watches after failures and emits a synthetic resync signal after the
+  watch comes back, so hot reload can recover even if the backend could not replay the exact missed events.
+- `ConfigHotReloadService` debounces trigger bursts and keeps the last good snapshot on any reload failure.
+- `ConfigHotReloadService.retryDelay` only retries subscription to the trigger stream itself. It does not automatically
+  replay one specific failed reload; the next reload waits for a new trigger signal or a trigger-generated resync.
+
 Pekko, gateway, database, and GM modules should consume typed services such as `ClusterTopologyProvider` instead of
 depending on Zookeeper, Nacos, Etcd, or any other config center directly.
 Nacos does not expose a native tree API, so the Nacos adapter maintains child indexes by convention when configs are

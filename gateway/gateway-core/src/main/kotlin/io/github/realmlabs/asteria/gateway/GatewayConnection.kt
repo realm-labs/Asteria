@@ -8,6 +8,9 @@ value class GatewayConnectionId(val value: String)
 @JvmInline
 value class GatewaySessionId(val value: String)
 
+/**
+ * Transport family used by a gateway connection.
+ */
 enum class GatewayTransportKind {
     TCP,
     KCP,
@@ -26,8 +29,17 @@ interface GatewayConnection {
     val transport: GatewayTransportKind
     val remoteAddress: SocketAddress?
 
+    /**
+     * Writes one complete outbound frame.
+     *
+     * This is a synchronous transport-level API. Implementations may buffer internally, but write failures should
+     * surface to the caller.
+     */
     fun write(frame: GatewayFrame)
 
+    /**
+     * Closes the underlying transport connection.
+     */
     fun close()
 }
 

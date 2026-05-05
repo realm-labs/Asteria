@@ -12,6 +12,12 @@ import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
 import java.util.*
 
+/**
+ * Installs a Nacos-backed config center.
+ *
+ * If [NacosConfigCenterModuleBuilder.configService] is not supplied, the module creates and owns a Nacos client, then
+ * shuts it down during module stop. If a client is injected, ownership stays with the caller.
+ */
 class NacosConfigCenterModule private constructor(
     private val options: NacosConfigCenterModuleOptions,
 ) : AsteriaModule {
@@ -72,6 +78,9 @@ data class NacosConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
+/**
+ * Builder for [NacosConfigCenterModule].
+ */
 @AsteriaDsl
 class NacosConfigCenterModuleBuilder {
     var serverAddr: String? = null
@@ -86,6 +95,9 @@ class NacosConfigCenterModuleBuilder {
     private var configService: ConfigService? = null
     private var codec: ConfigCodec = JacksonConfigCodec()
 
+    /**
+     * Adds or overrides a raw Nacos client property before client construction.
+     */
     fun property(
         key: String,
         value: String,
@@ -93,14 +105,25 @@ class NacosConfigCenterModuleBuilder {
         properties[key] = value
     }
 
+    /**
+     * Merges multiple raw Nacos client properties before client construction.
+     */
     fun properties(properties: Properties) {
         this.properties.putAll(properties)
     }
 
+    /**
+     * Injects an already constructed Nacos client.
+     *
+     * When set, the module does not create or shut down the client.
+     */
     fun configService(configService: ConfigService) {
         this.configService = configService
     }
 
+    /**
+     * Overrides the payload codec used by [RuntimeConfigRepository].
+     */
     fun codec(codec: ConfigCodec) {
         this.codec = codec
     }

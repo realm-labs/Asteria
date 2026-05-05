@@ -11,6 +11,16 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 
+/**
+ * Nacos-backed [ConfigStore].
+ *
+ * Because Nacos does not expose a native hierarchical tree abstraction, this adapter represents each config entry as a
+ * `dataId` and maintains an extra `__children` index entry per directory-like path. As a consequence:
+ * - [ConfigWatchMode.Children] is implemented by watching the index plus direct child entries.
+ * - [ConfigWatchMode.Tree] currently behaves the same as [ConfigWatchMode.Children], so deeper descendants are not
+ *   discovered recursively from a single watch root.
+ * - revisions come from Nacos `md5` when available, otherwise from a SHA-256 hash of the payload bytes.
+ */
 class NacosConfigStore(
     private val configService: ConfigService,
     private val group: String = DEFAULT_GROUP,

@@ -10,6 +10,9 @@ import org.slf4j.LoggerFactory
  * This is the formal entry for projects that already have their own node type, such as `PlayerNode` or `WorldNode`.
  * Build an [AsteriaApplication] for the module/topology definition, then bind that definition to the external runtime
  * with [AsteriaApplication.bind].
+ *
+ * Lifecycle transitions are serialized by an internal mutex. This prevents overlapping launch and stop operations, but
+ * it does not make arbitrary services or modules themselves thread-safe.
  */
 class AsteriaModuleLifecycle(
     val runtime: NodeRuntime,
@@ -29,10 +32,22 @@ class AsteriaModuleLifecycle(
     val state: NodeState
         get() = currentState
 
+    /**
+     * Registers a callback for a future transition into [state].
+     *
+     * Listeners are not replayed for the current state. They run inline while the lifecycle mutex is held, so they
+     * should avoid long-running work and should not try to recursively launch or stop the same lifecycle.
+     */
     fun onState(state: NodeState, listener: suspend () -> Unit) {
         stateListeners.getOrPut(state) { mutableListOf() }.add(listener)
     }
 
+    /**
+     * Installs and starts modules in declaration order.
+     *
+     * Launch is valid only from [NodeState.Unstarted] or [NodeState.Stopped]. Failures are propagated immediately and
+     * do not trigger automatic rollback of already started modules.
+     */
     suspend fun launch() {
         lifecycleLock.withLock {
             check(currentState == NodeState.Unstarted || currentState == NodeState.Stopped) {
@@ -69,6 +84,11 @@ class AsteriaModuleLifecycle(
         }
     }
 
+    /**
+     * Stops all started modules in reverse declaration order.
+     *
+     * This is idempotent for already stopped or never started lifecycles.
+     */
     suspend fun stop() {
         lifecycleLock.withLock {
             if (currentState == NodeState.Stopped || currentState == NodeState.Unstarted) {

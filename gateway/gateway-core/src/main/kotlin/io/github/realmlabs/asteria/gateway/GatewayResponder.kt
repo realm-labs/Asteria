@@ -21,6 +21,9 @@ fun interface GatewayResponder<P : Any> {
  *
  * The concrete write function is supplied by the application or adapter. That keeps gateway-core free of packet encoding
  * assumptions.
+ *
+ * This responder distinguishes "session missing" from "write failed": missing sessions return `false`, while write
+ * failures from [write] are propagated to the caller.
  */
 class SessionGatewayResponder<P : Any>(
     private val sessions: GatewaySessionRegistry,

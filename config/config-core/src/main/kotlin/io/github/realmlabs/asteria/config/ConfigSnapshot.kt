@@ -34,12 +34,15 @@ interface ConfigSnapshot {
     val revision: ConfigRevision
 
     /**
-     * Returns an untyped table by name.
+     * Returns an untyped table by name, or `null` when the table is absent.
      */
     fun table(name: ConfigTableName): ConfigTable<*>?
 
     /**
      * Returns a table by exact runtime [type].
+     *
+     * This lookup is intentionally strict: it matches the concrete table class registered in the snapshot rather than
+     * generic supertypes such as [MapConfigTable] or [ConfigTable].
      */
     fun <T : ConfigTable<*>> table(type: KClass<T>): T?
 
@@ -50,6 +53,8 @@ interface ConfigSnapshot {
 
     /**
      * Returns a typed runtime component by exact [type].
+     *
+     * Component lookup is also exact and does not search by interface hierarchy.
      */
     fun <T : Any> component(type: KClass<T>): T?
 
@@ -138,6 +143,9 @@ class DefaultConfigSnapshot(
 
 /**
  * Typed table or component entry for [DefaultConfigSnapshot].
+ *
+ * Explicit [type] values are useful when code generators want lookup by an abstract table class instead of by the
+ * runtime implementation class alone.
  */
 sealed interface SnapshotEntry {
     data class Table(

@@ -5,6 +5,12 @@ import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
 import io.github.realmlabs.asteria.observability.metricsOrNoop
 
+/**
+ * Registers a backend-neutral [ConfigStore], a [ConfigCodec], and the typed [RuntimeConfigRepository].
+ *
+ * This module is useful when the application already owns the concrete config-center client and only needs Asteria's
+ * typed repository helpers on top.
+ */
 class ConfigCenterModule private constructor(
     private val options: ConfigCenterModuleOptions,
 ) : AsteriaModule {
@@ -34,15 +40,24 @@ data class ConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
+/**
+ * Builder for [ConfigCenterModule].
+ */
 @AsteriaDsl
 class ConfigCenterModuleBuilder {
     private var store: ConfigStore? = null
     private var codec: ConfigCodec = JacksonConfigCodec()
 
+    /**
+     * Supplies the low-level config store implementation.
+     */
     fun store(store: ConfigStore) {
         this.store = store
     }
 
+    /**
+     * Supplies the typed payload codec used by [RuntimeConfigRepository].
+     */
     fun codec(codec: ConfigCodec) {
         this.codec = codec
     }

@@ -19,6 +19,9 @@ value class ConfigTableName(val value: String) {
  *
  * [R] is the row object type. Loaders should build tables as immutable snapshots so readers can safely keep
  * references during a config reload.
+ *
+ * A table is a snapshot value object, not a live view. Once published through [ConfigSnapshot], its contents must not
+ * change in place.
  */
 interface ConfigTable<R : Any> {
     /**
@@ -44,6 +47,9 @@ interface ConfigTable<R : Any> {
 
 /**
  * [ConfigTable] variant whose rows can be addressed by a typed key.
+ *
+ * Implementations typically also implement [Map] for ergonomic access, but callers should only rely on the
+ * [KeyedConfigTable] contract when they want to stay implementation-neutral.
  */
 interface KeyedConfigTable<K : Any, R : Any> : ConfigTable<R> {
     /**
@@ -84,6 +90,9 @@ interface KeyedConfigTable<K : Any, R : Any> : ConfigTable<R> {
 
 /**
  * [KeyedConfigTable] backed by an immutable copy of a [Map].
+ *
+ * Iteration order follows the source map copy, so callers should not assume a stable semantic ordering unless the
+ * input map already provides one.
  */
 open class MapConfigTable<K : Any, R : Any>(
     override val name: ConfigTableName,
@@ -161,6 +170,8 @@ open class OrderedMapConfigTable<K : Any, R : Any>(
 
 /**
  * [ConfigTable] backed by an immutable ordered copy of a [List].
+ *
+ * Positional access is part of the public API because this class also implements [List].
  */
 open class ListConfigTable<R : Any> private constructor(
     override val name: ConfigTableName,
@@ -180,6 +191,9 @@ open class ListConfigTable<R : Any> private constructor(
 
 /**
  * [ConfigTable] containing exactly one row object.
+ *
+ * This is useful for singleton config payloads that still want to participate in snapshot lookup and validation using
+ * the same table abstraction as collection-shaped config.
  */
 open class SingleConfigTable<R : Any>(
     override val name: ConfigTableName,
@@ -192,6 +206,9 @@ open class SingleConfigTable<R : Any>(
         return listOf(row)
     }
 
+    /**
+     * Returns the only row stored in this table.
+     */
     fun get(): R {
         return row
     }

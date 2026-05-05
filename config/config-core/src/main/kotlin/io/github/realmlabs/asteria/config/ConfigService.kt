@@ -11,6 +11,9 @@ import java.util.concurrent.CopyOnWriteArrayList
  *
  * Implementations should either return a fully valid snapshot or throw; partial data should never
  * be published through [ConfigService].
+ *
+ * The loader is allowed to read from a config center, local files, generated artifacts, or an in-memory source, but it
+ * should always model one complete revision boundary from the caller's perspective.
  */
 fun interface ConfigLoader {
     suspend fun load(): ConfigSnapshot
@@ -18,6 +21,9 @@ fun interface ConfigLoader {
 
 /**
  * Listener notified after a new snapshot has been validated and published.
+ *
+ * Listeners run synchronously inside [ConfigService.reload]. A slow or failing listener therefore delays the overall
+ * reload call and can make the reload fail after the new snapshot was already published.
  */
 fun interface ConfigReloadListener {
     suspend fun reloaded(result: ConfigReloadResult)
@@ -35,6 +41,9 @@ interface ConfigReloadSubscription {
 
 /**
  * Result of a load or reload operation.
+ *
+ * [previous] is `null` for the first successful load. [changedTables] is derived from table content diffing and can be
+ * empty even when a new revision string was loaded, for example when only metadata changed.
  */
 data class ConfigReloadResult(
     val previous: ConfigSnapshot?,
@@ -64,6 +73,16 @@ data class ConfigReloadResult(
  *
  * Reload is serialized. A newly loaded snapshot is validated before replacing the current snapshot,
  * so readers either see the previous valid snapshot or the next valid snapshot.
+ *
+ * Publication order is:
+ * 1. load the raw snapshot through [ConfigLoader];
+ * 2. build runtime components;
+ * 3. run validators;
+ * 4. replace the current snapshot;
+ * 5. notify reload listeners.
+ *
+ * That ordering means validation and component build failures are fully rollback-safe, but listener failures happen
+ * after publication and therefore do not revert the new snapshot.
  */
 class ConfigService(
     private val loader: ConfigLoader,
@@ -98,7 +117,8 @@ class ConfigService(
     /**
      * Performs the initial load.
      *
-     * This is equivalent to [reload] and exists to make startup code read naturally.
+     * This is equivalent to [reload] and exists to make startup code read naturally. Calling it more than once is
+     * allowed; later calls behave exactly like ordinary reloads.
      */
     suspend fun load(): ConfigReloadResult {
         return reload()
@@ -106,6 +126,10 @@ class ConfigService(
 
     /**
      * Loads, validates, publishes, and broadcasts a new snapshot.
+     *
+     * Only one reload runs at a time. On any loader, component, or validation failure, the previous snapshot stays
+     * visible through [current] and [currentOrNull]. Listener failures happen after publication and are rethrown to the
+     * caller, so callers should treat them as operational failures rather than rollback signals.
      */
     suspend fun reload(): ConfigReloadResult {
         return tracer.span("config.reload") {
@@ -163,6 +187,9 @@ class ConfigService(
 
     /**
      * Subscribes to successful reloads.
+     *
+     * The subscription is non-replaying: listeners only observe future successful loads and reloads after they are
+     * registered.
      */
     fun subscribe(listener: ConfigReloadListener): ConfigReloadSubscription {
         listeners += listener

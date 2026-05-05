@@ -41,28 +41,57 @@ class PatchableRegistry<K : Any, V : Any>(
 ) : PatchSlotRegistry<K, V> {
     private val state = AtomicReference(RegistryState(entries.toMap()))
 
+    /**
+     * Returns the currently active value for [key].
+     *
+     * This is the effective view after merging the base registry with all active replacement layers.
+     */
     fun get(key: K): V? {
         return state.get().active[key]
     }
 
+    /**
+     * Returns the currently active value for [key] or throws when absent.
+     */
     fun require(key: K): V {
         return get(key) ?: error("patchable registry key $key not found")
     }
 
+    /**
+     * Returns the currently effective value for [key].
+     *
+     * This is equivalent to [get] and may return a patched value rather than the original base value.
+     */
     override fun current(key: K): V? {
         return get(key)
     }
 
+    /**
+     * Returns an immutable snapshot of the current active registry view.
+     *
+     * The snapshot already includes every replacement layer that is currently in effect.
+     */
     fun snapshot(): Map<K, V> {
         return state.get().active
     }
 
+    /**
+     * Returns metadata about installed replacement layers.
+     *
+     * This is diagnostic information only. It does not include base-only entries that have never been replaced.
+     */
     fun replacementInfo(): List<PatchRegistryReplacementInfo<K>> {
         return state.get()
             .layers
             .flatMap { layer -> layer.replacements.keys.map { key -> PatchRegistryReplacementInfo(key, layer.order) } }
     }
 
+    /**
+     * Adds one new base entry.
+     *
+     * Base entries are the long-lived original registry contents. They remain after all patch layers are removed.
+     * Registering an existing key fails instead of overwriting it.
+     */
     fun register(key: K, value: V) {
         state.updateAndGet { old ->
             check(key !in old.base) { "patchable registry key $key already exists" }
@@ -70,6 +99,12 @@ class PatchableRegistry<K : Any, V : Any>(
         }
     }
 
+    /**
+     * Installs or updates one replacement layer for [key].
+     *
+     * This never mutates the base entry. Instead it stores [value] inside the patch layer identified by [order], then
+     * rebuilds the active view by replaying all layers in order. The key must already exist in the base registry.
+     */
     override fun replace(key: K, value: V, order: PatchOrder) {
         state.updateAndGet { old ->
             check(key in old.base) { "patchable registry key $key does not exist" }
@@ -77,6 +112,12 @@ class PatchableRegistry<K : Any, V : Any>(
         }
     }
 
+    /**
+     * Removes every replacement layer owned by [id].
+     *
+     * Base entries are untouched. After removal, each affected key falls back to the next remaining layer or to its
+     * base value when no replacement layer remains.
+     */
     override fun remove(id: PatchId) {
         state.updateAndGet { old ->
             old.copy(layers = old.layers.filterNot { it.order.id == id }).rebuild()

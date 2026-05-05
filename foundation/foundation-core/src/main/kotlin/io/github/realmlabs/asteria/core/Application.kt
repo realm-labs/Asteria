@@ -21,7 +21,19 @@ interface NodeRuntime {
      * Roles owned by this running node. Runtime modules should set this from the concrete node config.
      */
     val roles: Set<RoleKey>
+
+    /**
+     * Current lifecycle state of this runtime view.
+     *
+     * When the runtime is backed by [AsteriaApplication], this reflects the state managed by its internal
+     * [AsteriaModuleLifecycle]. Custom runtimes may expose their own state storage and keep it aligned through
+     * [AsteriaApplication.bind].
+     */
     val state: NodeState
+
+    /**
+     * Shared service container for modules and runtime extensions.
+     */
     val services: ServiceRegistry
 }
 
@@ -30,6 +42,10 @@ interface NodeRuntime {
  *
  * An application is immutable in terms of declared modules, entities, and singletons. Runtime
  * services and lifecycle state are mutable and owned by [launch] / [stop].
+ *
+ * The application definition is reusable: you can launch the same instance again after [stop], or bind the definition
+ * to an external [NodeRuntime] through [bind]. What stays fixed is the declared topology and module list, not the
+ * transient runtime state.
  */
 class AsteriaApplication internal constructor(
     override val name: String,
@@ -67,6 +83,9 @@ class AsteriaApplication internal constructor(
 
     /**
      * Registers a listener that runs whenever the application enters [state].
+     *
+     * Listeners are invoked inline with lifecycle transitions. They should stay small and should not assume background
+     * dispatch unless the caller provides it explicitly.
      */
     fun onState(state: NodeState, listener: suspend () -> Unit) {
         lifecycle.onState(state, listener)
@@ -83,6 +102,8 @@ class AsteriaApplication internal constructor(
      * Installs and starts all modules.
      *
      * A stopped application can be launched again, but concurrent launch/stop calls are serialized.
+     * If launch fails part-way through, the exception is propagated and already started modules are not automatically
+     * rolled back by this method.
      */
     suspend fun launch() {
         lifecycle.launch()
@@ -90,6 +111,8 @@ class AsteriaApplication internal constructor(
 
     /**
      * Stops all modules in reverse order.
+     *
+     * Calling [stop] on an unstarted or already stopped application is a no-op.
      */
     suspend fun stop() {
         lifecycle.stop()
@@ -100,6 +123,10 @@ class AsteriaApplication internal constructor(
      *
      * Use this when the business process owns a strong node type and should still reuse Asteria module lifecycle. If the
      * node stores its own [NodeRuntime.state], pass [stateWriter] to keep that property aligned with lifecycle state.
+     *
+     * The returned lifecycle is independent from the application's internal lifecycle instance. This lets host
+     * runtimes decide when to launch and stop framework modules without forcing the concrete node type to become an
+     * [AsteriaApplication].
      */
     fun bind(
         runtime: NodeRuntime,
@@ -134,6 +161,9 @@ class AsteriaApplicationBuilder {
 
     /**
      * Adds a module to the application lifecycle.
+     *
+     * Modules are kept in declaration order. That order becomes install/start order and the reverse of it becomes stop
+     * order.
      */
     fun install(module: AsteriaModule) {
         modules.add(module)
@@ -186,6 +216,9 @@ class AsteriaApplicationBuilder {
 
     /**
      * Builds an immutable application definition.
+     *
+     * The returned application reuses the current builder contents as value snapshots; later builder mutations do not
+     * affect previously built applications.
      */
     fun build(): AsteriaApplication {
         return AsteriaApplication(
@@ -200,6 +233,9 @@ class AsteriaApplicationBuilder {
 
 /**
  * Builder for [EntitySpec].
+ *
+ * This builder only captures portable entity metadata. Runtime-specific execution details belong in attributes or
+ * adapter-specific extension DSLs layered on top.
  */
 @AsteriaDsl
 class EntitySpecBuilder<ID : Any> internal constructor(
@@ -213,11 +249,16 @@ class EntitySpecBuilder<ID : Any> internal constructor(
 
     /**
      * Number of logical shards used by runtime adapters.
+     *
+     * This is declarative metadata. Different adapters may interpret it differently, but zero or negative shard counts
+     * are always invalid.
      */
     var shardCount: Int = 100
 
     /**
      * Message sent to entity actors during graceful shard handoff.
+     *
+     * The framework stores this value opaquely and does not require a specific message base type.
      */
     var handoffMessage: Any? = null
     private val attributes: MutableMap<String, Any> = linkedMapOf()
@@ -247,6 +288,9 @@ class EntitySpecBuilder<ID : Any> internal constructor(
 
 /**
  * Builder for [SingletonSpec].
+ *
+ * Like [EntitySpecBuilder], this builder stores portable metadata and leaves runtime-specific meaning to cluster
+ * adapters.
  */
 @AsteriaDsl
 class SingletonSpecBuilder internal constructor(

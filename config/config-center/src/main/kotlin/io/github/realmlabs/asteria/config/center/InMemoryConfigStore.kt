@@ -7,6 +7,12 @@ import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * Process-local [ConfigStore] implementation for tests and lightweight local wiring.
+ *
+ * State lives only in memory, revisions are simple incrementing numbers, and watches only observe mutations performed
+ * through this instance. It is not intended for cross-process coordination or durable operational config storage.
+ */
 class InMemoryConfigStore(
     initialEntries: Iterable<ConfigEntry> = emptyList(),
 ) : ConfigStore {

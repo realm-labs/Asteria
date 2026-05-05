@@ -29,6 +29,9 @@ data class ConfigReloadSignal(
 
 /**
  * Produces reload signals for [ConfigHotReloadService].
+ *
+ * Implementations should keep the stream alive when practical, but [ConfigHotReloadService] also tolerates a failing or
+ * completed stream by waiting [ConfigHotReloadOptions.retryDelay] and subscribing again.
  */
 fun interface ConfigReloadTrigger {
     fun events(): Flow<ConfigReloadSignal>
@@ -47,6 +50,9 @@ data class ConfigReloadFailed(
 
 /**
  * Listener for failed hot reload attempts.
+ *
+ * Failures include both reload failures for a concrete [ConfigReloadSignal] and trigger-loop failures where the signal
+ * is `null` because the trigger stream itself failed before a signal could be processed.
  */
 fun interface ConfigReloadFailureListener {
     suspend fun failed(event: ConfigReloadFailed)
@@ -54,6 +60,10 @@ fun interface ConfigReloadFailureListener {
 
 /**
  * Hot reload behavior used by [ConfigHotReloadService].
+ *
+ * [retryDelay] applies to trigger stream failures only. A concrete reload failure is reported to
+ * [failureListeners], but the failed signal is not replayed automatically; the next reload waits for the next trigger
+ * event or for the trigger to emit its own resync signal.
  */
 data class ConfigHotReloadOptions(
     val trigger: ConfigReloadTrigger,
@@ -72,6 +82,12 @@ data class ConfigHotReloadOptions(
  *
  * Reload attempts are serialized by [ConfigService]. A failed reload or validator failure is reported to
  * [ConfigReloadFailureListener] and does not replace the previously published snapshot.
+ *
+ * This service is intentionally conservative:
+ * - it never publishes partial data because [ConfigService.reload] remains an all-or-nothing operation;
+ * - it can debounce bursts of external watch events into one reload attempt;
+ * - it re-subscribes when the trigger stream breaks;
+ * - it does not automatically retry a specific failed reload unless the trigger produces another signal.
  */
 class ConfigHotReloadService(
     private val service: ConfigService,
@@ -82,6 +98,11 @@ class ConfigHotReloadService(
     private val logger = LoggerFactory.getLogger(ConfigHotReloadService::class.java)
     private var job: Job? = null
 
+    /**
+     * Starts the background loop if it is not already running.
+     *
+     * Repeated calls return the currently running [Job].
+     */
     fun start(): Job {
         val current = job
         if (current != null && current.isActive) {
@@ -96,6 +117,9 @@ class ConfigHotReloadService(
         }
     }
 
+    /**
+     * Stops the background loop and waits for it to finish.
+     */
     suspend fun stop() {
         val current = job ?: return
         job = null

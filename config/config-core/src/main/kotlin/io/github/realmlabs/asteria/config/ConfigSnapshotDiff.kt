@@ -13,10 +13,20 @@ data class ConfigSnapshotDiff(
     val removedTables: List<ConfigTableChange> = emptyList(),
     val changedTables: List<ConfigTableChange> = emptyList(),
 ) {
+    /**
+     * Returns `true` when at least one table was added, removed, or changed.
+     */
     val hasChanges: Boolean
         get() = addedTables.isNotEmpty() || removedTables.isNotEmpty() || changedTables.isNotEmpty()
 
     companion object {
+        /**
+         * Computes a table-grained diff between [previous] and [current].
+         *
+         * Equality is based on a structural fingerprint of table metadata and row contents. This is intentionally more
+         * expensive than comparing revisions, because a loader may publish a new revision label without changing table
+         * payloads or may keep the same label while changing data during tests.
+         */
         fun between(
             previous: ConfigSnapshot?,
             current: ConfigSnapshot,
@@ -61,6 +71,8 @@ data class ConfigSnapshotDiff(
 
 /**
  * Summary of one changed table.
+ *
+ * This type is meant for diagnostics and routing decisions. It is not a row-level patch format.
  */
 data class ConfigTableChange(
     val name: ConfigTableName,

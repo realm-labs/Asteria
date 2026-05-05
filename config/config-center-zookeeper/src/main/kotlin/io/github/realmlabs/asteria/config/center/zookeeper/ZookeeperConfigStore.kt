@@ -16,6 +16,13 @@ import org.apache.zookeeper.data.Stat
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * ZooKeeper-backed [ConfigStore].
+ *
+ * Revisions use the node `version` field, so compare-and-set semantics are per-znode updates rather than global
+ * ordering. Watches are backed by Curator caches and therefore deliver best-effort change notifications; if a cache
+ * stops because of an unrecoverable error, higher-level helpers recreate the watch and resync state from ZooKeeper.
+ */
 class ZookeeperConfigStore(
     private val client: AsyncCuratorFramework,
 ) : ConfigStore {

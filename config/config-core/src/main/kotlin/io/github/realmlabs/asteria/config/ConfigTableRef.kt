@@ -36,6 +36,8 @@ interface ConfigTableRef<K : Any, R : Any> {
 
 /**
  * Strongly typed reference to any config table shape.
+ *
+ * Use this for list- or singleton-shaped tables that do not expose a key type.
  */
 interface RowConfigTableRef<R : Any> {
     /**
@@ -83,7 +85,8 @@ inline fun <reified R : Any> rowConfigTableRef(name: String): RowConfigTableRef<
 /**
  * Returns a typed table by generated [ref], or `null` when it is absent.
  *
- * The stored table must match the row type declared by [ref].
+ * The stored table must match the row type declared by [ref]. A mismatch throws immediately so code generation or
+ * wiring bugs fail fast instead of silently returning a wrongly typed table.
  */
 fun <R : Any> ConfigSnapshot.table(ref: RowConfigTableRef<R>): ConfigTable<R>? {
     val table = table(ref.name) ?: return null
@@ -98,7 +101,8 @@ fun <R : Any> ConfigSnapshot.table(ref: RowConfigTableRef<R>): ConfigTable<R>? {
 /**
  * Returns a typed table by generated [ref], or `null` when it is absent.
  *
- * The stored table must match the key and row types declared by [ref].
+ * The stored table must be keyed and must match the key and row types declared by [ref]. Type mismatches throw
+ * immediately so generated accessors stay honest about the real snapshot contents.
  */
 fun <K : Any, R : Any> ConfigSnapshot.table(ref: ConfigTableRef<K, R>): KeyedConfigTable<K, R>? {
     val table = table(ref.name) ?: return null

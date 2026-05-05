@@ -9,6 +9,12 @@ import io.github.realmlabs.asteria.core.AsteriaDsl
 import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
 
+/**
+ * Installs an etcd-backed config center.
+ *
+ * If [EtcdConfigCenterModuleBuilder.client] is not supplied, the module creates and owns the jetcd client, then closes
+ * it during module stop. If a client is injected, lifecycle ownership stays with the caller.
+ */
 class EtcdConfigCenterModule private constructor(
     private val options: EtcdConfigCenterModuleOptions,
 ) : AsteriaModule {
@@ -54,6 +60,9 @@ data class EtcdConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
+/**
+ * Builder for [EtcdConfigCenterModule].
+ */
 @AsteriaDsl
 class EtcdConfigCenterModuleBuilder {
     var endpoints: List<String> = emptyList()
@@ -62,14 +71,23 @@ class EtcdConfigCenterModuleBuilder {
     private var client: Client? = null
     private var codec: ConfigCodec = JacksonConfigCodec()
 
+    /**
+     * Convenience overload for setting etcd endpoints.
+     */
     fun endpoints(vararg endpoints: String) {
         this.endpoints = endpoints.toList()
     }
 
+    /**
+     * Injects an already constructed jetcd client.
+     */
     fun client(client: Client) {
         this.client = client
     }
 
+    /**
+     * Overrides the payload codec used by [RuntimeConfigRepository].
+     */
     fun codec(codec: ConfigCodec) {
         this.codec = codec
     }

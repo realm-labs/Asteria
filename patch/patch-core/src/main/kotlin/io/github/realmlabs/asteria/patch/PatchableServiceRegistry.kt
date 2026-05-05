@@ -61,10 +61,20 @@ class PatchableServiceRegistry(
         return require(T::class)
     }
 
+    /**
+     * Returns the currently effective service for [key].
+     *
+     * Patch runtime uses this to validate and inspect the active service view before installing a replacement layer.
+     */
     override fun current(key: KClass<*>): Any? {
         return registry.get(key)
     }
 
+    /**
+     * Installs or updates one patch layer for the service identified by [key].
+     *
+     * This does not mutate the base registration added by [register]. The key must already exist as a base service.
+     */
     override fun replace(
         key: KClass<*>,
         value: Any,
@@ -73,6 +83,11 @@ class PatchableServiceRegistry(
         registry.replace(key, value, order)
     }
 
+    /**
+     * Removes every replacement layer owned by [id].
+     *
+     * Base services remain registered and become visible again when no replacement layer is left for a given type.
+     */
     override fun remove(id: PatchId) {
         registry.remove(id)
     }

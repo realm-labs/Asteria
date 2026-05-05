@@ -7,12 +7,17 @@ import io.github.realmlabs.asteria.observability.NoopMetrics
 
 /**
  * Resolved forwarding decision for one inbound gateway packet.
+ *
+ * [entityId] is optional because not every [RouteTarget] needs a shard or service key.
  */
 data class GatewayRoute(
     val target: RouteTarget,
     val entityId: Any? = null,
 )
 
+/**
+ * Resolves an inbound packet to a backend route.
+ */
 fun interface GatewayRouteResolver<P : Any> {
     fun resolve(context: GatewaySessionContext, packet: P): GatewayRoute
 }
@@ -27,11 +32,22 @@ fun interface GatewayForwarder<P : Any> {
     fun forward(context: GatewaySessionContext, route: GatewayRoute, packet: P)
 }
 
+/**
+ * Gateway-side packet dispatcher.
+ *
+ * This class only coordinates route resolution and forwarding. It does not decode frames, manage session lifecycle, or
+ * retry failed forwarding attempts.
+ */
 class GatewayMessageDispatcher<P : Any>(
     private val routeResolver: GatewayRouteResolver<P>,
     private val forwarder: GatewayForwarder<P>,
     private val metrics: Metrics = NoopMetrics,
 ) {
+    /**
+     * Resolves and forwards one inbound packet.
+     *
+     * The resolved [GatewayRoute] is returned to the caller for logging, tests, or higher-level telemetry.
+     */
     fun dispatch(context: GatewaySessionContext, packet: P): GatewayRoute {
         val tags = context.metricTags()
         val startedAt = System.nanoTime()

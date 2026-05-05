@@ -35,6 +35,9 @@ interface ConfigComponentBuilder<T : Any> {
 
 /**
  * Creates a [ConfigComponentBuilder] with an inferred component type.
+ *
+ * The builder itself is pure metadata plus a function. Any expensive work should happen inside [ConfigComponentBuilder.build]
+ * so it participates in the normal reload transaction and failure handling.
  */
 inline fun <reified T : Any> configComponentBuilder(
     name: String,

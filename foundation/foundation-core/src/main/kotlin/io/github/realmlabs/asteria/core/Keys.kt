@@ -48,6 +48,8 @@ value class SingletonName(val value: String) {
 
 /**
  * Network address of a running node.
+ *
+ * This is transport-agnostic metadata and does not imply a specific discovery or protocol stack.
  */
 data class NodeAddress(
     val host: String,
@@ -56,6 +58,9 @@ data class NodeAddress(
 
 /**
  * Lifecycle state of an [AsteriaApplication].
+ *
+ * State transitions normally follow `Unstarted -> Starting -> Started -> Stopping -> Stopped`. Failed launches may
+ * leave the lifecycle in an intermediate state until the caller decides how to recover.
  */
 enum class NodeState {
     Unstarted,

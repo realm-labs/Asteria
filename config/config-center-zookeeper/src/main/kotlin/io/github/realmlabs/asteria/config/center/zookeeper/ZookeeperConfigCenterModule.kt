@@ -13,6 +13,12 @@ import org.apache.curator.framework.CuratorFrameworkFactory
 import org.apache.curator.retry.ExponentialBackoffRetry
 import org.apache.curator.x.async.AsyncCuratorFramework
 
+/**
+ * Installs a ZooKeeper-backed config center.
+ *
+ * If [ZookeeperConfigCenterModuleBuilder.client] is not supplied, the module creates and owns a Curator client, then
+ * closes it during module stop. If a client is injected, lifecycle ownership stays with the caller.
+ */
 class ZookeeperConfigCenterModule private constructor(
     private val options: ZookeeperConfigCenterModuleOptions,
 ) : AsteriaModule {
@@ -57,6 +63,9 @@ data class ZookeeperConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
+/**
+ * Builder for [ZookeeperConfigCenterModule].
+ */
 @AsteriaDsl
 class ZookeeperConfigCenterModuleBuilder {
     var connectionString: String? = null
@@ -65,10 +74,16 @@ class ZookeeperConfigCenterModuleBuilder {
     private var client: AsyncCuratorFramework? = null
     private var codec: ConfigCodec = JacksonConfigCodec()
 
+    /**
+     * Injects an already constructed async Curator client.
+     */
     fun client(client: AsyncCuratorFramework) {
         this.client = client
     }
 
+    /**
+     * Overrides the payload codec used by [RuntimeConfigRepository].
+     */
     fun codec(codec: ConfigCodec) {
         this.codec = codec
     }

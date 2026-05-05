@@ -9,6 +9,9 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * The monitor is process-local and intentionally small: it keeps the latest status and a bounded recent history for GM
  * pages or operational diagnostics.
+ *
+ * This monitor is observational only. It never blocks publication, retries reloads, or persists history across process
+ * restarts.
  */
 class ConfigReloadMonitor(
     private val maxHistory: Int = 50,
@@ -49,6 +52,9 @@ class ConfigReloadMonitor(
         )
     }
 
+    /**
+     * Returns the latest process-local reload status.
+     */
     @Synchronized
     fun status(current: ConfigSnapshot?): ConfigReloadStatus {
         return ConfigReloadStatus(
@@ -59,6 +65,9 @@ class ConfigReloadMonitor(
         )
     }
 
+    /**
+     * Returns recent history in reverse chronological order.
+     */
     @Synchronized
     fun history(limit: Int = maxHistory): List<ConfigReloadRecord> {
         require(limit > 0) { "config reload history limit must be positive" }
@@ -80,6 +89,9 @@ class ConfigReloadMonitor(
 
 /**
  * Current reload diagnostic state.
+ *
+ * [currentRevision] reflects the snapshot the application currently exposes, while [lastSuccess] and [lastFailure]
+ * capture the latest observed outcomes which may refer to earlier attempts.
  */
 data class ConfigReloadStatus(
     val currentRevision: ConfigRevision?,
@@ -95,6 +107,9 @@ sealed interface ConfigReloadRecord {
     val id: Long
     val occurredAt: Instant
 
+    /**
+     * Successful load or reload publication.
+     */
     data class Success(
         override val id: Long,
         override val occurredAt: Instant,
@@ -103,6 +118,12 @@ sealed interface ConfigReloadRecord {
         val diff: ConfigSnapshotDiff,
     ) : ConfigReloadRecord
 
+    /**
+     * Failed reload attempt or failed hot-reload trigger loop.
+     *
+     * [signal] is `null` when the failure happened before a concrete reload signal was obtained, for example when the
+     * trigger stream itself crashed.
+     */
     data class Failure(
         override val id: Long,
         override val occurredAt: Instant,

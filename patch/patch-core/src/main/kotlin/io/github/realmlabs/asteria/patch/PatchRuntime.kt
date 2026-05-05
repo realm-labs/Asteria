@@ -67,6 +67,9 @@ class PatchInstallContext internal constructor(
         operations.add(TargetReplacementOperation(registry, key, value, order))
     }
 
+    /**
+     * Returns the operations declared so far as an immutable snapshot.
+     */
     internal fun operations(): List<PatchOperation> = operations.toList()
 }
 
@@ -89,6 +92,15 @@ class PatchRuntime(
     private val lock = Mutex()
     private val applied: MutableMap<PatchId, AppliedRuntimePatch> = linkedMapOf()
 
+    /**
+     * Applies one patch if it is enabled, compatible, targeted at this node, and not already applied.
+     *
+     * Result handling is split in two paths:
+     * - inapplicable patches return [PatchApplyResult.Ignored];
+     * - validation, install, commit, or rollback failures throw.
+     *
+     * Successful application records the patch in the in-memory applied set so later [remove] calls can uninstall it.
+     */
     suspend fun apply(patch: RuntimePatch, plugin: RuntimePatchPlugin): PatchApplyResult {
         return tracer.span("patch.apply", patch.traceAttributes()) {
             metrics.counter("asteria.patch.apply.total", patch.metricTags()).increment()
@@ -126,11 +138,23 @@ class PatchRuntime(
         }
     }
 
+    /**
+     * Applies several patches in ascending [RuntimePatch.order].
+     *
+     * This method is sequential, not transactional across the whole batch: if one patch throws, previously applied
+     * earlier patches remain applied.
+     */
     suspend fun applyAll(patches: Iterable<Pair<RuntimePatch, RuntimePatchPlugin>>): List<PatchApplyResult> {
         val sorted = patches.sortedBy { it.first.order }
         return sorted.map { (patch, plugin) -> apply(patch, plugin) }
     }
 
+    /**
+     * Removes one previously applied patch.
+     *
+     * Returns `false` when the patch is not currently applied. Registry replacement layers are rolled back after
+     * [RuntimePatchPlugin.uninstall] returns, even if uninstall itself throws.
+     */
     suspend fun remove(id: PatchId): Boolean {
         return tracer.span("patch.remove", TraceAttributes.of("patch.id" to id.value)) {
             metrics.counter("asteria.patch.remove.total", MetricTags.of("patch_id" to id.value)).increment()
@@ -151,6 +175,9 @@ class PatchRuntime(
         }
     }
 
+    /**
+     * Returns the currently applied patches in effective order.
+     */
     fun appliedPatches(): List<RuntimePatch> {
         return applied.values.map { it.patch }.sortedBy { it.order }
     }
@@ -215,11 +242,17 @@ private fun PatchApplyResult.resultTag(): String {
 sealed interface PatchApplyResult : Serializable {
     val patchId: PatchId
 
+    /**
+     * Patch was applied and committed successfully.
+     */
     data class Applied(
         override val patchId: PatchId,
         val operationCount: Int,
     ) : PatchApplyResult
 
+    /**
+     * Patch was skipped without changing runtime state.
+     */
     data class Ignored(
         override val patchId: PatchId,
         val reason: String,
@@ -246,14 +279,23 @@ private data class TargetReplacementOperation<K : Any, V : Any>(
     val value: V,
     val order: PatchOrder,
 ) : PatchOperation {
+    /**
+     * Ensures the target key already exists in the registry's active view.
+     */
     override fun validate() {
         check(registry.current(key) != null) { "patch registry key $key not found" }
     }
 
+    /**
+     * Commits this patch layer replacement.
+     */
     override fun commit() {
         registry.replace(key, value, order)
     }
 
+    /**
+     * Removes the whole replacement layer owned by this operation's patch id.
+     */
     override fun rollback() {
         registry.remove(order.id)
     }

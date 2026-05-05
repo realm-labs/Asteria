@@ -9,11 +9,17 @@ import kotlin.reflect.KClass
 
 /**
  * A statically registered message handler slot.
+ *
+ * A handle erases the concrete handler message subtype into the dispatcher's common message type [M], while preserving
+ * the exact [messageType] used for lookup and diagnostics.
  */
 class MessageHandle<C : HandlerContext, M : Any> private constructor(
     val messageType: KClass<out M>,
     private val dispatch: (C, M) -> Unit,
 ) {
+    /**
+     * Invokes the bound handler without additional lookup.
+     */
     fun invoke(context: C, message: M) {
         dispatch(context, message)
     }
@@ -31,23 +37,46 @@ class MessageHandle<C : HandlerContext, M : Any> private constructor(
     }
 }
 
+/**
+ * Read-only message handle registry.
+ *
+ * Dispatchers only depend on this minimal interface so they can work with static registries, patchable registries, or
+ * generated registry adapters.
+ */
 interface MessageHandleRegistry<C : HandlerContext, M : Any> {
     fun get(messageType: KClass<out M>): MessageHandle<C, M>?
 
     fun all(): Collection<MessageHandle<C, M>>
 }
 
+/**
+ * Exact-type message dispatcher.
+ *
+ * Message lookup is by the supplied [KClass] only. There is no polymorphic search through superclasses or interfaces.
+ * Missing handlers and handler exceptions are propagated to the caller after metrics and logs are recorded.
+ */
 class MessageDispatcher<C : HandlerContext, M : Any>(
     private val handles: MessageHandleRegistry<C, M>,
 ) {
     private val logger = LoggerFactory.getLogger(MessageDispatcher::class.java)
 
+    /**
+     * Returns whether a handler is registered for the exact [messageType].
+     */
     fun canDispatch(messageType: KClass<out M>): Boolean = handles.get(messageType) != null
 
+    /**
+     * Dispatches [message] using its runtime class as the lookup key.
+     */
     fun dispatch(context: C, message: M) {
         dispatch(context, message::class, message)
     }
 
+    /**
+     * Dispatches [message] using the explicit [messageType] lookup key.
+     *
+     * This overload is useful when callers intentionally register handlers against an abstract base message type.
+     */
     fun dispatch(context: C, messageType: KClass<out M>, message: M) {
         val metrics = context.runtime.metricsOrNoop()
         val tags = MetricTags.of(
@@ -77,6 +106,9 @@ class MessageDispatcher<C : HandlerContext, M : Any>(
     }
 }
 
+/**
+ * Convenience helper that builds an [ActorHandlerContext] and dispatches one message.
+ */
 fun <A : Any, M : Any> MessageDispatcher<ActorHandlerContext<A>, M>.dispatchActor(
     runtime: NodeRuntime,
     actor: A,
@@ -85,6 +117,9 @@ fun <A : Any, M : Any> MessageDispatcher<ActorHandlerContext<A>, M>.dispatchActo
     dispatch(DefaultActorHandlerContext(runtime, actor), message)
 }
 
+/**
+ * Convenience helper that builds an [ActorHandlerContext] and dispatches one message with an explicit lookup type.
+ */
 fun <A : Any, M : Any> MessageDispatcher<ActorHandlerContext<A>, M>.dispatchActor(
     runtime: NodeRuntime,
     actor: A,
@@ -106,18 +141,42 @@ class PatchableMessageHandlerRegistry<C : HandlerContext, M : Any>(
 ) : MessageHandleRegistry<C, M>, PatchSlotRegistry<KClass<out M>, MessageHandle<C, M>> {
     private val registry = PatchableRegistry(handles.associateBy { it.messageType })
 
+    /**
+     * Returns the currently active handler for [messageType].
+     *
+     * This is the same effective value that [MessageDispatcher] will dispatch to after applying any active patch
+     * layers.
+     */
     override fun get(messageType: KClass<out M>): MessageHandle<C, M>? {
         return registry.get(messageType)
     }
 
+    /**
+     * Returns a snapshot of all currently active handler slots.
+     *
+     * The returned collection reflects patch replacements that are currently in effect, not just the original base
+     * registrations.
+     */
     override fun all(): Collection<MessageHandle<C, M>> {
         return registry.snapshot().values
     }
 
+    /**
+     * Adds a new base handler slot for [handle.messageType].
+     *
+     * This mutates the registry's base layer, which is the long-lived definition used before any patch layers are
+     * applied. It is intended for normal application startup and generated handler wiring.
+     *
+     * Unlike [replace], this API does not create a patch layer and is not reversible through [remove]. If the base key
+     * already exists, the call fails instead of silently overwriting it.
+     */
     fun register(handle: MessageHandle<C, M>) {
         registry.register(handle.messageType, handle)
     }
 
+    /**
+     * Adds a new base handler slot for one concrete [messageType].
+     */
     fun <T : M> register(
         messageType: KClass<T>,
         handler: MessageHandler<C, T>,
@@ -125,18 +184,43 @@ class PatchableMessageHandlerRegistry<C : HandlerContext, M : Any>(
         register(MessageHandle.of(messageType, handler))
     }
 
+    /**
+     * Reified convenience overload for base-layer registration.
+     */
     inline fun <reified T : M> register(handler: MessageHandler<C, T>) {
         register(T::class, handler)
     }
 
+    /**
+     * Returns the currently effective slot for [key] from the active view.
+     *
+     * Patch runtime uses this to validate that a key exists before installing a replacement. In practice it reads the
+     * same effective value as [get], which may already come from another patch layer rather than from the base layer.
+     */
     override fun current(key: KClass<out M>): MessageHandle<C, M>? {
         return registry.current(key)
     }
 
+    /**
+     * Installs or updates one patch replacement layer for [key].
+     *
+     * This does not mutate the base registry entry created by [register]. Instead it overlays a patch-owned handler in
+     * the layer identified by [order]. When several layers target the same message type, patch ordering decides which
+     * one becomes active.
+     *
+     * The key must already exist in the base registry; patches can replace an existing slot but cannot introduce a
+     * brand-new message type.
+     */
     override fun replace(key: KClass<out M>, value: MessageHandle<C, M>, order: PatchOrder) {
         registry.replace(key, value, order)
     }
 
+    /**
+     * Removes every patch layer owned by [id].
+     *
+     * Base registrations added through [register] are untouched. After removal, the effective handler for each affected
+     * key falls back to the next remaining patch layer or to the base handler when no patch layer is left.
+     */
     override fun remove(id: PatchId) {
         registry.remove(id)
     }
@@ -144,6 +228,9 @@ class PatchableMessageHandlerRegistry<C : HandlerContext, M : Any>(
 
 /**
  * Replaces the handler slot for [messageType].
+ *
+ * Replacement is scoped to one message type and composes with the patch ordering rules of the underlying patch
+ * runtime.
  */
 fun <C : HandlerContext, M : Any, T : M> PatchInstallContext.replaceHandler(
     registry: PatchableMessageHandlerRegistry<C, M>,

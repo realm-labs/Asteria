@@ -21,6 +21,9 @@ data class DefaultHandlerContext(
 
 /**
  * Context for handlers running inside or on behalf of a sharded entity.
+ *
+ * [entityId] is intentionally typed as [Any] at this layer because dispatcher registries are usually shared across
+ * many entity kinds with different id classes.
  */
 interface EntityHandlerContext : HandlerContext {
     val entityKind: EntityKind
@@ -76,4 +79,8 @@ data class DefaultActorHandlerContext<A : Any>(
 ) : ActorHandlerContext<A>
 
 typealias ActorMessageHandler<A, M> = MessageHandler<ActorHandlerContext<A>, M>
+
+/**
+ * Convenience alias for an actor-scoped handler registry.
+ */
 typealias ActorMessageHandlerRegistry<A, M> = PatchableMessageHandlerRegistry<ActorHandlerContext<A>, M>

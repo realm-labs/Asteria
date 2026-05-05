@@ -14,8 +14,14 @@ import org.slf4j.LoggerFactory
 interface GatewayServerTransport : AutoCloseable {
     val kind: GatewayTransportKind
 
+    /**
+     * Starts accepting connections and delivering frames to [handler].
+     */
     suspend fun start(handler: GatewayTransportHandler)
 
+    /**
+     * Stops the transport and releases its resources.
+     */
     suspend fun stop()
 
     override fun close() {
@@ -23,14 +29,29 @@ interface GatewayServerTransport : AutoCloseable {
     }
 }
 
+/**
+ * Transport callback interface used by [GatewayServerTransport].
+ */
 interface GatewayTransportHandler {
+    /**
+     * Creates and registers a session for a newly connected transport connection.
+     */
     suspend fun connected(connection: GatewayConnection): GatewaySession
 
+    /**
+     * Delivers one received frame for a live session.
+     */
     suspend fun received(session: GatewaySession, frame: GatewayFrame)
 
+    /**
+     * Notifies that the transport became inactive for [session].
+     */
     suspend fun disconnected(session: GatewaySession, cause: Throwable? = null)
 }
 
+/**
+ * Frame consumer used by [GatewaySessionTransportHandler] after session bookkeeping is done.
+ */
 fun interface GatewayFrameReceiver {
     suspend fun receive(context: GatewaySessionContext, frame: GatewayFrame)
 }
@@ -40,6 +61,9 @@ fun interface GatewayFrameReceiver {
  *
  * Packet decoding and protocol routing are intentionally supplied by [receiver], because those details are usually owned
  * by the concrete networking adapter or by game-specific protocol code.
+ *
+ * This handler updates session timestamps, registers and unregisters sessions, and drives lifecycle hooks. It does not
+ * suppress receiver exceptions.
  */
 class GatewaySessionTransportHandler(
     private val sessionFactory: (GatewayConnection) -> GatewaySession,
@@ -50,6 +74,9 @@ class GatewaySessionTransportHandler(
 ) : GatewayTransportHandler {
     private val logger = LoggerFactory.getLogger(GatewaySessionTransportHandler::class.java)
 
+    /**
+     * Creates a session, registers it, and invokes `connected` lifecycle hooks.
+     */
     override suspend fun connected(connection: GatewayConnection): GatewaySession {
         val tags = connection.metricTags()
         metrics.counter("asteria.gateway.connection.connected.total", tags).increment()
@@ -66,6 +93,9 @@ class GatewaySessionTransportHandler(
         return session
     }
 
+    /**
+     * Marks the session as read and forwards the frame to [receiver].
+     */
     override suspend fun received(session: GatewaySession, frame: GatewayFrame) {
         val tags = session.metricTags()
         val startedAt = System.nanoTime()
@@ -88,6 +118,11 @@ class GatewaySessionTransportHandler(
         }
     }
 
+    /**
+     * Unregisters the session and applies close lifecycle hooks.
+     *
+     * If the session was already absent from the registry, the callback becomes a no-op.
+     */
     override suspend fun disconnected(session: GatewaySession, cause: Throwable?) {
         val removed = sessions.unregister(session.id) ?: return
         val reason = if (cause == null) {

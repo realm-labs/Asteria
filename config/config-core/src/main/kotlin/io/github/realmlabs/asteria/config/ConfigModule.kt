@@ -13,6 +13,10 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Configure it with a [ConfigLoader], optional runtime components, and validators. By default the first snapshot is
  * loaded during application start.
+ *
+ * When hot reload is enabled, this module also registers and starts [ConfigHotReloadService]. The hot reload loop is
+ * stopped during module shutdown, but the last successfully published snapshot remains available until the application
+ * tears its services down.
  */
 class ConfigModule private constructor(
     private val options: ConfigModuleOptions,
@@ -78,6 +82,10 @@ data class ConfigModuleOptions(
 
 /**
  * Builder for [ConfigModule].
+ *
+ * Use this builder to describe one complete config lifecycle: where the snapshot comes from, how it is validated, what
+ * runtime components should be derived from it, and whether external triggers should keep the snapshot fresh after
+ * startup.
  */
 @AsteriaDsl
 class ConfigModuleBuilder {
@@ -140,6 +148,8 @@ class ConfigModuleBuilder {
 
     /**
      * Adds a listener for successful initial loads and reloads.
+     *
+     * Listeners are not replayed for the current snapshot and run inline with the reload call.
      */
     fun onReload(listener: ConfigReloadListener) {
         reloadListeners += listener
@@ -154,6 +164,9 @@ class ConfigModuleBuilder {
 
     /**
      * Enables background hot reload from an external trigger.
+     *
+     * Trigger failures are handled by [ConfigHotReloadService]. A failed reload does not roll back to a previous signal;
+     * the next attempt waits for a new trigger event or a trigger-generated resync event.
      */
     fun hotReload(configure: ConfigHotReloadBuilder.() -> Unit) {
         hotReload = ConfigHotReloadBuilder().apply(configure).build()
@@ -183,7 +196,10 @@ class ConfigHotReloadBuilder {
     var debounce: Duration = 2.seconds
 
     /**
-     * Delay before re-subscribing when the trigger stream fails.
+     * Delay before re-subscribing when the trigger stream fails or completes unexpectedly.
+     *
+     * This does not retry a specific failed reload. It only controls how quickly the service reconnects to the trigger
+     * source.
      */
     var retryDelay: Duration = 5.seconds
 
@@ -198,7 +214,7 @@ class ConfigHotReloadBuilder {
     }
 
     /**
-     * Adds a listener for reload and watch failures.
+     * Adds a listener for reload failures and trigger-loop failures.
      */
     fun onFailure(listener: ConfigReloadFailureListener) {
         failureListeners += listener

@@ -17,6 +17,11 @@ import kotlin.time.Duration.Companion.seconds
  *
  * The trigger does not decode or publish config data. It only notifies [io.github.realmlabs.asteria.config.ConfigService]
  * that a complete snapshot should be reloaded by the configured loader.
+ *
+ * If the underlying watch cannot be created, fails, or completes unexpectedly, this trigger logs the failure, waits
+ * [retryDelay], and keeps rebuilding the watch until the collecting coroutine is cancelled. After any successful
+ * rebuild it emits a synthetic `config_center_resynced` signal so callers can force a full reload even when the
+ * backend cannot replay the exact events that were missed during the outage.
  */
 class ConfigCenterReloadTrigger(
     private val store: ConfigStore,
@@ -26,6 +31,11 @@ class ConfigCenterReloadTrigger(
 ) : ConfigReloadTrigger {
     private val logger = LoggerFactory.getLogger(ConfigCenterReloadTrigger::class.java)
 
+    /**
+     * Returns a never-ending signal stream until the collector cancels it.
+     *
+     * This method does not debounce events by itself. Burst coalescing belongs to [io.github.realmlabs.asteria.config.ConfigHotReloadService].
+     */
     override fun events(): Flow<ConfigReloadSignal> {
         return flow {
             var attempt = 0

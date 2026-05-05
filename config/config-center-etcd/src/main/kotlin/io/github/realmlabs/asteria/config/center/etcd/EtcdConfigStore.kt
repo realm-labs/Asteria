@@ -21,6 +21,14 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * etcd-backed [ConfigStore].
+ *
+ * Revisions are the entry `modRevision`, so they can be used as compare-and-set tokens and also reflect etcd's
+ * monotonic ordering within the cluster. Watches are thin wrappers around jetcd watchers; if a watch closes because of
+ * transport issues, higher-level helpers such as [io.github.realmlabs.asteria.config.center.RuntimeConfigRepository]
+ * are responsible for recreating it.
+ */
 class EtcdConfigStore(
     private val client: Client,
     keyPrefix: String = "",

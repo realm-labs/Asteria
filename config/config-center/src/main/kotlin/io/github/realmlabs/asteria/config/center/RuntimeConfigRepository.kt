@@ -15,12 +15,18 @@ import kotlin.reflect.KClass
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * Typed config value together with the backend revision that produced it.
+ */
 data class Versioned<T : Any>(
     val path: ConfigPath,
     val value: T,
     val revision: ConfigRevision,
 )
 
+/**
+ * Typed watch event emitted by [RuntimeConfigRepository.watchValue].
+ */
 sealed interface RuntimeConfigEvent<out T : Any> {
     val path: ConfigPath
 
@@ -34,11 +40,27 @@ sealed interface RuntimeConfigEvent<out T : Any> {
     ) : RuntimeConfigEvent<Nothing>
 }
 
+/**
+ * Current direct-child view under a config directory.
+ *
+ * [values] are keyed by child name, not full path.
+ */
 data class RuntimeConfigChildrenSnapshot<T : Any>(
     val path: ConfigPath,
     val values: Map<String, Versioned<T>>,
 )
 
+/**
+ * Typed facade over [ConfigStore].
+ *
+ * This repository owns serialization and watch self-healing:
+ * - `get` and `children` decode raw bytes into typed values.
+ * - `watchValue` rebuilds dead watches after failures and emits a synthetic resync cycle before forwarding new events.
+ * - `watchChildren` re-reads the full child snapshot after every child event and after every internal watch rebuild.
+ *
+ * The retry loop keeps running until the collecting coroutine is cancelled. It does not cap retries or switch to a
+ * circuit-breaker state on repeated backend failures.
+ */
 class RuntimeConfigRepository(
     private val store: ConfigStore,
     private val codec: ConfigCodec,
@@ -47,6 +69,9 @@ class RuntimeConfigRepository(
 ) {
     private val logger = LoggerFactory.getLogger(RuntimeConfigRepository::class.java)
 
+    /**
+     * Reads and decodes the current value at [path].
+     */
     suspend fun <T : Any> get(
         path: ConfigPath,
         type: KClass<T>,
@@ -60,6 +85,12 @@ class RuntimeConfigRepository(
         return get(path, T::class)
     }
 
+    /**
+     * Reads and decodes the current direct children under [path].
+     *
+     * The returned map is keyed by child name. Any decode failure fails the whole call so callers never observe a
+     * partially decoded snapshot.
+     */
     suspend fun <T : Any> children(
         path: ConfigPath,
         type: KClass<T>,
@@ -76,6 +107,14 @@ class RuntimeConfigRepository(
         return children(path, T::class)
     }
 
+    /**
+     * Watches a single value and emits typed edge-triggered events.
+     *
+     * This flow does not emit the current value when collection starts; read [get] first if an initial snapshot is
+     * required. If the underlying watch fails or completes unexpectedly, the repository waits [watchRetryDelay], creates
+     * a new watch, emits an internal resync marker, and then continues forwarding future events. The resync marker is
+     * intentionally filtered out from the public flow because callers typically only care about concrete typed changes.
+     */
     fun <T : Any> watchValue(
         path: ConfigPath,
         type: KClass<T>,
@@ -93,6 +132,14 @@ class RuntimeConfigRepository(
         return watchValue(path, T::class)
     }
 
+    /**
+     * Watches a directory-like path and emits complete typed child snapshots.
+     *
+     * When [emitInitial] is `true`, the first emission is the current result of [children]. After that, any child
+     * change or internal watch resync causes the repository to re-read the whole child set and emit a fresh snapshot.
+     * This means callers may receive duplicate snapshots when the backend only reported a reconnect or when a change
+     * did not alter the decoded child map, but they never need to manually stitch edge events back into a full view.
+     */
     fun <T : Any> watchChildren(
         path: ConfigPath,
         type: KClass<T>,
@@ -116,6 +163,9 @@ class RuntimeConfigRepository(
         return watchChildren(path, T::class, emitInitial)
     }
 
+    /**
+     * Encodes and writes a typed value to [path].
+     */
     suspend fun <T : Any> put(
         path: ConfigPath,
         value: T,
@@ -135,6 +185,9 @@ class RuntimeConfigRepository(
         return put(path, value, T::class, expectedRevision)
     }
 
+    /**
+     * Deletes a value from the underlying store.
+     */
     suspend fun delete(
         path: ConfigPath,
         expectedRevision: ConfigRevision? = null,
