@@ -1,0 +1,99 @@
+package io.github.realmlabs.asteria.config
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class ConfigChangeDispatcherTest {
+    @Test
+    fun `dispatch runs only handlers watching changed tables`() {
+        val receiver = TestReceiver()
+        val dispatcher = ConfigChangeDispatcher(
+            listOf(
+                RecordingHandler("items", configTables(Items)),
+                RecordingHandler("worlds", configTables("worlds")),
+            ),
+        )
+
+        dispatcher.dispatch(receiver, changeEvent(changedTables = configTables("items")))
+
+        assertEquals(listOf("items:change:v2"), receiver.events)
+    }
+
+    @Test
+    fun `catch up runs all handlers and revision tracker gates repeated work`() {
+        val receiver = TestReceiver()
+        val tracker = TestRevisionTracker()
+        val dispatcher = ConfigChangeDispatcher(
+            listOf(
+                RecordingHandler("items", configTables("items")),
+                RecordingHandler("worlds", configTables("worlds")),
+            ),
+        )
+        val snapshot = snapshot("v2")
+
+        assertTrue(dispatcher.catchUpIfNew(receiver, snapshot, tracker))
+        assertFalse(dispatcher.catchUpIfNew(receiver, snapshot, tracker))
+
+        assertEquals(listOf("items:catch-up:v2", "worlds:catch-up:v2"), receiver.events)
+        assertEquals("v2", tracker.currentRevision())
+    }
+
+    private fun changeEvent(changedTables: Set<ConfigTableName>): ConfigChangedEvent {
+        return ConfigChangedEvent(
+            previousRevision = ConfigRevision("v1"),
+            currentRevision = ConfigRevision("v2"),
+            current = snapshot("v2"),
+            changedTables = changedTables,
+        )
+    }
+
+    private fun snapshot(revision: String): ConfigSnapshot {
+        return DefaultConfigSnapshot(
+            revision = ConfigRevision(revision),
+            tables = emptyList(),
+        )
+    }
+
+    private companion object {
+        val Items = configTableRef<Int, TestRow>("items")
+    }
+}
+
+private data class TestRow(
+    val id: Int,
+)
+
+private class TestReceiver {
+    val events: MutableList<String> = mutableListOf()
+}
+
+private class RecordingHandler(
+    private val name: String,
+    override val watchedTables: Set<ConfigTableName>,
+) : ConfigChangeHandler<TestReceiver> {
+    override fun handleChange(
+        receiver: TestReceiver,
+        event: ConfigChangedEvent,
+    ) {
+        receiver.events += "$name:change:${event.currentRevision.version}"
+    }
+
+    override fun catchUp(
+        receiver: TestReceiver,
+        snapshot: ConfigSnapshot,
+    ) {
+        receiver.events += "$name:catch-up:${snapshot.revision.version}"
+    }
+}
+
+private class TestRevisionTracker : ConfigRevisionTracker {
+    private var revision: String? = null
+
+    override fun currentRevision(): String? = revision
+
+    override fun updateRevision(revision: String) {
+        this.revision = revision
+    }
+}

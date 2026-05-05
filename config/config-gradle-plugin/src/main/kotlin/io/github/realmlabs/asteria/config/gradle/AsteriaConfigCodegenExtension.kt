@@ -52,8 +52,20 @@ abstract class AsteriaConfigCodegenExtension @Inject constructor(objects: Object
         objects,
     )
 
+    /**
+     * Optional config change handler aggregation.
+     */
+    val configChange: AsteriaConfigChangeCodegenExtension = objects.newInstance(
+        AsteriaConfigChangeCodegenExtension::class.java,
+        objects,
+    )
+
     fun luban(action: Action<in AsteriaLubanConfigMarkerExtension>) {
         action.execute(luban)
+    }
+
+    fun configChange(action: Action<in AsteriaConfigChangeCodegenExtension>) {
+        action.execute(configChange)
     }
 }
 
@@ -80,4 +92,26 @@ abstract class AsteriaLubanConfigMarkerExtension @Inject constructor(objects: Ob
      */
     val fileName: Property<String> = objects.property(String::class.java)
         .convention("AsteriaLubanConfigMarkers")
+}
+
+abstract class AsteriaConfigChangeCodegenExtension @Inject constructor(objects: ObjectFactory) {
+    /**
+     * Package of the generated handler list. Blank means using `asteriaConfigCodegen.packageName`.
+     */
+    val packageName: Property<String> = objects.property(String::class.java)
+        .convention("")
+
+    /**
+     * Name of the generated object that exposes `ALL`.
+     */
+    val className: Property<String> = objects.property(String::class.java)
+        .convention("GeneratedConfigChangeHandlers")
+
+    /**
+     * Fully qualified receiver type accepted by all generated handlers.
+     *
+     * Leave blank when using `@AsteriaConfigChangeCatalog(receiverType = ...)` in source code.
+     */
+    val receiverType: Property<String> = objects.property(String::class.java)
+        .convention("")
 }

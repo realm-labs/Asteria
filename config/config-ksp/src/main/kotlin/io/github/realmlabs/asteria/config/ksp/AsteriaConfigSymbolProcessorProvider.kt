@@ -1,15 +1,22 @@
 package io.github.realmlabs.asteria.config.ksp
 
+import com.google.devtools.ksp.getVisibility
 import com.google.devtools.ksp.processing.*
+import com.google.devtools.ksp.symbol.ClassKind
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSClassDeclaration
+import com.google.devtools.ksp.symbol.KSFile
 import com.google.devtools.ksp.symbol.KSType
+import com.google.devtools.ksp.symbol.Modifier
 import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.TypeName
+import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
 import io.github.realmlabs.asteria.config.annotations.AsteriaConfigCatalog
+import io.github.realmlabs.asteria.config.annotations.AsteriaConfigChangeCatalog
+import io.github.realmlabs.asteria.config.annotations.AsteriaConfigChangeHandler
 import io.github.realmlabs.asteria.config.annotations.AsteriaConfigTable
 
 class AsteriaConfigSymbolProcessorProvider : SymbolProcessorProvider {
@@ -32,22 +39,50 @@ private class AsteriaConfigSymbolProcessor(
         val tableSymbols = resolver.getSymbolsWithAnnotation(AsteriaConfigTable::class.qualifiedName!!)
             .filterIsInstance<KSClassDeclaration>()
             .toList()
-        val invalid = tableSymbols.filterNot { it.validate() }
+        val handlerSymbols = resolver.getSymbolsWithAnnotation(AsteriaConfigChangeHandler::class.qualifiedName!!)
+            .filterIsInstance<KSClassDeclaration>()
+            .toList()
+        val invalid = (tableSymbols + handlerSymbols).filterNot { it.validate() }
         if (invalid.isNotEmpty()) {
             return invalid
         }
-        if (tableSymbols.isEmpty()) {
+        if (tableSymbols.isEmpty() && handlerSymbols.isEmpty() && !hasConfigChangeCatalog(resolver)) {
             generated = true
             return emptyList()
         }
 
-        val config = readCodegenConfig(resolver)
-        val tables = tableSymbols.mapNotNull(::readTableModel)
-        val file = AsteriaConfigCodeGenerator.buildFile(config, tables)
-        val sourceFiles = tableSymbols.mapNotNull { it.containingFile }.toTypedArray()
-        file.writeTo(codeGenerator, Dependencies(aggregating = true, *sourceFiles))
+        if (tableSymbols.isNotEmpty()) {
+            val config = readCodegenConfig(resolver)
+            val tables = tableSymbols.mapNotNull(::readTableModel)
+            val file = AsteriaConfigCodeGenerator.buildFile(config, tables)
+            val sourceFiles = tableSymbols.mapNotNull { it.containingFile }.toTypedArray()
+            file.writeTo(codeGenerator, Dependencies(aggregating = true, *sourceFiles))
+        }
+        if (handlerSymbols.isNotEmpty() || hasConfigChangeCatalog(resolver)) {
+            generateConfigChangeHandlers(resolver, handlerSymbols)
+        }
         generated = true
         return emptyList()
+    }
+
+    private fun generateConfigChangeHandlers(
+        resolver: Resolver,
+        handlerSymbols: List<KSClassDeclaration>,
+    ) {
+        val processorConfig = readConfigChangeCodegenConfig(resolver) ?: return
+        val handlers = handlerSymbols.mapNotNull { handler ->
+            readConfigChangeHandlerModel(
+                resolver = resolver,
+                declaration = handler,
+                receiverType = processorConfig.receiverType,
+            )
+        }
+        val sourceFiles = (handlerSymbols.mapNotNull { it.containingFile } + processorConfig.sourceFiles)
+            .distinctBy { it.filePath }
+            .toTypedArray()
+        AsteriaConfigChangeCodeGenerator.buildFiles(processorConfig.codegen, handlers).forEach { generated ->
+            generated.file.writeTo(codeGenerator, Dependencies(aggregating = true, *sourceFiles))
+        }
     }
 
     private fun readCodegenConfig(resolver: Resolver): ConfigCodegenConfig {
@@ -71,6 +106,92 @@ private class AsteriaConfigSymbolProcessor(
         )
     }
 
+    private fun readConfigChangeCodegenConfig(resolver: Resolver): ConfigChangeProcessorConfig? {
+        val catalogs = configChangeCatalogs(resolver)
+        if (catalogs.size > 1) {
+            logger.error("only one @AsteriaConfigChangeCatalog is allowed", catalogs.drop(1).first())
+        }
+        val catalog = catalogs.firstOrNull()?.findAnnotation(AsteriaConfigChangeCatalog::class.qualifiedName!!)
+        val receiverType = catalog?.typeKSTypeArg("receiverType")?.takeUnless { it.isNothingType() }
+            ?: options["asteria.config.change.receiverType"]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { receiverTypeName ->
+                    resolver.getClassDeclarationByName(resolver.getKSNameFromString(receiverTypeName))
+                        ?.asStarProjectedType()
+                        ?: run {
+                            logger.error("cannot resolve config change receiver type $receiverTypeName")
+                            null
+                        }
+                }
+        if (receiverType == null) {
+            logger.error(
+                "config change handler generation requires @AsteriaConfigChangeCatalog(receiverType = ...) " +
+                        "or KSP option asteria.config.change.receiverType",
+            )
+            return null
+        }
+        return ConfigChangeProcessorConfig(
+            codegen = ConfigChangeCodegenConfig(
+                packageName = catalog?.stringArg("packageName")?.takeIf { it.isNotBlank() }
+                    ?: options["asteria.config.change.package"]
+                    ?: options["asteria.config.package"]
+                    ?: "io.github.realmlabs.asteria.generated.config",
+                className = catalog?.stringArg("className")?.takeIf { it.isNotBlank() }
+                    ?: options["asteria.config.change.class"]
+                    ?: "GeneratedConfigChangeHandlers",
+                receiverType = receiverType.toTypeName(),
+            ),
+            receiverType = receiverType,
+            sourceFiles = catalogs.mapNotNull { it.containingFile },
+        )
+    }
+
+    private fun readConfigChangeHandlerModel(
+        resolver: Resolver,
+        declaration: KSClassDeclaration,
+        receiverType: KSType,
+    ): ConfigChangeHandlerModel? {
+        if (declaration.classKind != ClassKind.CLASS) {
+            logger.error("@AsteriaConfigChangeHandler only supports classes", declaration)
+            return null
+        }
+        if (Modifier.ABSTRACT in declaration.modifiers) {
+            logger.error("config change handler must be concrete", declaration)
+            return null
+        }
+        if (declaration.getVisibility().name != "PUBLIC") {
+            logger.error("config change handler must be public", declaration)
+            return null
+        }
+        val zeroArgConstructor = declaration.primaryConstructor?.parameters?.isEmpty() ?: true
+        if (!zeroArgConstructor) {
+            logger.error("config change handler must have a zero-argument primary constructor", declaration)
+            return null
+        }
+        val handlerInterface = resolver.getClassDeclarationByName(
+            resolver.getKSNameFromString("io.github.realmlabs.asteria.config.ConfigChangeHandler"),
+        ) ?: run {
+            logger.error("cannot resolve ConfigChangeHandler")
+            return null
+        }
+        val implemented = declaration.superTypes
+            .map { it.resolve() }
+            .firstOrNull { it.declaration.qualifiedName?.asString() == handlerInterface.qualifiedName?.asString() }
+        if (implemented == null) {
+            logger.error("@AsteriaConfigChangeHandler class must implement ConfigChangeHandler", declaration)
+            return null
+        }
+        val typeArg = implemented.arguments.singleOrNull()?.type?.resolve()
+        if (typeArg?.declaration?.qualifiedName?.asString() != receiverType.declaration.qualifiedName?.asString()) {
+            logger.error(
+                "config change handler must implement ConfigChangeHandler<${receiverType.declaration.qualifiedName?.asString()}>",
+                declaration,
+            )
+            return null
+        }
+        return ConfigChangeHandlerModel(declaration.toClassName())
+    }
+
     private fun readTableModel(symbol: KSClassDeclaration): ConfigTableModel? {
         val annotation = symbol.findAnnotation(AsteriaConfigTable::class.qualifiedName!!) ?: return null
         val tableName = annotation.stringArg("name")
@@ -90,6 +211,16 @@ private class AsteriaConfigSymbolProcessor(
             propertyName = annotation.stringArg("propertyName").takeIf { it.isNotBlank() }
                 ?: tableName.toLowerCamelIdentifier(),
         )
+    }
+
+    private fun hasConfigChangeCatalog(resolver: Resolver): Boolean {
+        return configChangeCatalogs(resolver).isNotEmpty()
+    }
+
+    private fun configChangeCatalogs(resolver: Resolver): List<KSClassDeclaration> {
+        return resolver.getSymbolsWithAnnotation(AsteriaConfigChangeCatalog::class.qualifiedName!!)
+            .filterIsInstance<KSClassDeclaration>()
+            .toList()
     }
 
     private fun KSClassDeclaration.findAnnotation(qualifiedName: String): KSAnnotation? {
@@ -115,3 +246,9 @@ private class AsteriaConfigSymbolProcessor(
         return declaration.qualifiedName?.asString() == "kotlin.Nothing"
     }
 }
+
+private data class ConfigChangeProcessorConfig(
+    val codegen: ConfigChangeCodegenConfig,
+    val receiverType: KSType,
+    val sourceFiles: List<KSFile>,
+)

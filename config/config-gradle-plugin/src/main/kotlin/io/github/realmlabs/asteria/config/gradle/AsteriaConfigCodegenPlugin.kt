@@ -59,6 +59,18 @@ class AsteriaConfigCodegenPlugin : Plugin<Project> {
             ksp.arg("asteria.config.package", extension.packageName)
             ksp.arg("asteria.config.tables", extension.tablesObjectName)
             ksp.arg("asteria.config.accessor", extension.accessorClassName)
+            ksp.arg(
+                "asteria.config.change.package",
+                extension.configChange.packageName.flatMap { changePackage ->
+                    if (changePackage.isBlank()) {
+                        extension.packageName
+                    } else {
+                        project.providers.provider { changePackage }
+                    }
+                },
+            )
+            ksp.arg("asteria.config.change.class", extension.configChange.className)
+            ksp.arg("asteria.config.change.receiverType", extension.configChange.receiverType)
         }
     }
 

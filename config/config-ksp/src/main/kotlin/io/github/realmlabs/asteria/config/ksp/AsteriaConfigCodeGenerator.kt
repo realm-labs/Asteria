@@ -173,7 +173,7 @@ private fun String.words(): List<String> {
         .ifEmpty { listOf("_") }
 }
 
-private fun String.isValidKotlinIdentifier(): Boolean {
+internal fun String.isValidKotlinIdentifier(): Boolean {
     if (isBlank()) {
         return false
     }

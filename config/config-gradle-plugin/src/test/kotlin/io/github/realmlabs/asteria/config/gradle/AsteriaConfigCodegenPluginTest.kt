@@ -19,6 +19,8 @@ class AsteriaConfigCodegenPluginTest {
         assertEquals("io.github.realmlabs.asteria.generated.config", extension.packageName.get())
         assertEquals("GameConfigTables", extension.tablesObjectName.get())
         assertEquals("GameConfigs", extension.accessorClassName.get())
+        assertEquals("", extension.configChange.receiverType.get())
+        assertEquals("GeneratedConfigChangeHandlers", extension.configChange.className.get())
         assertEquals(true, extension.addDependencies.get())
     }
 
