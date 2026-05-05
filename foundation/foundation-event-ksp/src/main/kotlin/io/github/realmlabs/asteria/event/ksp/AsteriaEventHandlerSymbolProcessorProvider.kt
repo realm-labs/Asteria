@@ -284,7 +284,7 @@ private class AsteriaEventHandlerSymbolProcessor(
                     addProperty(
                         PropertySpec.builder(
                             dispatcherKey.toRegistryPropertyName(),
-                            DEFAULT_EVENT_HANDLE_REGISTRY.parameterizedBy(contextType),
+                            PATCHABLE_EVENT_HANDLE_REGISTRY.parameterizedBy(contextType),
                         )
                             .initializer(buildRegistryExpression(rootPackage, moduleName, dispatcherKey, contextType))
                             .build(),
@@ -382,7 +382,7 @@ private class AsteriaEventHandlerSymbolProcessor(
         )
         return CodeBlock.of(
             "%T(%T.all())",
-            DEFAULT_EVENT_HANDLE_REGISTRY.parameterizedBy(contextType),
+            PATCHABLE_EVENT_HANDLE_REGISTRY.parameterizedBy(contextType),
             handlesObject,
         )
     }
@@ -425,21 +425,26 @@ private class AsteriaEventHandlerSymbolProcessor(
 
     private fun buildEventTypeHandle(binding: EventHandlerBinding): CodeBlock {
         return CodeBlock.of(
-            "%T.forEventType(%T::class, order = %L) { context, event, publisher -> %L.handle(context, event, publisher) }",
+            "%T.forEventType(%T::class, order = %L, key = %M(%T::class)) { context, event, publisher -> %L.handle(context, event, publisher) }",
             EVENT_HANDLE,
             binding.eventClassName,
             binding.order,
+            EVENT_HANDLE_KEY,
+            binding.handler.toClassName(),
             instantiateExpression(binding.handler),
         )
     }
 
     private fun buildTopicHandle(binding: EventHandlerBinding, topic: String): CodeBlock {
         return CodeBlock.of(
-            "%T.forTopic(%M(%S), order = %L) { context, event, publisher -> %L.handle(context, event, publisher) }",
+            "%T.forTopic(%M(%S), order = %L, key = %M(%T::class, %S)) { context, event, publisher -> %L.handle(context, event, publisher) }",
             EVENT_HANDLE,
             EVENT_TOPIC_PATH,
             topic,
             binding.order,
+            EVENT_HANDLE_KEY,
+            binding.handler.toClassName(),
+            topic,
             instantiateExpression(binding.handler),
         )
     }
@@ -565,9 +570,10 @@ private class AsteriaEventHandlerSymbolProcessor(
 
     companion object {
         private val EVENT_HANDLE = ClassName("io.github.realmlabs.asteria.event", "EventHandle")
+        private val EVENT_HANDLE_KEY = MemberName("io.github.realmlabs.asteria.event", "eventHandleKey")
         private val EVENT_DISPATCHER = ClassName("io.github.realmlabs.asteria.event", "EventDispatcher")
-        private val DEFAULT_EVENT_HANDLE_REGISTRY =
-            ClassName("io.github.realmlabs.asteria.event", "DefaultEventHandleRegistry")
+        private val PATCHABLE_EVENT_HANDLE_REGISTRY =
+            ClassName("io.github.realmlabs.asteria.event", "PatchableEventHandleRegistry")
         private val EVENT_TOPIC_PATH = MemberName("io.github.realmlabs.asteria.event", "eventTopicPath")
         private const val HANDLER_CHUNK_SIZE = 200
     }

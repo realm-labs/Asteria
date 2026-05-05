@@ -5,9 +5,20 @@ import io.github.realmlabs.asteria.core.NodeState
 import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.core.ServiceRegistry
 import io.github.realmlabs.asteria.message.DefaultHandlerContext
+import io.github.realmlabs.asteria.patch.PatchApplyResult
+import io.github.realmlabs.asteria.patch.PatchArtifact
+import io.github.realmlabs.asteria.patch.PatchCompatibility
+import io.github.realmlabs.asteria.patch.PatchEnvironment
+import io.github.realmlabs.asteria.patch.PatchId
+import io.github.realmlabs.asteria.patch.PatchInstallContext
+import io.github.realmlabs.asteria.patch.PatchRuntime
+import io.github.realmlabs.asteria.patch.RuntimePatch
+import io.github.realmlabs.asteria.patch.RuntimePatchPlugin
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class EventDispatcherTest {
@@ -80,6 +91,71 @@ class EventDispatcherTest {
         dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 1, newLevel = 2))
 
         assertEquals(listOf("generated-type:2", "generated-topic:player.progression.level.changed"), records)
+    }
+
+    @Test
+    fun `dispatcher uses current patchable event handle`() = runBlocking {
+        val records = mutableListOf<String>()
+        val handleKey = eventHandleKey(GeneratedPlayerLevelChangedHandler::class)
+        val registry = PatchableEventHandleRegistry<DefaultHandlerContext>()
+        registry.register(PlayerLevelChanged::class, key = handleKey) { _, event, _ ->
+            records += "base:${event.newLevel}"
+        }
+        val dispatcher = EventDispatcher(registry)
+        val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
+
+        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 1, newLevel = 2))
+        assertIs<PatchApplyResult.Applied>(
+            runtime.apply(
+                patch("level-handler-fix"),
+                plugin {
+                    replaceEventTypeHandler(registry, PlayerLevelChanged::class, key = handleKey) { _, event, _ ->
+                        records += "patched:${event.newLevel}"
+                    }
+                },
+            ),
+        )
+        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 2, newLevel = 3))
+
+        assertEquals(listOf("base:2", "patched:3"), records)
+    }
+
+    @Test
+    fun `removing patch restores previous event handler layer`() = runBlocking {
+        val records = mutableListOf<String>()
+        val handleKey = eventHandleKey(GeneratedProgressionTopicHandler::class, PlayerEvents.Progression.topic)
+        val registry = PatchableEventHandleRegistry<DefaultHandlerContext>()
+        registry.registerTopic(PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
+            records += "base"
+        }
+        val dispatcher = EventDispatcher(registry)
+        val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
+        val first = patch("first", sequence = 1)
+        val second = patch("second", sequence = 2)
+
+        assertIs<PatchApplyResult.Applied>(
+            runtime.apply(first, plugin {
+                replaceTopicEventHandler(registry, PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
+                    records += "first"
+                }
+            }),
+        )
+        assertIs<PatchApplyResult.Applied>(
+            runtime.apply(second, plugin {
+                replaceTopicEventHandler(registry, PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
+                    records += "second"
+                }
+            }),
+        )
+        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 1, newLevel = 2))
+
+        runtime.remove(second.id)
+        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 2, newLevel = 3))
+
+        runtime.remove(first.id)
+        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 3, newLevel = 4))
+
+        assertEquals(listOf("second", "first", "base"), records)
     }
 
     @Test
@@ -260,6 +336,27 @@ class EventDispatcherTest {
         return DefaultHandlerContext(TestRuntime)
     }
 
+    private fun patch(
+        id: String,
+        sequence: Long = 1,
+    ): RuntimePatch {
+        return RuntimePatch(
+            id = PatchId(id),
+            name = id,
+            artifact = PatchArtifact("$id.jar", "sha256:$id"),
+            compatibility = PatchCompatibility("game", setOf("1.0.0")),
+            sequence = sequence,
+        )
+    }
+
+    private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {
+        return object : RuntimePatchPlugin {
+            override suspend fun install(context: PatchInstallContext) {
+                context.block()
+            }
+        }
+    }
+
     private object PlayerEvents : EventTopicCatalog("player") {
         object Progression : EventTopicCatalog(PlayerEvents, "progression") {
             object Level : EventTopicCatalog(Progression, "level") {
@@ -278,10 +375,18 @@ class EventDispatcherTest {
     private object GeneratedPlayerEventHandles {
         fun all(records: MutableList<String>): List<EventHandle<DefaultHandlerContext>> {
             return listOf(
-                EventHandle.forEventType(PlayerLevelChanged::class, order = 0) { context, event, publisher ->
+                EventHandle.forEventType(
+                    PlayerLevelChanged::class,
+                    order = 0,
+                    key = eventHandleKey(GeneratedPlayerLevelChangedHandler::class),
+                ) { context, event, publisher ->
                     GeneratedPlayerLevelChangedHandler(records).handle(context, event, publisher)
                 },
-                EventHandle.forTopic(eventTopicPath("player.progression"), order = 100) { context, event, publisher ->
+                EventHandle.forTopic(
+                    eventTopicPath("player.progression"),
+                    order = 100,
+                    key = eventHandleKey(GeneratedProgressionTopicHandler::class, "player.progression"),
+                ) { context, event, publisher ->
                     GeneratedProgressionTopicHandler(records).handle(context, event, publisher)
                 },
             )

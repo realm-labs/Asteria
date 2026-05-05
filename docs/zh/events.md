@@ -120,6 +120,29 @@ override fun createReceive(): Receive {
 dispatcher 会再次调用 `schedulePump`。业务可以把 `maxHandlers` 调大，控制每次 actor receive 最多处理多少个事件
 handler。
 
+## Patch 支持
+
+KSP 生成的 `${dispatcher}Registry` 是 `PatchableEventHandleRegistry`。运行时补丁可以替换某一个 handler slot；dispatcher
+每次路由都会读取 registry 当前快照，所以同步分发和 actor 队列分发都会看到最新 handler。
+
+```kotlin
+class LevelPatch : RuntimePatchPlugin {
+    override suspend fun install(context: PatchInstallContext) {
+        context.replaceEventTypeHandler(
+            GeneratedGameEventDispatchers.defaultRegistry,
+            PlayerLevelChanged::class,
+            key = eventHandleKey(PlayerQuestLevelHandler::class),
+        ) { handlerContext, event, publisher ->
+            handlerContext.player.quest.onLevelChanged(event.newLevel)
+        }
+    }
+}
+```
+
+patch 的粒度是 `EventHandleKey`，不是 event type 或 topic。因为一个事件类型或一个 topic 下面通常会有多个 handler，直接按 topic
+替换会误伤其他订阅者。KSP 生成的 key 默认由 `eventHandleKey(Handler::class)` 计算；如果同一个 handler 订阅多个 topic，使用
+`eventHandleKey(Handler::class, topic)` 指定其中一个订阅 slot。
+
 ## KSP 注册
 
 使用注解 handler 的模块需要接入 `foundation-event-ksp`：

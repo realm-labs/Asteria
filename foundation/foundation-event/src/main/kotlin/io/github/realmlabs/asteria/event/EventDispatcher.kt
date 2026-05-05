@@ -1,6 +1,11 @@
 package io.github.realmlabs.asteria.event
 
 import io.github.realmlabs.asteria.message.HandlerContext
+import io.github.realmlabs.asteria.patch.PatchId
+import io.github.realmlabs.asteria.patch.PatchInstallContext
+import io.github.realmlabs.asteria.patch.PatchOrder
+import io.github.realmlabs.asteria.patch.PatchSlotRegistry
+import io.github.realmlabs.asteria.patch.PatchableRegistry
 import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 
@@ -12,7 +17,32 @@ interface EventPublisher<C : HandlerContext> {
     fun publish(event: GameEvent): EventPublishReceipt
 }
 
+@JvmInline
+value class EventHandleKey(
+    val value: String,
+) {
+    init {
+        require(value.isNotBlank()) { "event handle key must not be blank" }
+    }
+
+    override fun toString(): String {
+        return value
+    }
+}
+
+fun eventHandleKey(handlerType: KClass<*>, topic: EventTopic? = null): EventHandleKey {
+    return eventHandleKey(handlerType, topic?.path)
+}
+
+fun eventHandleKey(handlerType: KClass<*>, topicPath: String?): EventHandleKey {
+    val handlerName = requireNotNull(handlerType.qualifiedName ?: handlerType.simpleName) {
+        "event handler type must have a name"
+    }
+    return EventHandleKey(topicPath?.let { "$handlerName#$it" } ?: handlerName)
+}
+
 class EventHandle<C : HandlerContext> private constructor(
+    val key: EventHandleKey,
     val eventType: KClass<out GameEvent>?,
     val topic: EventTopic?,
     val order: Int,
@@ -26,9 +56,10 @@ class EventHandle<C : HandlerContext> private constructor(
         fun <C : HandlerContext, E : GameEvent> forEventType(
             eventType: KClass<E>,
             order: Int = 0,
+            key: EventHandleKey = EventHandleKey("event:${eventType.qualifiedName ?: eventType.simpleName}:$order"),
             handler: EventHandler<C, E>,
         ): EventHandle<C> {
-            return EventHandle(eventType, topic = null, order = order) { context, event, publisher ->
+            return EventHandle(key, eventType, topic = null, order = order) { context, event, publisher ->
                 @Suppress("UNCHECKED_CAST")
                 handler.handle(context, event as E, publisher)
             }
@@ -37,9 +68,10 @@ class EventHandle<C : HandlerContext> private constructor(
         fun <C : HandlerContext> forTopic(
             topic: EventTopic,
             order: Int = 0,
+            key: EventHandleKey = EventHandleKey("topic:${topic.path}:$order"),
             handler: EventHandler<C, GameEvent>,
         ): EventHandle<C> {
-            return EventHandle(eventType = null, topic = topic, order = order) { context, event, publisher ->
+            return EventHandle(key, eventType = null, topic = topic, order = order) { context, event, publisher ->
                 handler.handle(context, event, publisher)
             }
         }
@@ -80,30 +112,93 @@ class DefaultEventHandleRegistry<C : HandlerContext>(
     }
 }
 
+class PatchableEventHandleRegistry<C : HandlerContext>(
+    handles: Iterable<EventHandle<C>> = emptyList(),
+) : EventHandleRegistry<C>, PatchSlotRegistry<EventHandleKey, EventHandle<C>> {
+    private val registry = PatchableRegistry(handles.associateByKey())
+
+    override fun handlersFor(eventType: KClass<out GameEvent>): List<EventHandle<C>> {
+        return all().filter { it.eventType == eventType }
+    }
+
+    override fun handlersFor(topic: EventTopic): List<EventHandle<C>> {
+        return all().filter { it.topic == topic }
+    }
+
+    override fun all(): List<EventHandle<C>> {
+        return registry.snapshot().values.sortedBy(EventHandle<C>::order)
+    }
+
+    fun register(handle: EventHandle<C>) {
+        registry.register(handle.key, handle)
+    }
+
+    fun <E : GameEvent> register(
+        eventType: KClass<E>,
+        order: Int = 0,
+        key: EventHandleKey = EventHandleKey("event:${eventType.qualifiedName ?: eventType.simpleName}:$order"),
+        handler: EventHandler<C, E>,
+    ) {
+        register(EventHandle.forEventType(eventType, order, key, handler))
+    }
+
+    inline fun <reified E : GameEvent> register(
+        order: Int = 0,
+        key: EventHandleKey = EventHandleKey("event:${E::class.qualifiedName ?: E::class.simpleName}:$order"),
+        handler: EventHandler<C, E>,
+    ) {
+        register(E::class, order, key, handler)
+    }
+
+    fun registerTopic(
+        topic: EventTopic,
+        order: Int = 0,
+        key: EventHandleKey = EventHandleKey("topic:${topic.path}:$order"),
+        handler: EventHandler<C, GameEvent>,
+    ) {
+        register(EventHandle.forTopic(topic, order, key, handler))
+    }
+
+    override fun current(key: EventHandleKey): EventHandle<C>? {
+        return registry.current(key)
+    }
+
+    override fun replace(key: EventHandleKey, value: EventHandle<C>, order: PatchOrder) {
+        registry.replace(key, value, order)
+    }
+
+    override fun remove(id: PatchId) {
+        registry.remove(id)
+    }
+}
+
 class EventHandleRegistryBuilder<C : HandlerContext> {
     private val handles = mutableListOf<EventHandle<C>>()
 
     fun <E : GameEvent> on(
         eventType: KClass<E>,
         order: Int = 0,
+        key: EventHandleKey = EventHandleKey("event:${eventType.qualifiedName ?: eventType.simpleName}:$order"),
         handler: EventHandler<C, E>,
     ) {
-        handles += EventHandle.forEventType(eventType, order, handler)
+        handles += EventHandle.forEventType(eventType, order, key, handler)
     }
 
     inline fun <reified E : GameEvent> on(
         order: Int = 0,
+        key: EventHandleKey = EventHandleKey("event:${E::class.qualifiedName ?: E::class.simpleName}:$order"),
         handler: EventHandler<C, E>,
     ) {
-        on(E::class, order, handler)
+        on(E::class, order, key, handler)
     }
 
     fun onTopic(
         topic: EventTopic,
         order: Int = 0,
+        key: EventHandleKey = EventHandleKey("topic:${topic.path}:$order"),
         handler: EventHandler<C, GameEvent>,
     ) {
-        handles += EventHandle.forTopic(topic, order, handler)
+        handles += EventHandle.forTopic(topic, order, key, handler)
     }
 
     fun build(): DefaultEventHandleRegistry<C> {
@@ -115,6 +210,42 @@ fun <C : HandlerContext> eventHandlers(
     configure: EventHandleRegistryBuilder<C>.() -> Unit,
 ): DefaultEventHandleRegistry<C> {
     return EventHandleRegistryBuilder<C>().apply(configure).build()
+}
+
+fun <C : HandlerContext> PatchInstallContext.replaceEventHandle(
+    registry: PatchableEventHandleRegistry<C>,
+    handle: EventHandle<C>,
+) {
+    replace(registry, handle.key, handle)
+}
+
+fun <C : HandlerContext, E : GameEvent> PatchInstallContext.replaceEventTypeHandler(
+    registry: PatchableEventHandleRegistry<C>,
+    eventType: KClass<E>,
+    order: Int = 0,
+    key: EventHandleKey = EventHandleKey("event:${eventType.qualifiedName ?: eventType.simpleName}:$order"),
+    handler: EventHandler<C, E>,
+) {
+    replaceEventHandle(registry, EventHandle.forEventType(eventType, order, key, handler))
+}
+
+inline fun <C : HandlerContext, reified E : GameEvent> PatchInstallContext.replaceEventTypeHandler(
+    registry: PatchableEventHandleRegistry<C>,
+    order: Int = 0,
+    key: EventHandleKey = EventHandleKey("event:${E::class.qualifiedName ?: E::class.simpleName}:$order"),
+    handler: EventHandler<C, E>,
+) {
+    replaceEventTypeHandler(registry, E::class, order, key, handler)
+}
+
+fun <C : HandlerContext> PatchInstallContext.replaceTopicEventHandler(
+    registry: PatchableEventHandleRegistry<C>,
+    topic: EventTopic,
+    order: Int = 0,
+    key: EventHandleKey = EventHandleKey("topic:${topic.path}:$order"),
+    handler: EventHandler<C, GameEvent>,
+) {
+    replaceEventHandle(registry, EventHandle.forTopic(topic, order, key, handler))
 }
 
 enum class EventDispatchFailurePolicy {
@@ -454,6 +585,15 @@ private fun <T : Any> Iterable<T>.distinctByIdentity(): List<T> {
         if (seen.put(value, Unit) == null) {
             result += value
         }
+    }
+    return result
+}
+
+private fun <C : HandlerContext> Iterable<EventHandle<C>>.associateByKey(): Map<EventHandleKey, EventHandle<C>> {
+    val result = linkedMapOf<EventHandleKey, EventHandle<C>>()
+    for (handle in this) {
+        check(handle.key !in result) { "duplicate event handle key ${handle.key}" }
+        result[handle.key] = handle
     }
     return result
 }

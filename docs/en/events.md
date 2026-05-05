@@ -129,6 +129,31 @@ override fun createReceive(): Receive {
 a pump, the dispatcher calls `schedulePump` again. Increase `maxHandlers` to control how many event handlers one actor
 receive may run.
 
+## Patch Support
+
+The generated `${dispatcher}Registry` is a `PatchableEventHandleRegistry`. Runtime patches can replace one handler slot;
+dispatchers read the registry's current snapshot during routing, so both synchronous dispatch and actor queued dispatch
+see the latest handler.
+
+```kotlin
+class LevelPatch : RuntimePatchPlugin {
+    override suspend fun install(context: PatchInstallContext) {
+        context.replaceEventTypeHandler(
+            GeneratedGameEventDispatchers.defaultRegistry,
+            PlayerLevelChanged::class,
+            key = eventHandleKey(PlayerQuestLevelHandler::class),
+        ) { handlerContext, event, publisher ->
+            handlerContext.player.quest.onLevelChanged(event.newLevel)
+        }
+    }
+}
+```
+
+The patch key is an `EventHandleKey`, not an event type or topic. One event type or topic usually has multiple
+handlers, so replacing by topic would affect unrelated subscribers. KSP-generated keys are computed with
+`eventHandleKey(Handler::class)`; when one handler subscribes to multiple topics, use
+`eventHandleKey(Handler::class, topic)` to target one subscription slot.
+
 ## KSP Registration
 
 Modules that use annotated handlers need `foundation-event-ksp`:
