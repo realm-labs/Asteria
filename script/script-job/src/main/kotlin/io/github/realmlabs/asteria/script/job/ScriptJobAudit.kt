@@ -2,6 +2,7 @@ package io.github.realmlabs.asteria.script.job
 
 import io.github.realmlabs.asteria.script.ScriptExecutionCommand
 import io.github.realmlabs.asteria.script.ScriptExecutionResult
+import io.github.realmlabs.asteria.script.policyType
 import java.time.Instant
 import java.util.*
 
@@ -66,7 +67,7 @@ internal fun ScriptExecutionCommand.auditAttributes(): Map<String, String> {
         put("scriptName", artifact.name)
         put("scriptEngine", artifact.engine)
         artifact.checksum?.let { put("scriptChecksum", it) }
-        put("targetType", target.auditType())
+        put("targetType", target.policyType())
         metadata.requester?.let { put("requester", it) }
         metadata.reason?.let { put("reason", it) }
         if (metadata.resources.isNotEmpty()) {

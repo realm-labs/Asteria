@@ -1,7 +1,7 @@
 package io.github.realmlabs.asteria.script.job
 
 import io.github.realmlabs.asteria.script.ScriptExecutionCommand
-import io.github.realmlabs.asteria.script.ScriptTarget
+import io.github.realmlabs.asteria.script.policyType
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -68,7 +68,7 @@ class SemaphoreScriptJobExecutionLimiter(
             }
             engines[context.command.artifact.engine]?.let { add(it) }
             context.command.metadata.requester?.let { operators[it]?.let(::add) }
-            targetTypes[context.command.target.auditType()]?.let { add(it) }
+            targetTypes[context.command.target.policyType()]?.let { add(it) }
         }
         return withPermits(permits, block)
     }
@@ -242,15 +242,4 @@ private fun ScriptJobExecutionContext.requestedMaxConcurrentItems(): Int? {
     val parsed = value.toIntOrNull()
     require(parsed != null && parsed > 0) { "script job max concurrent items must be positive" }
     return parsed
-}
-
-internal fun ScriptTarget.auditType(): String {
-    return when (this) {
-        ScriptTarget.AllNodes -> "all-nodes"
-        is ScriptTarget.ActorPath -> "actor-paths"
-        is ScriptTarget.Entity -> "entity"
-        is ScriptTarget.Node -> "nodes"
-        is ScriptTarget.Role -> "role"
-        is ScriptTarget.Singleton -> "singleton"
-    }
 }
