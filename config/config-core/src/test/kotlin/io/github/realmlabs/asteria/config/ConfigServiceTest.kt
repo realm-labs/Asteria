@@ -129,6 +129,49 @@ class ConfigServiceTest {
     }
 
     @Test
+    fun `generated refs can require concrete generic table implementations`() {
+        val table = mapConfigTable(
+            ref = TestConfigTables.Items,
+            rows = mapOf(1 to ItemConfig(1, "Sword", 10)),
+        )
+        val snapshot = DefaultConfigSnapshot(
+            revision = ConfigRevision("v1"),
+            tables = listOf(table),
+        )
+
+        val typed: MapConfigTable<Int, ItemConfig> = snapshot.requireTable(TestConfigTables.Items, MapConfigTable::class)
+
+        assertSame(table, typed)
+        assertEquals("Sword", typed.getValue(1).name)
+    }
+
+    @Test
+    fun `generated refs fail fast when concrete table implementation mismatches`() {
+        val table = mapConfigTable(
+            ref = TestConfigTables.Items,
+            rows = mapOf(1 to ItemConfig(1, "Sword", 10)),
+        )
+        val snapshot = DefaultConfigSnapshot(
+            revision = ConfigRevision("v1"),
+            tables = listOf(table),
+        )
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            val typed: OrderedMapConfigTable<Int, ItemConfig> = snapshot.requireTable(
+                TestConfigTables.Items,
+                OrderedMapConfigTable::class,
+            )
+            typed.size
+        }
+
+        assertEquals(
+            "config table items table type mismatch, expected io.github.realmlabs.asteria.config.OrderedMapConfigTable, " +
+                    "actual io.github.realmlabs.asteria.config.MapConfigTable",
+            error.message,
+        )
+    }
+
+    @Test
     fun `reload rejects component build failure before publishing`() = runBlocking {
         var version = 0
         val service = ConfigService(

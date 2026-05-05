@@ -19,6 +19,7 @@ class AsteriaConfigCodeGeneratorTest {
                     tableName = "items",
                     keyType = INT,
                     rowType = ITEM_CONFIG,
+                    tableType = ConfigAccessorTableType(MAP_CONFIG_TABLE, typeArgumentCount = 2),
                 ),
                 ConfigTableModel(
                     tableName = "daily_tasks",
@@ -52,14 +53,17 @@ class AsteriaConfigCodeGeneratorTest {
         assertContains(code, "val RankRewards: RowConfigTableRef<ItemConfig> = rowConfigTableRef(\"rank_rewards\")")
         assertContains(code, "val Global: RowConfigTableRef<ItemConfig> = rowConfigTableRef(\"global\")")
         assertContains(code, "class GameConfigs(")
-        assertContains(code, "val items: KeyedConfigTable<Int, ItemConfig>")
-        assertContains(code, "get() = configService.current().requireTable(GameConfigTables.Items)")
+        assertContains(code, "val items: MapConfigTable<Int, ItemConfig>")
+        assertContains(code, "get() = configService.current().requireTable(GameConfigTables.Items, MapConfigTable::class)")
+        assertContains(code, "fun ConfigSnapshot.items(): MapConfigTable<Int, ItemConfig>")
+        assertContains(code, "= requireTable(GameConfigTables.Items, MapConfigTable::class)")
+        assertContains(code, "fun ConfigService.items(): MapConfigTable<Int, ItemConfig>")
+        assertContains(code, "= current().requireTable(GameConfigTables.Items, MapConfigTable::class)")
+        assertContains(code, "fun ConfigService.dailyTasks(): KeyedConfigTable<Int, TaskConfig>")
         assertContains(code, "val rankRewards: ListConfigTable<ItemConfig>")
         assertContains(code, "get() = configService.current().requireListTable(GameConfigTables.RankRewards)")
         assertContains(code, "val global: SingleConfigTable<ItemConfig>")
         assertContains(code, "get() = configService.current().requireSingleTable(GameConfigTables.Global)")
-        assertContains(code, "fun ConfigSnapshot.items(): KeyedConfigTable<Int, ItemConfig>")
-        assertContains(code, "fun ConfigService.dailyTasks(): KeyedConfigTable<Int, TaskConfig>")
         assertContains(code, "fun ConfigService.rankRewards(): ListConfigTable<ItemConfig>")
         assertContains(code, "fun ConfigSnapshot.global(): SingleConfigTable<ItemConfig>")
     }
@@ -101,5 +105,6 @@ class AsteriaConfigCodeGeneratorTest {
         val INT = ClassName("kotlin", "Int")
         val ITEM_CONFIG = ClassName("com.example.config", "ItemConfig")
         val TASK_CONFIG = ClassName("com.example.config", "TaskConfig")
+        val MAP_CONFIG_TABLE = ClassName("io.github.realmlabs.asteria.config", "MapConfigTable")
     }
 }

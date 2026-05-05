@@ -115,15 +115,10 @@ object AsteriaConfigCodeGenerator {
             )
         tables.forEach { table ->
             builder.addProperty(
-                PropertySpec.builder(table.propertyName, table.tableType())
+                PropertySpec.builder(table.propertyName, table.accessorTableType())
                     .getter(
                         FunSpec.getterBuilder()
-                            .addStatement(
-                                "return configService.current().%M(%T.%L)",
-                                table.requireFunction(),
-                                tablesClass,
-                                table.refName,
-                            )
+                            .addTableRequireStatement("return configService.current().", tablesClass, table)
                             .build(),
                     )
                     .build(),
@@ -138,8 +133,8 @@ object AsteriaConfigCodeGenerator {
     ): FunSpec {
         return FunSpec.builder(table.propertyName)
             .receiver(CONFIG_SNAPSHOT)
-            .returns(table.tableType())
-            .addStatement("return %M(%T.%L)", table.requireFunction(), tablesClass, table.refName)
+            .returns(table.accessorTableType())
+            .addTableRequireStatement("return ", tablesClass, table)
             .build()
     }
 
@@ -149,8 +144,8 @@ object AsteriaConfigCodeGenerator {
     ): FunSpec {
         return FunSpec.builder(table.propertyName)
             .receiver(CONFIG_SERVICE)
-            .returns(table.tableType())
-            .addStatement("return current().%M(%T.%L)", table.requireFunction(), tablesClass, table.refName)
+            .returns(table.accessorTableType())
+            .addTableRequireStatement("return current().", tablesClass, table)
             .build()
     }
 
@@ -163,11 +158,31 @@ object AsteriaConfigCodeGenerator {
         }
     }
 
-    private fun ConfigTableModel.tableType(): TypeName {
+    private fun ConfigTableModel.accessorTableType(): TypeName {
+        val explicitTableType = tableType
+        if (explicitTableType != null) {
+            return explicitTableType.parameterizedFor(this)
+        }
+        return defaultTableType()
+    }
+
+    private fun ConfigTableModel.defaultTableType(): TypeName {
         return when (shape) {
             AsteriaConfigTableShape.KEYED -> KEYED_CONFIG_TABLE.parameterizedBy(requireNotNull(keyType), rowType)
             AsteriaConfigTableShape.LIST -> LIST_CONFIG_TABLE.parameterizedBy(rowType)
             AsteriaConfigTableShape.SINGLETON -> SINGLE_CONFIG_TABLE.parameterizedBy(rowType)
+        }
+    }
+
+    private fun ConfigAccessorTableType.parameterizedFor(table: ConfigTableModel): TypeName {
+        return when (typeArgumentCount) {
+            0 -> rawType
+            else -> when (table.shape) {
+                AsteriaConfigTableShape.KEYED -> rawType.parameterizedBy(requireNotNull(table.keyType), table.rowType)
+                AsteriaConfigTableShape.LIST,
+                AsteriaConfigTableShape.SINGLETON,
+                    -> rawType.parameterizedBy(table.rowType)
+            }
         }
     }
 
@@ -185,6 +200,25 @@ object AsteriaConfigCodeGenerator {
             AsteriaConfigTableShape.KEYED -> REQUIRE_TABLE
             AsteriaConfigTableShape.LIST -> REQUIRE_LIST_TABLE
             AsteriaConfigTableShape.SINGLETON -> REQUIRE_SINGLE_TABLE
+        }
+    }
+
+    private fun FunSpec.Builder.addTableRequireStatement(
+        prefix: String,
+        tablesClass: ClassName,
+        table: ConfigTableModel,
+    ): FunSpec.Builder {
+        val explicitTableType = table.tableType
+        return if (explicitTableType == null) {
+            addStatement("$prefix%M(%T.%L)", table.requireFunction(), tablesClass, table.refName)
+        } else {
+            addStatement(
+                "$prefix%M(%T.%L, %T::class)",
+                table.requireFunction(),
+                tablesClass,
+                table.refName,
+                explicitTableType.rawType,
+            )
         }
     }
 
@@ -225,6 +259,7 @@ data class ConfigTableModel(
     val shape: AsteriaConfigTableShape = AsteriaConfigTableShape.KEYED,
     val keyType: TypeName? = null,
     val rowType: TypeName,
+    val tableType: ConfigAccessorTableType? = null,
     val refName: String = tableName.toUpperCamelIdentifier(),
     val propertyName: String = tableName.toLowerCamelIdentifier(),
 ) {
@@ -233,8 +268,29 @@ data class ConfigTableModel(
         require(shape != AsteriaConfigTableShape.KEYED || keyType != null) {
             "keyed config table $tableName requires keyType"
         }
+        tableType?.let { explicitType ->
+            val expectedTypeArgumentCount = when (shape) {
+                AsteriaConfigTableShape.KEYED -> 2
+                AsteriaConfigTableShape.LIST,
+                AsteriaConfigTableShape.SINGLETON,
+                    -> 1
+            }
+            require(explicitType.typeArgumentCount == 0 || explicitType.typeArgumentCount == expectedTypeArgumentCount) {
+                "config table $tableName tableType ${explicitType.rawType} must declare either 0 or " +
+                        "$expectedTypeArgumentCount type parameters"
+            }
+        }
         require(refName.isValidKotlinIdentifier()) { "invalid generated config table ref name $refName" }
         require(propertyName.isValidKotlinIdentifier()) { "invalid generated config accessor property name $propertyName" }
+    }
+}
+
+data class ConfigAccessorTableType(
+    val rawType: ClassName,
+    val typeArgumentCount: Int,
+) {
+    init {
+        require(typeArgumentCount >= 0) { "config accessor table type argument count must not be negative" }
     }
 }
 

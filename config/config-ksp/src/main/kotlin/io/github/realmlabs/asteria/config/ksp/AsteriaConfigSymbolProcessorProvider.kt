@@ -212,16 +212,58 @@ private class AsteriaConfigSymbolProcessor(
         } else {
             explicitRowType.toTypeName()
         }
+        val tableType = annotation.typeKSTypeArg("tableType")
+            ?.takeUnless { it.isNothingType() }
+            ?.let { tableType ->
+                readAccessorTableType(symbol, tableName, shape, tableType)
+            }
         return ConfigTableModel(
             tableName = tableName,
             shape = shape,
             keyType = keyType,
             rowType = rowType,
+            tableType = tableType,
             refName = annotation.stringArg("refName").takeIf { it.isNotBlank() }
                 ?: tableName.toUpperCamelIdentifier(),
             propertyName = annotation.stringArg("propertyName").takeIf { it.isNotBlank() }
                 ?: tableName.toLowerCamelIdentifier(),
         )
+    }
+
+    private fun readAccessorTableType(
+        symbol: KSClassDeclaration,
+        tableName: String,
+        shape: AsteriaConfigTableShape,
+        tableType: KSType,
+    ): ConfigAccessorTableType? {
+        val declaration = tableType.declaration as? KSClassDeclaration ?: run {
+            logger.error("config table $tableName tableType must be a class", symbol)
+            return null
+        }
+        val expectedSuperType = when (shape) {
+            AsteriaConfigTableShape.KEYED -> "io.github.realmlabs.asteria.config.KeyedConfigTable"
+            AsteriaConfigTableShape.LIST -> "io.github.realmlabs.asteria.config.ListConfigTable"
+            AsteriaConfigTableShape.SINGLETON -> "io.github.realmlabs.asteria.config.SingleConfigTable"
+        }
+        if (!declaration.hasSuperType(expectedSuperType)) {
+            logger.error("config table $tableName tableType must extend $expectedSuperType", symbol)
+            return null
+        }
+        val typeArgumentCount = declaration.typeParameters.size
+        val expectedTypeArgumentCount = when (shape) {
+            AsteriaConfigTableShape.KEYED -> 2
+            AsteriaConfigTableShape.LIST,
+            AsteriaConfigTableShape.SINGLETON,
+                -> 1
+        }
+        if (typeArgumentCount != 0 && typeArgumentCount != expectedTypeArgumentCount) {
+            logger.error(
+                "config table $tableName tableType must declare either 0 or $expectedTypeArgumentCount type parameters",
+                symbol,
+            )
+            return null
+        }
+        return ConfigAccessorTableType(declaration.toClassName(), typeArgumentCount)
     }
 
     private fun hasConfigChangeCatalog(resolver: Resolver): Boolean {
@@ -256,6 +298,15 @@ private class AsteriaConfigSymbolProcessor(
 
     private fun KSType.isNothingType(): Boolean {
         return declaration.qualifiedName?.asString() == "kotlin.Nothing"
+    }
+
+    private fun KSClassDeclaration.hasSuperType(qualifiedName: String): Boolean {
+        if (this.qualifiedName?.asString() == qualifiedName) {
+            return true
+        }
+        return superTypes
+            .mapNotNull { it.resolve().declaration as? KSClassDeclaration }
+            .any { it.hasSuperType(qualifiedName) }
     }
 }
 

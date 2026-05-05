@@ -99,6 +99,9 @@ object AsteriaLubanConfigMarkerGenerator {
                     appendLine("    keyType = ${table.keyType}::class,")
                 }
                 appendLine("    rowType = ${table.rowType}::class,")
+                if (table.tableType.isNotBlank()) {
+                    appendLine("    tableType = ${table.tableType}::class,")
+                }
                 if (table.refName.isNotBlank()) {
                     appendLine("    refName = ${table.refName.kotlinString()},")
                 }
@@ -148,6 +151,7 @@ data class LubanConfigTableSpec(
     val shape: LubanConfigTableShape = LubanConfigTableShape.KEYED,
     val keyType: String = "",
     val rowType: String,
+    val tableType: String = "",
     val refName: String = "",
     val propertyName: String = "",
     val markerName: String = "${name.toUpperCamelIdentifier()}Table",
@@ -161,6 +165,9 @@ data class LubanConfigTableSpec(
             "Luban config table $name must not declare keyType when shape is $shape"
         }
         require(rowType.isValidQualifiedClassName()) { "invalid Luban config row type $rowType" }
+        require(tableType.isBlank() || tableType.isValidQualifiedClassName()) {
+            "invalid Luban config table type $tableType"
+        }
         require(refName.isBlank() || refName.isValidKotlinIdentifier()) { "invalid generated config ref name $refName" }
         require(propertyName.isBlank() || propertyName.isValidKotlinIdentifier()) {
             "invalid generated config property name $propertyName"

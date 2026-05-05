@@ -74,6 +74,7 @@ abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
                     ?: LubanConfigTableShape.KEYED,
                 keyType = table.optionalString("keyType"),
                 rowType = table.requiredString("rowType", index),
+                tableType = table.optionalString("tableType"),
                 refName = table.optionalString("refName"),
                 propertyName = table.optionalString("propertyName"),
                 markerName = table.optionalString("markerName")

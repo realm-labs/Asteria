@@ -122,6 +122,25 @@ fun <K : Any, R : Any> ConfigSnapshot.table(ref: ConfigTableRef<K, R>): KeyedCon
 }
 
 /**
+ * Returns a keyed table by [ref] and verifies its concrete implementation type.
+ *
+ * Generated accessors use this when table metadata requests a concrete return type such as
+ * [MapConfigTable] or [OrderedMapConfigTable].
+ */
+fun <K : Any, R : Any, T : KeyedConfigTable<K, R>> ConfigSnapshot.table(
+    ref: ConfigTableRef<K, R>,
+    tableType: KClass<out KeyedConfigTable<*, *>>,
+): T? {
+    val table = table(ref) ?: return null
+    require(tableType.isInstance(table)) {
+        "config table ${ref.name} table type mismatch, expected ${tableType.qualifiedName}, " +
+                "actual ${table::class.qualifiedName}"
+    }
+    @Suppress("UNCHECKED_CAST")
+    return table as T
+}
+
+/**
  * Returns a typed table by generated [ref] or throws with revision context.
  */
 fun <R : Any> ConfigSnapshot.requireTable(ref: RowConfigTableRef<R>): ConfigTable<R> {
@@ -135,6 +154,13 @@ fun <K : Any, R : Any> ConfigSnapshot.requireTable(ref: ConfigTableRef<K, R>): K
     return table(ref) ?: error("config table ${ref.name} not found in revision ${revision.version}")
 }
 
+fun <K : Any, R : Any, T : KeyedConfigTable<K, R>> ConfigSnapshot.requireTable(
+    ref: ConfigTableRef<K, R>,
+    tableType: KClass<out KeyedConfigTable<*, *>>,
+): T {
+    return table(ref, tableType) ?: error("config table ${ref.name} not found in revision ${revision.version}")
+}
+
 fun <R : Any> ConfigSnapshot.listTable(ref: RowConfigTableRef<R>): ListConfigTable<R>? {
     val table = table(ref) ?: return null
     require(table is ListConfigTable<*>) {
@@ -144,8 +170,28 @@ fun <R : Any> ConfigSnapshot.listTable(ref: RowConfigTableRef<R>): ListConfigTab
     return table as ListConfigTable<R>
 }
 
+fun <R : Any, T : ListConfigTable<R>> ConfigSnapshot.listTable(
+    ref: RowConfigTableRef<R>,
+    tableType: KClass<out ListConfigTable<*>>,
+): T? {
+    val table = listTable(ref) ?: return null
+    require(tableType.isInstance(table)) {
+        "config table ${ref.name} table type mismatch, expected ${tableType.qualifiedName}, " +
+                "actual ${table::class.qualifiedName}"
+    }
+    @Suppress("UNCHECKED_CAST")
+    return table as T
+}
+
 fun <R : Any> ConfigSnapshot.requireListTable(ref: RowConfigTableRef<R>): ListConfigTable<R> {
     return listTable(ref) ?: error("config list table ${ref.name} not found in revision ${revision.version}")
+}
+
+fun <R : Any, T : ListConfigTable<R>> ConfigSnapshot.requireListTable(
+    ref: RowConfigTableRef<R>,
+    tableType: KClass<out ListConfigTable<*>>,
+): T {
+    return listTable(ref, tableType) ?: error("config list table ${ref.name} not found in revision ${revision.version}")
 }
 
 fun <R : Any> ConfigSnapshot.singleTable(ref: RowConfigTableRef<R>): SingleConfigTable<R>? {
@@ -157,8 +203,29 @@ fun <R : Any> ConfigSnapshot.singleTable(ref: RowConfigTableRef<R>): SingleConfi
     return table as SingleConfigTable<R>
 }
 
+fun <R : Any, T : SingleConfigTable<R>> ConfigSnapshot.singleTable(
+    ref: RowConfigTableRef<R>,
+    tableType: KClass<out SingleConfigTable<*>>,
+): T? {
+    val table = singleTable(ref) ?: return null
+    require(tableType.isInstance(table)) {
+        "config table ${ref.name} table type mismatch, expected ${tableType.qualifiedName}, " +
+                "actual ${table::class.qualifiedName}"
+    }
+    @Suppress("UNCHECKED_CAST")
+    return table as T
+}
+
 fun <R : Any> ConfigSnapshot.requireSingleTable(ref: RowConfigTableRef<R>): SingleConfigTable<R> {
     return singleTable(ref) ?: error("config singleton table ${ref.name} not found in revision ${revision.version}")
+}
+
+fun <R : Any, T : SingleConfigTable<R>> ConfigSnapshot.requireSingleTable(
+    ref: RowConfigTableRef<R>,
+    tableType: KClass<out SingleConfigTable<*>>,
+): T {
+    return singleTable(ref, tableType)
+        ?: error("config singleton table ${ref.name} not found in revision ${revision.version}")
 }
 
 /**

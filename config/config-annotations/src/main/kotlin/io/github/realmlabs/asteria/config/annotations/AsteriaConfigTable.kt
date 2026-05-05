@@ -43,6 +43,14 @@ annotation class AsteriaConfigTable(
      */
     val rowType: KClass<*> = Nothing::class,
     /**
+     * Optional concrete table implementation returned by generated accessors.
+     *
+     * Leave this unset to return shape-level interfaces such as `KeyedConfigTable<K, R>`. Set it
+     * when callers need implementation APIs, for example `MapConfigTable<K, R>` or
+     * `OrderedMapConfigTable<K, R>`.
+     */
+    val tableType: KClass<*> = Nothing::class,
+    /**
      * Optional generated reference property name, for example `Items`.
      */
     val refName: String = "",

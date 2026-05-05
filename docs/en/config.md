@@ -92,7 +92,8 @@ the recommended bridge is a metadata file emitted by the Luban export step:
       "name": "items",
       "shape": "KEYED",
       "keyType": "kotlin.Int",
-      "rowType": "cfg.item.ItemConfig"
+      "rowType": "cfg.item.ItemConfig",
+      "tableType": "io.github.realmlabs.asteria.config.MapConfigTable"
     },
     {
       "name": "global",
@@ -105,6 +106,9 @@ the recommended bridge is a metadata file emitted by the Luban export step:
 
 The Gradle plugin turns this metadata into Kotlin markers, then KSP generates `GameConfigTables` and `ConfigService`
 extension functions. Generated files are chunked so large config catalogs do not become one oversized Kotlin file.
+`tableType` is optional. Without it, keyed accessors return `KeyedConfigTable<K, R>`; with it, generated accessors return
+the requested concrete type, such as `MapConfigTable<K, R>` or `OrderedMapConfigTable<K, R>`, so callers can use the
+underlying collection API.
 
 ## Hot Reload and Change Dispatch
 

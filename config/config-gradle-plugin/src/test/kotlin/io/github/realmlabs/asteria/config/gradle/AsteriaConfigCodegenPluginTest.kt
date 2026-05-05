@@ -39,6 +39,7 @@ class AsteriaConfigCodegenPluginTest {
                     name = "items",
                     keyType = "kotlin.Int",
                     rowType = "cfg.item.ItemConfig",
+                    tableType = "io.github.realmlabs.asteria.config.MapConfigTable",
                     refName = "Items",
                     propertyName = "items",
                 ),
@@ -66,6 +67,7 @@ class AsteriaConfigCodegenPluginTest {
         assertContains(source, "name = \"items\"")
         assertContains(source, "keyType = kotlin.Int::class")
         assertContains(source, "rowType = cfg.item.ItemConfig::class")
+        assertContains(source, "tableType = io.github.realmlabs.asteria.config.MapConfigTable::class")
         assertContains(source, "object ItemsTable")
         assertContains(source, "shape = AsteriaConfigTableShape.LIST")
         assertContains(source, "object RankRewardsTable")
