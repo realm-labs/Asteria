@@ -38,7 +38,8 @@ state, and callable functions.
 - `Entity`: execute on selected sharding entities.
 - `Singleton`: execute on selected cluster singletons.
 
-Business actors must expose a script execution entry point, or inherit/compose the `ScriptableAsteriaActor` support.
+Business actors must expose a script execution entry point, usually by composing `ActorScriptSupport` and merging
+`ActorScriptSupport.receive()` into the receive states that should accept scripts.
 
 `ScriptModule` defaults `allowNodeScripts` and `allowActorScripts` to `false`. Without explicit enablement, the default
 policy rejects those targets. Actor path, entity, and singleton targets also require target actors to integrate

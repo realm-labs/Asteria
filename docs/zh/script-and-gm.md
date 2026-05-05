@@ -34,7 +34,7 @@ val result = scriptRuntime.execute(command)
 - `Entity`：指定 sharding entity 执行。
 - `Singleton`：指定 cluster singleton 执行。
 
-业务 actor 需要实现脚本执行入口，或者继承/组合 `ScriptableAsteriaActor` 相关支持。
+业务 actor 需要实现脚本执行入口，通常是在 actor 内组合 `ActorScriptSupport`，并把 `ActorScriptSupport.receive()` 合并进允许执行脚本的 receive 状态。
 
 `ScriptModule` 的 `allowNodeScripts` 和 `allowActorScripts` 默认都是 `false`。没有显式开启时，对应目标会被默认策略拒绝。目标
 actor 没有接入 `ActorScriptSupport` 时，actor path、entity 和 singleton 目标也不会执行脚本。
