@@ -7,10 +7,19 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import kotlin.io.path.name
 
+/**
+ * Content-addressed store for patch artifacts.
+ *
+ * Checksums use the `sha256:<hex>` format. [load] must verify the bytes before returning them so corrupted or
+ * misaddressed artifacts fail before a plugin resolver tries to execute them.
+ */
 fun interface PatchArtifactStore {
     suspend fun load(artifact: PatchArtifact): ByteArray
 }
 
+/**
+ * Artifact store that can persist new bytes and return their normalized [PatchArtifact] descriptor.
+ */
 interface WritablePatchArtifactStore : PatchArtifactStore {
     suspend fun save(
         name: String,
@@ -48,6 +57,12 @@ class InMemoryPatchArtifactStore(
     }
 }
 
+/**
+ * Local filesystem artifact store keyed by checksum.
+ *
+ * Saved files are named from the normalized checksum plus the safe extension from the artifact name. Original paths are
+ * not preserved.
+ */
 class LocalFilePatchArtifactStore(
     private val directory: Path,
 ) : WritablePatchArtifactStore {

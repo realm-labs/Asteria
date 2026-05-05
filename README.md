@@ -60,6 +60,22 @@ From there, plug in the modules you need: `ConfigModule` for config snapshots an
 cluster actors, `gateway-netty` transport pieces for client sessions, persistence modules for storage, and GM modules
 for internal tools. The sections below show the available modules and deeper setup examples.
 
+## Runtime Behavior Contracts
+
+Asteria separates startup configuration, runtime snapshots, and long-lived external-service leases:
+
+- Startup inputs such as cluster topology are read while building the runtime. Changing a node host, port, role, or seed
+  entry in a config center does not hot-reconfigure an existing Pekko actor system; handle those changes with restart or
+  rolling deployment procedures.
+- Runtime config tables are loaded once by default. Enable `ConfigModule.hotReload` when a game explicitly supports
+  reloading those tables. The hot reload path always reloads and validates a complete snapshot before publishing it.
+- Config-center watch helpers are best-effort notification sources. `RuntimeConfigRepository` and
+  `ConfigCenterReloadTrigger` rebuild failed watches and resync by re-reading state, so consumers should prefer those
+  helpers over raw `ConfigStore.watch` for background services.
+- Lease-backed services fail closed. Worker IDs and script-job permits retry transient backend failures only while the
+  current lease is still valid. Once ownership cannot be proven, ID generation or script execution stops instead of
+  continuing with a stale lease.
+
 ## Modules
 
 Foundation modules:

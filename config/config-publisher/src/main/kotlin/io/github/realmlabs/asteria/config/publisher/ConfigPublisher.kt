@@ -34,6 +34,15 @@ class ConfigPublisher(
 ) {
     private val logger = LoggerFactory.getLogger(ConfigPublisher::class.java)
 
+    /**
+     * Publishes one validated config revision.
+     *
+     * The write order is deliberate: raw artifacts, manifest, history record, then the `current` pointer. The operation
+     * is not a global transaction; a failure may leave immutable artifacts or a manifest behind, but consumers that load
+     * through [ConfigPublicationConsumer.loadCurrent] only observe the revision after the current pointer has moved.
+     * Duplicate artifact paths are rejected before any upload. Validators and component builders run before artifact
+     * writes begin.
+     */
     suspend fun publish(): ConfigPublicationResult {
         val startedAt = System.nanoTime()
         metrics.counter("asteria.config.publisher.publish.total").increment()
@@ -129,6 +138,12 @@ class ConfigPublisher(
     }
 }
 
+/**
+ * Result of a successful [ConfigPublisher.publish].
+ *
+ * Store revisions are backend compare-and-set tokens for individual config-center writes. They are not the same thing
+ * as the business [ConfigSnapshot.revision].
+ */
 data class ConfigPublicationResult(
     val snapshot: ConfigSnapshot,
     val manifest: ConfigPublicationManifest,

@@ -3,6 +3,12 @@ package io.github.realmlabs.asteria.patch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/**
+ * Durable store for runtime patch metadata.
+ *
+ * Implementations should make [nextSequence] atomic and monotonically increasing. [save] is an upsert. [list] must
+ * return results sorted by [RuntimePatch.order] so callers apply patches in deterministic order.
+ */
 interface RuntimePatchRepository {
     suspend fun nextSequence(): Long
 
@@ -12,8 +18,16 @@ interface RuntimePatchRepository {
 
     suspend fun list(query: RuntimePatchQuery = RuntimePatchQuery()): List<RuntimePatch>
 
+    /**
+     * Updates status and returns the new patch, or `null` if the patch no longer exists.
+     */
     suspend fun updateStatus(id: PatchId, status: PatchStatus): RuntimePatch?
 
+    /**
+     * Marks enabled patches for the same app as expired when they no longer match [environment].
+     *
+     * This is a best-effort scan/update loop, not a transaction across all matching patches.
+     */
     suspend fun expireIncompatible(environment: PatchEnvironment): List<RuntimePatch> {
         return list(
             RuntimePatchQuery(

@@ -78,9 +78,6 @@ data class NacosConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
-/**
- * Builder for [NacosConfigCenterModule].
- */
 @AsteriaDsl
 class NacosConfigCenterModuleBuilder {
     var serverAddr: String? = null

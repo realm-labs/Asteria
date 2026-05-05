@@ -13,6 +13,11 @@ import kotlinx.coroutines.sync.withLock
  * request that created them has returned.
  */
 interface ScriptJobRepository {
+    /**
+     * Creates a job and its full item set.
+     *
+     * Implementations should reject duplicate job ids and duplicate item ids rather than merging with existing state.
+     */
     suspend fun create(job: ScriptJob, items: List<ScriptJobItem>)
 
     /**
@@ -38,6 +43,13 @@ interface ScriptJobRepository {
         leaseUntilMillis: Long,
     )
 
+    /**
+     * Finishes a running attempt if the caller still owns the item lease.
+     *
+     * Returns `false` for stale finishes: wrong owner, wrong attempt, or an item that is no longer running. If a
+     * cancellation was requested while the attempt was running, implementations should store the final item status as
+     * [ScriptJobItemStatus.Cancelled] even when [status] is completed or failed.
+     */
     suspend fun markItemFinished(
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
@@ -48,6 +60,12 @@ interface ScriptJobRepository {
         error: String? = null,
     ): Boolean
 
+    /**
+     * Extends the running item lease.
+     *
+     * Returns `false` when the item no longer exists, is not running, has a different attempt, or is leased by another
+     * worker. Callers must then stop executing the item.
+     */
     suspend fun renewRunningItemLease(
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
@@ -56,6 +74,12 @@ interface ScriptJobRepository {
         leaseUntilMillis: Long,
     ): Boolean
 
+    /**
+     * Marks expired running leases terminal and returns the items changed by this call.
+     *
+     * Expired items become failed unless a cancellation was already requested, in which case they become cancelled.
+     * Recovery loops call this before claiming more work.
+     */
     suspend fun expireLeasedRunningItems(
         id: ScriptJobId,
         nowMillis: Long = System.currentTimeMillis(),
@@ -72,8 +96,17 @@ interface ScriptJobRepository {
 
     suspend fun findItem(id: ScriptJobId, itemId: ScriptJobItemId): ScriptJobItem?
 
+    /**
+     * Marks all non-terminal items in the job for cancellation.
+     *
+     * Pending items become cancelled immediately. Running items keep executing until their runtime observes
+     * cancellation or their lease expires.
+     */
     suspend fun cancelJob(id: ScriptJobId, cancellation: ScriptJobCancellation = ScriptJobCancellation()): ScriptJob?
 
+    /**
+     * Marks one item for cancellation using the same pending/running semantics as [cancelJob].
+     */
     suspend fun cancelItem(
         id: ScriptJobId,
         itemId: ScriptJobItemId,

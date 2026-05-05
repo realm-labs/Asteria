@@ -10,6 +10,14 @@ import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import kotlin.reflect.KClass
 
+/**
+ * Loads Luban JSON exports into an Asteria [ConfigSnapshot].
+ *
+ * Each Luban `load("name")` call reads `name.json` from [dataSource], parses it with [objectMapper], and returns the
+ * resulting Jackson node to the generated Luban loader. The generated loader method return type must accept that
+ * Jackson value. Missing files, parse failures, or incompatible return types fail the whole snapshot load. The default
+ * revision is a SHA-256 checksum over the files actually requested by the Luban tables, ordered by file name.
+ */
 class LubanJsonConfigLoader<T : Any, L : Any>(
     private val tablesType: KClass<T>,
     private val dataSource: LubanDataSource,

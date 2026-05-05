@@ -13,6 +13,13 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration.Companion.milliseconds
 
+/**
+ * Acquires a process-wide [WorkerId] and registers a lease-aware [IdGenerator].
+ *
+ * The module renews the lease in the background. Transient repository failures are retried until the current lease
+ * expires. Once renewal returns `null` or the lease expires before a successful retry, the registered generator fails
+ * closed with [WorkerIdLeaseLostException] so the process cannot keep issuing IDs for an id it may no longer own.
+ */
 class WorkerIdModule(
     private val repository: WorkerIdRepository,
     private val options: WorkerIdModuleOptions = WorkerIdModuleOptions(),
@@ -161,8 +168,8 @@ private fun WorkerIdLease.metricTags(appName: String): MetricTags {
 /**
  * Runtime view for the worker id owned by this process.
  *
- * The lease can change after periodic renewal. Keep this object if diagnostics need the current
- * lease; use the registered [IdGenerator] when only ID generation is needed.
+ * [lease] is updated after successful renewals. [lost] becomes true when the module can no longer prove ownership; the
+ * registered [idGenerator] then throws [WorkerIdLeaseLostException] instead of producing IDs.
  */
 class WorkerIdRuntime internal constructor(
     initialLease: WorkerIdLease,
@@ -193,6 +200,9 @@ class WorkerIdRuntime internal constructor(
     }
 }
 
+/**
+ * Raised by the registered [IdGenerator] after worker-id ownership is lost.
+ */
 class WorkerIdLeaseLostException(
     val lease: WorkerIdLease,
     cause: Throwable? = null,

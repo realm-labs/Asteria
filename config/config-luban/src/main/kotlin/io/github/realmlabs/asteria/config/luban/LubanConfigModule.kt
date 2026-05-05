@@ -10,6 +10,13 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import kotlin.reflect.KClass
 
+/**
+ * Installs a [ConfigService] backed by Luban JSON or binary exports.
+ *
+ * The module requires a Luban root tables type, a [LubanSnapshotBridge], and either [LubanConfigModuleBuilder.dataDir]
+ * or [LubanConfigModuleBuilder.dataSource]. It performs an initial load by default but does not install hot reload; use
+ * `ConfigModule` with a Luban loader when config-center or file-watch reload behavior is needed.
+ */
 class LubanConfigModule private constructor(
     private val options: LubanConfigModuleOptions,
 ) : AsteriaModule {
@@ -55,6 +62,9 @@ class LubanConfigModule private constructor(
     }
 }
 
+/**
+ * Immutable options for [LubanConfigModule].
+ */
 data class LubanConfigModuleOptions(
     val tablesType: KClass<Any>?,
     val dataSource: LubanDataSource?,

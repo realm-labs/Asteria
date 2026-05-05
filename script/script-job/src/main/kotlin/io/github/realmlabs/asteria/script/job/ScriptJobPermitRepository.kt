@@ -30,9 +30,19 @@ data class ScriptJobPermitLease(
 }
 
 /**
- * Shared permit store used to cap script job execution across multiple GM workers.
+ * Shared permit store used by [RepositoryScriptJobExecutionLimiter].
+ *
+ * A permit lease reserves capacity in one named [pool]. Repository methods return `null` or `false` when capacity or
+ * ownership is not available; transient backend outages should be reported by throwing so the limiter can retry until
+ * the active lease window closes.
  */
 interface ScriptJobPermitRepository {
+    /**
+     * Attempts to reserve [permits] in [pool] without exceeding [limit].
+     *
+     * Returns `null` when the pool is currently full. Implementations should ignore or remove expired leases before
+     * checking capacity.
+     */
     suspend fun acquire(
         pool: String,
         owner: String,
@@ -42,17 +52,28 @@ interface ScriptJobPermitRepository {
         nowMillis: Long = System.currentTimeMillis(),
     ): ScriptJobPermitLease?
 
+    /**
+     * Extends [lease].
+     *
+     * Returns `false` when the lease has expired or no longer belongs to [ScriptJobPermitLease.owner]. The running job
+     * item must then stop because another worker may acquire the same capacity.
+     */
     suspend fun renew(
         lease: ScriptJobPermitLease,
         leaseUntilMillis: Long,
         nowMillis: Long = System.currentTimeMillis(),
     ): Boolean
 
+    /**
+     * Releases [lease].
+     *
+     * A `false` result is not fatal for callers; it usually means the lease already expired or was cleaned up.
+     */
     suspend fun release(lease: ScriptJobPermitLease): Boolean
 }
 
 /**
- * In-memory permit repository for local development and tests.
+ * Single-process permit repository for local development and tests.
  */
 class InMemoryScriptJobPermitRepository : ScriptJobPermitRepository {
     private val mutex = Mutex()

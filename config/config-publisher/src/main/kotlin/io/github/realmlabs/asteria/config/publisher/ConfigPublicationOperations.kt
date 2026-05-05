@@ -37,6 +37,10 @@ class ConfigPublicationOperations(
 
     /**
      * Moves the current pointer to a previously published revision after validating its manifest and artifacts.
+     *
+     * This does not rewrite artifacts or the manifest. It writes a new current pointer and creates a missing history
+     * record when necessary. Concurrent publishes/promotions are last-writer-wins because the current pointer is not
+     * updated with a caller-supplied CAS token.
      */
     suspend fun promote(revision: ConfigRevision): CurrentConfigPublication {
         val bundle = consumer().loadRevision(revision)
@@ -55,6 +59,7 @@ class ConfigPublicationOperations(
      *
      * The current revision is always retained unless [keepCurrent] is false. Artifact paths are read from each
      * manifest, so nested artifact directories do not require tree-list support from the backing config center.
+     * Revisions that have no history record are not discovered by this method.
      */
     suspend fun prune(
         retainLatest: Int,

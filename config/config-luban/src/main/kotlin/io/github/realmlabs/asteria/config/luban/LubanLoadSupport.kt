@@ -13,6 +13,12 @@ import java.security.MessageDigest
 import kotlin.io.path.name
 import kotlin.reflect.KClass
 
+/**
+ * Controls how [DirectoryLubanDataSource] reads files after it has listed the data directory.
+ *
+ * With [enabled] set to `false`, files are still read during `list`; the difference is that reads happen serially via
+ * the configured resolver instead of concurrently from the enumerated paths.
+ */
 data class LubanPreloadOptions(
     val enabled: Boolean = true,
     val maxConcurrency: Int = 4,
@@ -27,6 +33,14 @@ interface LubanLoadReport {
     val checksum: String
 }
 
+/**
+ * Connects Asteria config snapshots to Luban-generated table classes.
+ *
+ * [loaderType] must be the Luban generated loader interface that declares `load(String)`. Asteria creates a dynamic
+ * proxy for that interface and feeds Luban table constructors from a [LubanDataSource]. [createTables] should only
+ * construct the Luban root tables object. [buildEntries] maps that root object into Asteria [SnapshotEntry] values,
+ * usually typed table entries plus any derived components that validators or game code expect.
+ */
 interface LubanSnapshotBridge<T : Any, L : Any> {
     val loaderType: KClass<L>
 
@@ -45,6 +59,12 @@ interface LubanDataSource {
     suspend fun list(extension: String): Map<String, ByteArray>
 }
 
+/**
+ * In-memory data source for config-center artifacts or tests.
+ *
+ * File names are normalized when the source is created. Returned maps are filtered by extension, sorted by file name,
+ * and contain defensive copies of every byte array.
+ */
 class MemoryLubanDataSource(
     files: Map<String, ByteArray>,
 ) : LubanDataSource {
@@ -62,6 +82,12 @@ class MemoryLubanDataSource(
     }
 }
 
+/**
+ * Reads Luban files from the first level of [dataDir].
+ *
+ * Directory traversal is not recursive. When preload is disabled, [fileResolver] is used to read each listed file by
+ * name; when preload is enabled, the already enumerated paths are read concurrently.
+ */
 class DirectoryLubanDataSource(
     private val dataDir: Path,
     private val preloadOptions: LubanPreloadOptions = LubanPreloadOptions(),

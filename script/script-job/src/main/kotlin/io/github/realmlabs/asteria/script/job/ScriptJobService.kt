@@ -7,6 +7,13 @@ import java.util.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * Orchestrates asynchronous script jobs over [ScriptRuntime].
+ *
+ * Public methods update durable job state first and run script work on [scope]. A returned [ScriptJob] or
+ * [ScriptJobItem] confirms that orchestration state was written, not that execution has completed. Item commands use
+ * execution ids derived from the submitted command as `source.item.attempt`.
+ */
 class ScriptJobService(
     private val runtime: ScriptRuntime,
     private val repository: ScriptJobRepository,
@@ -27,6 +34,12 @@ class ScriptJobService(
         require(leaseRenewalInterval > Duration.ZERO) { "script job lease renewal interval must be positive" }
     }
 
+    /**
+     * Creates a job, expands its target into items, and schedules background execution.
+     *
+     * The returned job is usually still pending or running. [timeout] is passed to each item execution attempt rather
+     * than acting as a deadline for the whole job.
+     */
     suspend fun submit(
         command: ScriptExecutionCommand,
         timeout: Duration = 3.seconds,
@@ -52,6 +65,11 @@ class ScriptJobService(
         }
     }
 
+    /**
+     * Starts a new attempt for one failed item.
+     *
+     * Only failed items are retryable. The retry is scheduled asynchronously after the item is marked running.
+     */
     suspend fun retryItem(
         jobId: ScriptJobId,
         itemId: ScriptJobItemId,
@@ -159,6 +177,12 @@ class ScriptJobService(
         )
     }
 
+    /**
+     * Retries failed items selected by [request].
+     *
+     * Each selected item goes through [retryItem], so item-level retry validation and audit behavior are identical to a
+     * single retry.
+     */
     suspend fun retryFailedItems(
         jobId: ScriptJobId,
         request: ScriptJobRetryFailedItemsRequest = ScriptJobRetryFailedItemsRequest(),
@@ -176,6 +200,12 @@ class ScriptJobService(
         }
     }
 
+    /**
+     * Requests cancellation for every non-terminal item in a job.
+     *
+     * Pending items are cancelled immediately by the repository. Running items rely on cooperative script cancellation
+     * or lease expiration before they become terminal.
+     */
     suspend fun cancelJob(
         id: ScriptJobId,
         cancellation: ScriptJobCancellation = ScriptJobCancellation(),
@@ -197,6 +227,9 @@ class ScriptJobService(
         return job
     }
 
+    /**
+     * Requests cancellation for one item using the same pending/running semantics as [cancelJob].
+     */
     suspend fun cancelItem(
         id: ScriptJobId,
         itemId: ScriptJobItemId,
@@ -218,6 +251,12 @@ class ScriptJobService(
         return item
     }
 
+    /**
+     * Resumes jobs that are not terminal.
+     *
+     * For each selected job, expired running item leases are first marked terminal, then pending work is claimed again.
+     * The returned list identifies jobs scheduled for recovery; their item execution continues on [scope].
+     */
     suspend fun resumeIncompleteJobs(
         timeout: Duration = 3.seconds,
         limit: Int = 100,
@@ -239,6 +278,11 @@ class ScriptJobService(
         return jobs
     }
 
+    /**
+     * Periodically runs [resumeIncompleteJobs].
+     *
+     * Scan failures are counted and swallowed so the loop remains alive until its returned [Job] is cancelled.
+     */
     fun startRecoveryLoop(
         timeout: Duration = 3.seconds,
         limit: Int = 100,

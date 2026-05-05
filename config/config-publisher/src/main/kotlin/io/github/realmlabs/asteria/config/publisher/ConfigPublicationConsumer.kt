@@ -15,6 +15,11 @@ class ConfigPublicationConsumer(
     private val layout: ConfigPublicationLayout = ConfigPublicationLayout(),
     private val codec: ConfigCodec = JacksonConfigCodec(),
 ) {
+    /**
+     * Loads the revision referenced by the current pointer.
+     *
+     * The manifest revision and every artifact size/checksum are verified before the bundle is returned.
+     */
     suspend fun loadCurrent(): ConfigPublicationBundle {
         val repository = RuntimeConfigRepository(store, codec)
         val current = repository.get<CurrentConfigPublication>(layout.currentPath)?.value
@@ -27,6 +32,12 @@ class ConfigPublicationConsumer(
         )
     }
 
+    /**
+     * Loads a specific immutable revision without consulting the current pointer.
+     *
+     * This is useful for promotion checks and diagnostics. It performs the same manifest and artifact validation as
+     * [loadCurrent].
+     */
     suspend fun loadRevision(revision: ConfigRevision): ConfigPublicationBundle {
         return load(
             revision = revision,
@@ -77,6 +88,12 @@ class ConfigPublicationConsumer(
     }
 }
 
+/**
+ * A validated publication and its raw artifacts.
+ *
+ * [artifacts] is keyed by manifest artifact path and contains defensive byte-array copies. [current] is `null` when the
+ * bundle was loaded directly by revision.
+ */
 data class ConfigPublicationBundle(
     val current: CurrentConfigPublication?,
     val manifest: ConfigPublicationManifest,

@@ -60,9 +60,6 @@ data class EtcdConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
-/**
- * Builder for [EtcdConfigCenterModule].
- */
 @AsteriaDsl
 class EtcdConfigCenterModuleBuilder {
     var endpoints: List<String> = emptyList()

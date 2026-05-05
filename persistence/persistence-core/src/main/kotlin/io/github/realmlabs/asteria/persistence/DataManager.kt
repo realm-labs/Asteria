@@ -7,6 +7,14 @@ import org.slf4j.LoggerFactory
 import java.time.Clock
 import kotlin.reflect.KClass
 
+/**
+ * Actor-local manager for one entity's mutable data modules.
+ *
+ * The manager assumes serialized access from the owning actor or an equivalent single-threaded boundary. A typical
+ * lifecycle is `loadEager`, then `getOrLoad` or `use` during message handling, followed by periodic `tick`/`flush` and
+ * `unloadIdle`. Data in [DataLoadPolicy.UnloadableLazy] buckets must be accessed through [use] so the manager can keep
+ * the lease valid only while the caller is inside the block.
+ */
 class DataManager<ID : Any>(
     private val scope: DataScope<ID>,
     modules: Iterable<DataModule<ID, out MemData>>,

@@ -12,6 +12,13 @@ value class PatchId(val value: String) : Serializable {
     override fun toString(): String = value
 }
 
+/**
+ * One runtime patch plus its ordering, compatibility, target, and lifecycle state.
+ *
+ * Enabled patches are applied when both [compatibility] and [target] match a node environment. [priority] participates
+ * in [PatchOrder]; higher priority values sort before lower values, and lower [sequence] values sort before newer
+ * patches inside the same priority.
+ */
 data class RuntimePatch(
     val id: PatchId,
     val name: String,
@@ -76,6 +83,12 @@ data class PatchEnvironment(
     }
 }
 
+/**
+ * Node selection rule for a patch.
+ *
+ * [PatchTarget.Roles] matches when any configured role is present. [PatchTarget.Nodes] compares exact
+ * [PatchEnvironment.nodeAddress] strings.
+ */
 sealed interface PatchTarget : Serializable {
     fun matches(environment: PatchEnvironment): Boolean
 
@@ -105,6 +118,13 @@ sealed interface PatchTarget : Serializable {
     }
 }
 
+/**
+ * Patch lifecycle state.
+ *
+ * Only [Enabled] patches are applied. [Draft] and [Disabled] are operator-controlled inactive states. [Expired] means a
+ * previously enabled patch no longer matches the running app/version. [Failed] records an operator or node-level
+ * failure state and is not retried automatically.
+ */
 enum class PatchStatus {
     Draft,
     Enabled,
@@ -113,6 +133,12 @@ enum class PatchStatus {
     Failed,
 }
 
+/**
+ * Stable ordering key for patch application.
+ *
+ * Larger [priority] values sort first. [sequence] is expected to come from [RuntimePatchRepository.nextSequence] so
+ * patches with equal priority are applied in creation order.
+ */
 data class PatchOrder(
     val priority: Int,
     val sequence: Long,

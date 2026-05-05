@@ -7,6 +7,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
+/**
+ * Runtime-facing node entry used to derive cluster startup config.
+ *
+ * These records are startup inputs, not a live membership source. Changing a node's host, port, or roles in a config
+ * center does not reconfigure an already-created actor system; apply those changes with restart or rolling deployment
+ * procedures.
+ */
 data class RuntimeNodeConfig(
     val nodeId: String,
     val host: String,
@@ -23,6 +30,9 @@ data class RuntimeNodeConfig(
     }
 }
 
+/**
+ * Complete set of nodes that may participate in a configured game cluster.
+ */
 data class ClusterTopology(
     val nodes: List<RuntimeNodeConfig>,
 ) {
@@ -61,12 +71,24 @@ data class ClusterConfigLayout(
     }
 }
 
+/**
+ * Source of cluster topology for startup and tools.
+ *
+ * [current] is used by `TopologyPekkoClusterStartup` while building the actor system. [watch] is available for tools
+ * that want to display or validate topology changes, but the default Pekko startup path does not hot-apply topology
+ * changes after the actor system has been created.
+ */
 interface ClusterTopologyProvider {
     suspend fun current(): ClusterTopology
 
     fun watch(): Flow<ClusterTopology>
 }
 
+/**
+ * Reads topology records from [RuntimeConfigRepository].
+ *
+ * The watch flow emits full snapshots and recovers through the repository's watch retry/resync behavior.
+ */
 class ConfigCenterClusterTopologyProvider(
     private val repository: RuntimeConfigRepository,
     private val layout: ClusterConfigLayout,

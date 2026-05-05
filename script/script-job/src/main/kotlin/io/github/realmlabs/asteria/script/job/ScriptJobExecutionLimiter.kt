@@ -28,18 +28,28 @@ object ScriptJobExecutionAttributes {
 }
 
 /**
- * Controls how many script job items may execute at the same time.
+ * Wraps script item execution with a concurrency policy.
+ *
+ * Implementations must run [block] exactly once after capacity is acquired. If the policy can no longer prove that
+ * capacity is still owned while [block] is running, it should cancel or fail the call rather than allowing execution to
+ * continue outside the agreed limit.
  */
 interface ScriptJobExecutionLimiter {
     suspend fun <T> limit(context: ScriptJobExecutionContext, block: suspend () -> T): T
 }
 
+/**
+ * Explicit opt-out limiter for tests or deployments that own concurrency elsewhere.
+ */
 object NoopScriptJobExecutionLimiter : ScriptJobExecutionLimiter {
     override suspend fun <T> limit(context: ScriptJobExecutionContext, block: suspend () -> T): T = block()
 }
 
 /**
- * Semaphore-based limiter with optional per-engine, per-operator, and per-target-type lanes.
+ * In-process limiter with optional per-engine, per-operator, and per-target-type lanes.
+ *
+ * This limiter only coordinates work inside the current process. Multi-node deployments that need a cluster-wide cap
+ * should use [RepositoryScriptJobExecutionLimiter].
  */
 class SemaphoreScriptJobExecutionLimiter(
     private val globalLimit: Int = 256,
@@ -93,7 +103,12 @@ class SemaphoreScriptJobExecutionLimiter(
 }
 
 /**
- * Distributed limiter backed by a shared permit repository.
+ * Distributed limiter backed by [ScriptJobPermitRepository] leases.
+ *
+ * Acquiring capacity retries on repository exceptions and on full pools until the caller is cancelled. Once [block]
+ * starts, permit renewals run as child coroutines. A failed renewal is retried until the current lease expires; a
+ * confirmed lost or expired lease fails the surrounding [limit] call with [ScriptJobPermitLeaseLostException], which
+ * cancels the running item through structured concurrency.
  */
 class RepositoryScriptJobExecutionLimiter(
     private val repository: ScriptJobPermitRepository,
@@ -232,6 +247,9 @@ class RepositoryScriptJobExecutionLimiter(
     }
 }
 
+/**
+ * Raised when a running script job no longer owns its distributed permit lease.
+ */
 class ScriptJobPermitLeaseLostException(
     val lease: ScriptJobPermitLease,
     cause: Throwable? = null,

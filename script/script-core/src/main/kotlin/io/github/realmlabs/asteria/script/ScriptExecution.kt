@@ -1,5 +1,12 @@
 package io.github.realmlabs.asteria.script
 
+/**
+ * One script execution request.
+ *
+ * [executionId] is the idempotency/audit key used by script runners and job attempts. Job items derive attempt ids from
+ * the submitted id using `source.item.attempt`. The target describes where the script should run; runtimes may reject
+ * targets they cannot route.
+ */
 data class ScriptExecutionCommand(
     val executionId: String,
     val target: ScriptTarget,
@@ -11,6 +18,13 @@ data class ScriptExecutionCommand(
     }
 }
 
+/**
+ * Operator and policy metadata attached to a script execution.
+ *
+ * [attributes] carries framework and application extension keys; script-job cancellation depends on the `script.jobId`,
+ * `script.itemId`, and `script.attempt` keys that the job service adds to item attempts. Resource names must be unique
+ * so scripts can resolve them unambiguously.
+ */
 data class ScriptExecutionMetadata(
     val requester: String? = null,
     val reason: String? = null,
@@ -29,6 +43,12 @@ data class ScriptExecutionMetadata(
     }
 }
 
+/**
+ * Result produced by one target execution.
+ *
+ * [target], [nodeAddress], and [actorPath] are best-effort routing diagnostics. A failed result should put the
+ * operator-facing reason in [error].
+ */
 data class ScriptExecutionResult(
     val executionId: String,
     val success: Boolean,
@@ -42,5 +62,8 @@ data class ScriptExecutionBatchResult(
     val executionId: String,
     val results: List<ScriptExecutionResult>,
 ) {
+    /**
+     * Empty batches are not considered successful; they usually mean no target acknowledged the execution.
+     */
     val success: Boolean get() = results.isNotEmpty() && results.all { it.success }
 }

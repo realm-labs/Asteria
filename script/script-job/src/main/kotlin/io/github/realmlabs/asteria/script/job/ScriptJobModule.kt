@@ -17,6 +17,14 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * Installs asynchronous script-job orchestration.
+ *
+ * The module registers [ScriptJobService], [ScriptJobRepository], and cancellation integration for script runtimes.
+ * Claimed/running items are protected by leases; incomplete items can be resumed on startup and by the optional
+ * recovery scan. Cluster-wide concurrency requires a [ScriptJobPermitRepository] or a custom
+ * [ScriptJobExecutionLimiter].
+ */
 class ScriptJobModule private constructor(
     private val options: ScriptJobModuleOptions,
 ) : AsteriaModule {
@@ -92,6 +100,13 @@ class ScriptJobModule private constructor(
     }
 }
 
+/**
+ * Immutable runtime options for [ScriptJobModule].
+ *
+ * [leaseDuration] protects ownership of claimed job items. [permitLeaseDuration] protects distributed concurrency
+ * permits. Both should be longer than their renewal intervals and shorter than the time operators are willing to wait
+ * before another worker may recover abandoned work.
+ */
 data class ScriptJobModuleOptions(
     val repository: ScriptJobRepository?,
     val recoverOnStart: Boolean,

@@ -63,9 +63,6 @@ data class ZookeeperConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
-/**
- * Builder for [ZookeeperConfigCenterModule].
- */
 @AsteriaDsl
 class ZookeeperConfigCenterModuleBuilder {
     var connectionString: String? = null

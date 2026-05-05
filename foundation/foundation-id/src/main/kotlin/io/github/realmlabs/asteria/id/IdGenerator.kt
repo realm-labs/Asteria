@@ -1,5 +1,11 @@
 package io.github.realmlabs.asteria.id
 
+/**
+ * Monotonic ID source registered for application code.
+ *
+ * Implementations may throw when their backing clock or lease state is unsafe. In particular, the generator registered
+ * by [WorkerIdModule] throws [WorkerIdLeaseLostException] after the process loses its worker-id lease.
+ */
 interface IdGenerator {
     fun nextId(): Long
 }
@@ -12,6 +18,13 @@ object SystemTimestampSource : TimestampSource {
     override fun currentTimeMillis(): Long = System.currentTimeMillis()
 }
 
+/**
+ * Bit layout for [SnowflakeIdGenerator].
+ *
+ * The default epoch is 2025-01-01T00:00:00Z. Increasing [workerIdBits] allows more concurrent workers; increasing
+ * [sequenceBits] allows more IDs per millisecond per worker. Their sum must leave enough positive timestamp bits for
+ * the expected lifetime of the deployment.
+ */
 data class SnowflakeIdGeneratorOptions(
     val epochMillis: Long = 1_735_660_800_000L,
     val workerIdBits: Int = 10,
@@ -26,6 +39,11 @@ data class SnowflakeIdGeneratorOptions(
     }
 }
 
+/**
+ * Snowflake-style generator using timestamp, worker id, and per-millisecond sequence bits.
+ *
+ * Calls are synchronized. If the clock moves backwards the generator throws rather than risking duplicate IDs.
+ */
 class SnowflakeIdGenerator(
     workerId: WorkerId,
     private val options: SnowflakeIdGeneratorOptions = SnowflakeIdGeneratorOptions(),

@@ -40,9 +40,6 @@ data class ConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
-/**
- * Builder for [ConfigCenterModule].
- */
 @AsteriaDsl
 class ConfigCenterModuleBuilder {
     private var store: ConfigStore? = null

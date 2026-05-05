@@ -22,6 +22,12 @@ value class ScriptJobItemId(val value: String) {
     override fun toString(): String = value
 }
 
+/**
+ * Aggregate status derived from all items in a job.
+ *
+ * `PartialFailed` means at least one item completed and at least one item failed. `Cancelled` means all terminal
+ * non-completed items were cancelled. Pending or running items keep the job in `Running` once work has started.
+ */
 enum class ScriptJobStatus {
     Pending,
     Running,
@@ -31,6 +37,12 @@ enum class ScriptJobStatus {
     Cancelled,
 }
 
+/**
+ * Status of one target item.
+ *
+ * Items normally move `Pending -> Running -> Completed/Failed/Cancelled`. Running cancellation is cooperative: the
+ * repository records the request, and the runtime or recovery path later turns the item terminal.
+ */
 enum class ScriptJobItemStatus {
     Pending,
     Running,
@@ -39,6 +51,12 @@ enum class ScriptJobItemStatus {
     Cancelled,
 }
 
+/**
+ * Stored script job summary.
+ *
+ * [totalItems] is fixed at creation from the expanded target list. Completed, failed, and cancelled counters are
+ * derived from item statuses whenever the repository updates the job.
+ */
 data class ScriptJob(
     val id: ScriptJobId,
     val command: ScriptExecutionCommand,
@@ -63,6 +81,12 @@ data class ScriptJob(
     }
 }
 
+/**
+ * Stored execution unit for one effective target.
+ *
+ * [attempts] records every run attempt. [results] is populated only on terminal item completion/failure; while running,
+ * ownership is represented by [leaseOwner] and [leaseUntilMillis].
+ */
 data class ScriptJobItem(
     val id: ScriptJobItemId,
     val jobId: ScriptJobId,
@@ -139,6 +163,12 @@ data class ScriptJobItemPage(
     val nextOffset: Int? = if (offset + items.size < total) offset + items.size else null
 }
 
+/**
+ * One execution attempt for a job item.
+ *
+ * Running attempts have no [finishedAtMillis]. Terminal attempts hold the script results or an [error] recorded by
+ * runtime failure, cancellation, or lease expiration.
+ */
 data class ScriptJobItemAttempt(
     val attempt: Int,
     val command: ScriptExecutionCommand,

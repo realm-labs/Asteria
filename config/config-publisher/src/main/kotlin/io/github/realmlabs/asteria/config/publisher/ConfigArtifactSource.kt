@@ -43,11 +43,20 @@ data class ConfigPublicationArtifact(
 }
 
 fun interface ConfigArtifactSource {
+    /**
+     * Returns the complete artifact set for one publication attempt.
+     *
+     * Implementations should return stable relative paths and stable bytes for the duration of a publish. Duplicate
+     * paths are rejected by [ConfigPublisher].
+     */
     suspend fun artifacts(): List<ConfigPublicationArtifact>
 }
 
 /**
  * Publishes every regular file under [root] as a config artifact.
+ *
+ * Traversal is recursive. [include] receives each visited regular file path, results are sorted by path string, and
+ * artifact paths use `/` separators relative to [root].
  */
 class DirectoryConfigArtifactSource(
     private val root: Path,
