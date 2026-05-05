@@ -49,9 +49,9 @@ data class GlobalConfig(val openServerDay: Int)
 生成结果的使用方式：
 
 ```kotlin
-val item = configService.items()[1001]
-val rewards = configService.rankRewards().all()
-val global = configService.global().get()
+val item = configService.items[1001]
+val rewards = configService.rankRewards.all()
+val global = configService.global.get()
 ```
 
 `KEYED` 适合按 id 查询，`LIST` 适合保留顺序或按业务二次索引，`SINGLETON` 适合全局唯一配置。
@@ -100,7 +100,7 @@ metadata：
 }
 ```
 
-Gradle plugin 会把 metadata 转成 Kotlin marker，再交给 KSP 生成 `GameConfigTables` 和 `ConfigService` 扩展函数。生成器已经按
+Gradle plugin 会把 metadata 转成 Kotlin marker，再交给 KSP 生成 `GameConfigTables` 和 `ConfigService` 扩展属性。生成器已经按
 chunk 拆分大文件，配置表很多时不会把所有 accessor 放进一个 Kotlin 文件。
 `tableType` 是可选字段。不配置时，keyed accessor 返回 `KeyedConfigTable<K, R>`；配置后会返回指定的具体表类型，例如
 `MapConfigTable<K, R>` 或 `OrderedMapConfigTable<K, R>`，业务代码就可以直接使用底层集合接口。

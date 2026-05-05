@@ -52,9 +52,9 @@ data class GlobalConfig(val openServerDay: Int)
 Generated accessors are used like this:
 
 ```kotlin
-val item = configService.items()[1001]
-val rewards = configService.rankRewards().all()
-val global = configService.global().get()
+val item = configService.items[1001]
+val rewards = configService.rankRewards.all()
+val global = configService.global.get()
 ```
 
 Use `KEYED` for id lookup, `LIST` for ordered rows or project-defined secondary indexes, and `SINGLETON` for one global
@@ -105,7 +105,7 @@ the recommended bridge is a metadata file emitted by the Luban export step:
 ```
 
 The Gradle plugin turns this metadata into Kotlin markers, then KSP generates `GameConfigTables` and `ConfigService`
-extension functions. Generated files are chunked so large config catalogs do not become one oversized Kotlin file.
+extension properties. Generated files are chunked so large config catalogs do not become one oversized Kotlin file.
 `tableType` is optional. Without it, keyed accessors return `KeyedConfigTable<K, R>`; with it, generated accessors return
 the requested concrete type, such as `MapConfigTable<K, R>` or `OrderedMapConfigTable<K, R>`, so callers can use the
 underlying collection API.

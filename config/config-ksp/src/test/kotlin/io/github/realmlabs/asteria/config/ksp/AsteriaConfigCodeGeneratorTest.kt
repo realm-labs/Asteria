@@ -55,17 +55,17 @@ class AsteriaConfigCodeGeneratorTest {
         assertContains(code, "class GameConfigs(")
         assertContains(code, "val items: MapConfigTable<Int, ItemConfig>")
         assertContains(code, "get() = configService.current().requireTable(GameConfigTables.Items, MapConfigTable::class)")
-        assertContains(code, "fun ConfigSnapshot.items(): MapConfigTable<Int, ItemConfig>")
-        assertContains(code, "= requireTable(GameConfigTables.Items, MapConfigTable::class)")
-        assertContains(code, "fun ConfigService.items(): MapConfigTable<Int, ItemConfig>")
-        assertContains(code, "= current().requireTable(GameConfigTables.Items, MapConfigTable::class)")
-        assertContains(code, "fun ConfigService.dailyTasks(): KeyedConfigTable<Int, TaskConfig>")
+        assertContains(code, "val ConfigSnapshot.items: MapConfigTable<Int, ItemConfig>")
+        assertContains(code, "get() = requireTable(GameConfigTables.Items, MapConfigTable::class)")
+        assertContains(code, "val ConfigService.items: MapConfigTable<Int, ItemConfig>")
+        assertContains(code, "get() = current().requireTable(GameConfigTables.Items, MapConfigTable::class)")
+        assertContains(code, "val ConfigService.dailyTasks: KeyedConfigTable<Int, TaskConfig>")
         assertContains(code, "val rankRewards: ListConfigTable<ItemConfig>")
         assertContains(code, "get() = configService.current().requireListTable(GameConfigTables.RankRewards)")
         assertContains(code, "val global: SingleConfigTable<ItemConfig>")
         assertContains(code, "get() = configService.current().requireSingleTable(GameConfigTables.Global)")
-        assertContains(code, "fun ConfigService.rankRewards(): ListConfigTable<ItemConfig>")
-        assertContains(code, "fun ConfigSnapshot.global(): SingleConfigTable<ItemConfig>")
+        assertContains(code, "val ConfigService.rankRewards: ListConfigTable<ItemConfig>")
+        assertContains(code, "val ConfigSnapshot.global: SingleConfigTable<ItemConfig>")
     }
 
     @Test
@@ -97,8 +97,8 @@ class AsteriaConfigCodeGeneratorTest {
         assertContains(fileNames, "GameConfigsExtensionsChunk1")
         assertContains(main, "object GameConfigTables")
         assertContains(main, "class GameConfigs(")
-        assertContains(chunk0, "fun ConfigSnapshot.table")
-        assertContains(chunk1, "fun ConfigService.table")
+        assertContains(chunk0, "val ConfigSnapshot.table")
+        assertContains(chunk1, "val ConfigService.table")
     }
 
     private companion object {

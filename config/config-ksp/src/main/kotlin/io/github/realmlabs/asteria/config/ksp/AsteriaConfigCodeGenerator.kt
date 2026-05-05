@@ -35,8 +35,8 @@ object AsteriaConfigCodeGenerator {
             .addType(buildAccessorClass(config.accessorClassName, tablesClass, sortedTables))
             .apply {
                 sortedTables.forEach { table ->
-                    addFunction(buildSnapshotExtension(tablesClass, table))
-                    addFunction(buildServiceExtension(tablesClass, table))
+                    addProperty(buildSnapshotExtension(tablesClass, table))
+                    addProperty(buildServiceExtension(tablesClass, table))
                 }
             }
             .build()
@@ -62,8 +62,8 @@ object AsteriaConfigCodeGenerator {
         return FileSpec.builder(config.packageName, chunkName)
             .apply {
                 tables.forEach { table ->
-                    addFunction(buildSnapshotExtension(tablesClass, table))
-                    addFunction(buildServiceExtension(tablesClass, table))
+                    addProperty(buildSnapshotExtension(tablesClass, table))
+                    addProperty(buildServiceExtension(tablesClass, table))
                 }
             }
             .build()
@@ -130,22 +130,28 @@ object AsteriaConfigCodeGenerator {
     private fun buildSnapshotExtension(
         tablesClass: ClassName,
         table: ConfigTableModel,
-    ): FunSpec {
-        return FunSpec.builder(table.propertyName)
+    ): PropertySpec {
+        return PropertySpec.builder(table.propertyName, table.accessorTableType())
             .receiver(CONFIG_SNAPSHOT)
-            .returns(table.accessorTableType())
-            .addTableRequireStatement("return ", tablesClass, table)
+            .getter(
+                FunSpec.getterBuilder()
+                    .addTableRequireStatement("return ", tablesClass, table)
+                    .build(),
+            )
             .build()
     }
 
     private fun buildServiceExtension(
         tablesClass: ClassName,
         table: ConfigTableModel,
-    ): FunSpec {
-        return FunSpec.builder(table.propertyName)
+    ): PropertySpec {
+        return PropertySpec.builder(table.propertyName, table.accessorTableType())
             .receiver(CONFIG_SERVICE)
-            .returns(table.accessorTableType())
-            .addTableRequireStatement("return current().", tablesClass, table)
+            .getter(
+                FunSpec.getterBuilder()
+                    .addTableRequireStatement("return current().", tablesClass, table)
+                    .build(),
+            )
             .build()
     }
 
