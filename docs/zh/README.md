@@ -6,6 +6,7 @@
 
 - [模块地图](module-map.md)：先判断项目需要哪些模块，以及哪些模块只是适配层。
 - [应用生命周期](application-lifecycle.md)：`gameApplication`、模块安装顺序、服务注册和 actor 基础设施。
+- [事件系统](events.md)：事实事件、topic 树、父节点 fan-out 和事件 handler 注册。
 - [配置系统](config.md)：配置快照、热更、配置中心、Luban、代码生成和配置变更分发。
 - [Pekko 集群](cluster-pekko.md)：集群启动、实体/单例声明、实体预唤醒和配置中心拓扑。
 - [消息、协议和网关](messaging-protocol-gateway.md)：业务消息、处理器注册、protobuf 协议生成、网关会话和 Netty transport。
@@ -17,7 +18,7 @@
 ## 模块到文档的对应关系
 
 - `foundation-*`：先读 [应用生命周期](application-lifecycle.md)
-  ，消息部分读 [消息、协议和网关](messaging-protocol-gateway.md)。
+  ，事件部分读 [事件系统](events.md)，消息部分读 [消息、协议和网关](messaging-protocol-gateway.md)。
 - `cluster-*`：读 [Pekko 集群](cluster-pekko.md)，配置中心拓扑读 [配置系统](config.md)。
 - `config-*`：读 [配置系统](config.md)。
 - `gateway-*`、`protocol-*`、`rpc-*`、`broadcast-*`：读 [消息、协议和网关](messaging-protocol-gateway.md)。

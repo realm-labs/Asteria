@@ -43,6 +43,8 @@
             <option value="$PROJECT_DIR$/foundation" />
             <option value="$PROJECT_DIR$/foundation/foundation-actor" />
             <option value="$PROJECT_DIR$/foundation/foundation-core" />
+            <option value="$PROJECT_DIR$/foundation/foundation-event" />
+            <option value="$PROJECT_DIR$/foundation/foundation-event-ksp" />
             <option value="$PROJECT_DIR$/foundation/foundation-id" />
             <option value="$PROJECT_DIR$/foundation/foundation-id-etcd" />
             <option value="$PROJECT_DIR$/foundation/foundation-id-mongodb" />

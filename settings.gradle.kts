@@ -18,6 +18,8 @@ include(
     "foundation:foundation-id-etcd",
     "foundation:foundation-id-mongodb",
     "foundation:foundation-id-zookeeper",
+    "foundation:foundation-event",
+    "foundation:foundation-event-ksp",
     "foundation:foundation-message",
     "foundation:foundation-message-ksp",
     "foundation:foundation-message-gradle-plugin",

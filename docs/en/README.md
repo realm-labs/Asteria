@@ -8,6 +8,7 @@ project entry point and module list; detailed module responsibilities, usage exa
 - [Module Map](module-map.md): decide which modules a project needs and which modules are adapters.
 - [Application Lifecycle](application-lifecycle.md): `gameApplication`, module order, service registration, and actor
   utilities.
+- [Events](events.md): fact events, topic trees, ancestor fan-out, and event handler registration.
 - [Config](config.md): config snapshots, hot reload, config centers, Luban, code generation, and config change dispatch.
 - [Pekko Cluster](cluster-pekko.md): cluster startup, entity/singleton declarations, entity wakeup, and config-center
   topology.
@@ -22,7 +23,8 @@ project entry point and module list; detailed module responsibilities, usage exa
 ## Module to Guide Mapping
 
 - `foundation-*`: start with [Application Lifecycle](application-lifecycle.md);
-  read [Messaging, Protocol, and Gateway](messaging-protocol-gateway.md) for message dispatch.
+  read [Events](events.md) for domain events and
+  [Messaging, Protocol, and Gateway](messaging-protocol-gateway.md) for message dispatch.
 - `cluster-*`: read [Pekko Cluster](cluster-pekko.md); read [Config](config.md) for config-center topology.
 - `config-*`: read [Config](config.md).
 - `gateway-*`, `protocol-*`, `rpc-*`, `broadcast-*`:

@@ -1,0 +1,10 @@
+plugins {
+    id("asteria.kotlin-library-conventions")
+}
+
+dependencies {
+    implementation(project(":foundation:foundation-event"))
+    implementation(libs.kotlinpoet)
+    implementation(libs.kotlinpoet.ksp)
+    implementation(libs.ksp.symbol.processing.api)
+}
