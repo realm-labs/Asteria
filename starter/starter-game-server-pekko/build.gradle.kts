@@ -17,4 +17,5 @@ dependencies {
     api(project(":patch:patch-core"))
     api(project(":patch:patch-jar"))
     api(project(":patch:patch-pekko"))
+    testImplementation(libs.kotlinx.coroutines.core)
 }

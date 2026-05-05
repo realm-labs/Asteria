@@ -5,6 +5,6 @@ plugins {
 dependencies {
     api(project(":foundation:foundation-core"))
     api(project(":observability:observability-core"))
-    api(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.slf4j.api)
 }

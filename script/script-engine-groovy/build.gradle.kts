@@ -8,4 +8,5 @@ dependencies {
     implementation(libs.groovy)
     implementation(libs.kotlin.reflect)
     implementation(libs.slf4j.api)
+    testImplementation(libs.kotlinx.coroutines.core)
 }

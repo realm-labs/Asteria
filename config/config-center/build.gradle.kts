@@ -8,7 +8,7 @@ dependencies {
     api(project(":observability:observability-core"))
     api(libs.kotlinx.coroutines.core)
     api(libs.jackson.databind)
-    api(libs.jackson.datatype.jsr310)
-    api(libs.jackson.module.kotlin)
+    implementation(libs.jackson.datatype.jsr310)
+    implementation(libs.jackson.module.kotlin)
     implementation(libs.slf4j.api)
 }

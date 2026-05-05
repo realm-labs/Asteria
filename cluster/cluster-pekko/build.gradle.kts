@@ -10,7 +10,7 @@ dependencies {
     implementation(project(":config:config-core"))
     api(libs.pekko.actor)
     api(libs.pekko.cluster.sharding)
-    api(libs.pekko.cluster.tools)
+    implementation(libs.pekko.cluster.tools)
     api(libs.typesafe.config)
     implementation(libs.kotlinx.coroutines.jdk8)
     testImplementation(libs.pekko.testkit)

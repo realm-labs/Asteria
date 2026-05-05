@@ -5,4 +5,5 @@ plugins {
 dependencies {
     api(project(":script:script-job"))
     api(libs.mongodb.driver.kotlin.coroutine)
+    implementation(libs.kotlinx.coroutines.core)
 }

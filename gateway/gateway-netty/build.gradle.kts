@@ -9,5 +9,7 @@ dependencies {
     api(project(":observability:observability-core"))
     api(project(":protocol:protocol-protobuf"))
     api(libs.netty.all)
+    api(libs.kotlinx.coroutines.core)
     implementation(libs.slf4j.api)
+    testImplementation(libs.kotlinx.coroutines.core)
 }

@@ -7,5 +7,6 @@ dependencies {
     api(project(":cluster:cluster-pekko"))
     api(project(":observability:observability-core"))
     implementation(libs.slf4j.api)
+    testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.pekko.testkit)
 }

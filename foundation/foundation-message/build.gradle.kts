@@ -7,4 +7,5 @@ dependencies {
     api(project(":observability:observability-core"))
     api(project(":patch:patch-core"))
     implementation(libs.slf4j.api)
+    testImplementation(libs.kotlinx.coroutines.core)
 }

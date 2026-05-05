@@ -4,4 +4,5 @@ plugins {
 
 dependencies {
     api(project(":foundation:foundation-core"))
+    testImplementation(libs.kotlinx.coroutines.core)
 }
