@@ -156,12 +156,26 @@ The plugin wires KSP and generates strongly typed table refs plus dynamic `Confi
   "tables": [
     {
       "name": "items",
+      "shape": "KEYED",
       "keyType": "kotlin.Int",
       "rowType": "cfg.item.ItemConfig"
+    },
+    {
+      "name": "rank_rewards",
+      "shape": "LIST",
+      "rowType": "cfg.reward.RankRewardConfig"
+    },
+    {
+      "name": "global",
+      "shape": "SINGLETON",
+      "rowType": "cfg.global.GlobalConfig"
     }
   ]
 }
 ```
+
+`shape` defaults to `KEYED`; only keyed tables declare `keyType`. `LIST` accessors return `ListConfigTable<R>`, and
+`SINGLETON` accessors return `SingleConfigTable<R>`.
 
 Config change handlers:
 

@@ -40,6 +40,23 @@ class ConfigChangeDispatcherTest {
         assertEquals("v2", tracker.currentRevision())
     }
 
+    @Test
+    fun `row table refs can require list and singleton shapes`() {
+        val rewards = rowConfigTableRef<TestRow>("rewards")
+        val global = rowConfigTableRef<TestRow>("global")
+        val snapshot = DefaultConfigSnapshot(
+            revision = ConfigRevision("v1"),
+            tables = listOf(
+                listConfigTable(rewards, listOf(TestRow(1), TestRow(2))),
+                singleConfigTable(global, TestRow(3)),
+            ),
+        )
+
+        assertEquals(2, snapshot.requireListTable(rewards).size)
+        assertEquals(TestRow(3), snapshot.requireSingleTable(global).get())
+    }
+
+
     private fun changeEvent(changedTables: Set<ConfigTableName>): ConfigChangedEvent {
         return ConfigChangedEvent(
             previousRevision = ConfigRevision("v1"),

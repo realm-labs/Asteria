@@ -135,6 +135,32 @@ fun <K : Any, R : Any> ConfigSnapshot.requireTable(ref: ConfigTableRef<K, R>): K
     return table(ref) ?: error("config table ${ref.name} not found in revision ${revision.version}")
 }
 
+fun <R : Any> ConfigSnapshot.listTable(ref: RowConfigTableRef<R>): ListConfigTable<R>? {
+    val table = table(ref) ?: return null
+    require(table is ListConfigTable<*>) {
+        "config table ${ref.name} is not a list table"
+    }
+    @Suppress("UNCHECKED_CAST")
+    return table as ListConfigTable<R>
+}
+
+fun <R : Any> ConfigSnapshot.requireListTable(ref: RowConfigTableRef<R>): ListConfigTable<R> {
+    return listTable(ref) ?: error("config list table ${ref.name} not found in revision ${revision.version}")
+}
+
+fun <R : Any> ConfigSnapshot.singleTable(ref: RowConfigTableRef<R>): SingleConfigTable<R>? {
+    val table = table(ref) ?: return null
+    require(table is SingleConfigTable<*>) {
+        "config table ${ref.name} is not a singleton table"
+    }
+    @Suppress("UNCHECKED_CAST")
+    return table as SingleConfigTable<R>
+}
+
+fun <R : Any> ConfigSnapshot.requireSingleTable(ref: RowConfigTableRef<R>): SingleConfigTable<R> {
+    return singleTable(ref) ?: error("config singleton table ${ref.name} not found in revision ${revision.version}")
+}
+
 /**
  * Shortcut for [requireTable], intended for generated table refs.
  */

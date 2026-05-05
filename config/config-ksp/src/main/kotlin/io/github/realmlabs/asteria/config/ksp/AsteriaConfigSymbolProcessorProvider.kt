@@ -18,6 +18,7 @@ import io.github.realmlabs.asteria.config.annotations.AsteriaConfigCatalog
 import io.github.realmlabs.asteria.config.annotations.AsteriaConfigChangeCatalog
 import io.github.realmlabs.asteria.config.annotations.AsteriaConfigChangeHandler
 import io.github.realmlabs.asteria.config.annotations.AsteriaConfigTable
+import io.github.realmlabs.asteria.config.annotations.AsteriaConfigTableShape
 
 class AsteriaConfigSymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
@@ -54,9 +55,10 @@ private class AsteriaConfigSymbolProcessor(
         if (tableSymbols.isNotEmpty()) {
             val config = readCodegenConfig(resolver)
             val tables = tableSymbols.mapNotNull(::readTableModel)
-            val file = AsteriaConfigCodeGenerator.buildFile(config, tables)
             val sourceFiles = tableSymbols.mapNotNull { it.containingFile }.toTypedArray()
-            file.writeTo(codeGenerator, Dependencies(aggregating = true, *sourceFiles))
+            AsteriaConfigCodeGenerator.buildFiles(config, tables).forEach { generated ->
+                generated.file.writeTo(codeGenerator, Dependencies(aggregating = true, *sourceFiles))
+            }
         }
         if (handlerSymbols.isNotEmpty() || hasConfigChangeCatalog(resolver)) {
             generateConfigChangeHandlers(resolver, handlerSymbols)
@@ -195,7 +197,15 @@ private class AsteriaConfigSymbolProcessor(
     private fun readTableModel(symbol: KSClassDeclaration): ConfigTableModel? {
         val annotation = symbol.findAnnotation(AsteriaConfigTable::class.qualifiedName!!) ?: return null
         val tableName = annotation.stringArg("name")
-        val keyType = annotation.typeArg("keyType")
+        val shape = AsteriaConfigTableShape.valueOf(annotation.enumArg("shape", AsteriaConfigTableShape.KEYED.name))
+        val keyType = annotation.typeKSTypeArg("keyType")
+            ?.takeUnless { it.isNothingType() }
+            ?.toTypeName()
+            .also { keyType ->
+                if (shape == AsteriaConfigTableShape.KEYED && keyType == null) {
+                    logger.error("keyed config table $tableName requires keyType", symbol)
+                }
+            }
         val explicitRowType = annotation.typeKSTypeArg("rowType")
         val rowType = if (explicitRowType == null || explicitRowType.isNothingType()) {
             symbol.asStarProjectedType().toTypeName()
@@ -204,6 +214,7 @@ private class AsteriaConfigSymbolProcessor(
         }
         return ConfigTableModel(
             tableName = tableName,
+            shape = shape,
             keyType = keyType,
             rowType = rowType,
             refName = annotation.stringArg("refName").takeIf { it.isNotBlank() }
@@ -234,12 +245,13 @@ private class AsteriaConfigSymbolProcessor(
             ?: ""
     }
 
-    private fun KSAnnotation.typeArg(name: String): TypeName {
-        return requireNotNull(typeKSTypeArg(name)) { "$name is required" }.toTypeName()
-    }
-
     private fun KSAnnotation.typeKSTypeArg(name: String): KSType? {
         return arguments.firstOrNull { it.name?.asString() == name }?.value as? KSType
+    }
+
+    private fun KSAnnotation.enumArg(name: String, default: String): String {
+        val value = arguments.firstOrNull { it.name?.asString() == name }?.value ?: return default
+        return value.toString().substringAfterLast('.')
     }
 
     private fun KSType.isNothingType(): Boolean {
