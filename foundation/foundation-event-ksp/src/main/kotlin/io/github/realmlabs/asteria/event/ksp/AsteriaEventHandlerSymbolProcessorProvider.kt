@@ -95,6 +95,15 @@ private class AsteriaEventHandlerSymbolProcessor(
         bindings.groupBy(EventHandlerBinding::rootPackage).forEach { (rootPackage, rootBindings) ->
             generateDispatchers(rootPackage, rootBindings)
         }
+        val topicsByRootPackage = topicBindings.groupBy(EventTopicBinding::rootPackage)
+        val handlersByRootPackage = bindings.groupBy(EventHandlerBinding::rootPackage)
+        (topicsByRootPackage.keys + handlersByRootPackage.keys).sorted().forEach { rootPackage ->
+            generateCodegenSnapshot(
+                rootPackage = rootPackage,
+                topicBindings = topicsByRootPackage[rootPackage].orEmpty(),
+                handlerBindings = handlersByRootPackage[rootPackage].orEmpty(),
+            )
+        }
         generated = true
         return emptyList()
     }
@@ -307,6 +316,67 @@ private class AsteriaEventHandlerSymbolProcessor(
                 codeGenerator,
                 Dependencies(aggregating = false, *bindings.map(EventHandlerBinding::sourceFile).toTypedArray()),
             )
+    }
+
+    private fun generateCodegenSnapshot(
+        rootPackage: String,
+        topicBindings: List<EventTopicBinding>,
+        handlerBindings: List<EventHandlerBinding>,
+    ) {
+        val sourceFiles = (topicBindings.map(EventTopicBinding::sourceFile) +
+            handlerBindings.map(EventHandlerBinding::sourceFile))
+            .distinctBy { it.filePath }
+            .toTypedArray()
+        val generatedPackage = "$rootPackage.generated"
+        val output = codeGenerator.createNewFile(
+            dependencies = Dependencies(aggregating = false, *sourceFiles),
+            packageName = "META-INF/asteria/codegen-snapshots/event",
+            fileName = rootPackage.toSnapshotFileName(),
+            extensionName = "json",
+        )
+        output.bufferedWriter().use { writer ->
+            writer.appendLine("{")
+            writer.appendLine("  \"schemaVersion\": 1,")
+            writer.appendLine("  \"kind\": \"event\",")
+            writer.appendLine("  \"rootPackage\": ${jsonString(rootPackage)},")
+            writer.appendLine("  \"generatedPackage\": ${jsonString(generatedPackage)},")
+            writer.appendLine("  \"topics\": [")
+            topicBindings.sortedBy { it.path }.forEachIndexed { index, binding ->
+                writer.appendLine("    {")
+                writer.appendLine("      \"path\": ${jsonString(binding.path)},")
+                writer.appendLine("      \"declarationType\": ${jsonString(binding.declaration.toClassName().canonicalName)},")
+                if (binding.parent == null) {
+                    writer.appendLine("      \"parentType\": null")
+                } else {
+                    writer.appendLine("      \"parentType\": ${jsonString(binding.parent.toClassName().canonicalName)}")
+                }
+                writer.append("    }")
+                if (index != topicBindings.lastIndex) {
+                    writer.append(',')
+                }
+                writer.appendLine()
+            }
+            writer.appendLine("  ],")
+            writer.appendLine("  \"handlers\": [")
+            handlerBindings
+                .sortedWith(compareBy({ it.dispatcher }, { it.eventClassName.canonicalName }, { it.order }))
+                .forEachIndexed { index, binding ->
+                    writer.appendLine("    {")
+                    writer.appendLine("      \"dispatcher\": ${jsonString(binding.dispatcher)},")
+                    writer.appendLine("      \"contextType\": ${jsonString(binding.contextTypeName.toString())},")
+                    writer.appendLine("      \"eventType\": ${jsonString(binding.eventClassName.canonicalName)},")
+                    writer.appendLine("      \"handlerType\": ${jsonString(binding.handler.toClassName().canonicalName)},")
+                    writer.appendLine("      \"topics\": ${stringArrayJson(binding.topics)},")
+                    writer.appendLine("      \"order\": ${binding.order}")
+                    writer.append("    }")
+                    if (index != handlerBindings.lastIndex) {
+                        writer.append(',')
+                    }
+                    writer.appendLine()
+                }
+            writer.appendLine("  ]")
+            writer.appendLine("}")
+        }
     }
 
     private fun generateEventHandles(
@@ -552,6 +622,15 @@ private class AsteriaEventHandlerSymbolProcessor(
         return "${toDispatcherPropertyName()}Registry"
     }
 
+    private fun String.toSnapshotFileName(): String {
+        return map { char ->
+            when {
+                char.isLetterOrDigit() -> char
+                else -> '_'
+            }
+        }.joinToString("").ifBlank { "root" }
+    }
+
     private fun String.toTopicSegment(): String {
         return splitCamelCase().joinToString("-") { it.lowercase(Locale.getDefault()) }
     }
@@ -566,6 +645,36 @@ private class AsteriaEventHandlerSymbolProcessor(
         return replace(Regex("([a-z0-9])([A-Z])"), "$1 $2")
             .split(Regex("[^A-Za-z0-9]+"))
             .filter { it.isNotBlank() }
+    }
+
+    private fun stringArrayJson(values: List<String>): String {
+        return values.joinToString(prefix = "[", postfix = "]") { value -> jsonString(value) }
+    }
+
+    private fun jsonString(value: String): String {
+        return buildString {
+            append('"')
+            value.forEach { char ->
+                when (char) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\b' -> append("\\b")
+                    '\u000C' -> append("\\f")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> {
+                        if (char < ' ') {
+                            append("\\u")
+                            append(char.code.toString(16).padStart(4, '0'))
+                        } else {
+                            append(char)
+                        }
+                    }
+                }
+            }
+            append('"')
+        }
     }
 
     companion object {

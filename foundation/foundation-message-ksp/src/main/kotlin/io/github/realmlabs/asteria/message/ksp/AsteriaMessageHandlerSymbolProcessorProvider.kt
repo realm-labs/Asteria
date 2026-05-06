@@ -92,6 +92,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
             checkNotNull(target)
             generateGatewayRouteMetadata(target, gatewayRouteBindings)
         }
+        target?.let { generateCodegenSnapshot(it, handlerBindings, gatewayRouteBindings) }
 
         generated = true
         return emptyList()
@@ -332,13 +333,13 @@ private class AsteriaMessageHandlerSymbolProcessor(
             writer.appendLine("  \"routes\": [")
             bindings.sortedBy { it.messageClassName.canonicalName }.forEachIndexed { index, binding ->
                 writer.appendLine("    {")
-                writer.appendLine("      \"messageType\": \"${binding.messageClassName.canonicalName}\",")
-                writer.appendLine("      \"handlerType\": \"${binding.handler.toClassName().canonicalName}\",")
-                writer.appendLine("      \"route\": \"${binding.route}\",")
+                writer.appendLine("      \"messageType\": ${jsonString(binding.messageClassName.canonicalName)},")
+                writer.appendLine("      \"handlerType\": ${jsonString(binding.handler.toClassName().canonicalName)},")
+                writer.appendLine("      \"route\": ${jsonString(binding.route)},")
                 if (binding.entityId.isBlank()) {
                     writer.appendLine("      \"entityId\": null,")
                 } else {
-                    writer.appendLine("      \"entityId\": \"${binding.entityId}\",")
+                    writer.appendLine("      \"entityId\": ${jsonString(binding.entityId)},")
                 }
                 writer.appendLine("      \"inject\": ${stringArrayJson(binding.inject)},")
                 writer.appendLine("      \"clearFields\": ${stringArrayJson(binding.clearFields)}")
@@ -348,6 +349,70 @@ private class AsteriaMessageHandlerSymbolProcessor(
                 }
                 writer.appendLine()
             }
+            writer.appendLine("  ]")
+            writer.appendLine("}")
+        }
+    }
+
+    private fun generateCodegenSnapshot(
+        target: MessageCodegenTarget,
+        handlerBindings: List<HandlerBinding>,
+        gatewayRouteBindings: List<GatewayRouteBinding>,
+    ) {
+        val sourceFiles = (handlerBindings.map(HandlerBinding::sourceFile) +
+            gatewayRouteBindings.map(GatewayRouteBinding::sourceFile))
+            .distinctBy { it.filePath }
+            .toTypedArray()
+        val output = codeGenerator.createNewFile(
+            dependencies = Dependencies(aggregating = false, *sourceFiles),
+            packageName = "META-INF/asteria/codegen-snapshots/message",
+            fileName = target.moduleId.lowercase(Locale.getDefault()),
+            extensionName = "json",
+        )
+        output.bufferedWriter().use { writer ->
+            writer.appendLine("{")
+            writer.appendLine("  \"schemaVersion\": 1,")
+            writer.appendLine("  \"kind\": \"message\",")
+            writer.appendLine("  \"moduleId\": ${jsonString(target.moduleId)},")
+            writer.appendLine("  \"generatedPackage\": ${jsonString(target.generatedPackage)},")
+            writer.appendLine("  \"handlers\": [")
+            handlerBindings
+                .sortedWith(compareBy({ it.dispatcher }, { it.messageClassName.canonicalName }))
+                .forEachIndexed { index, binding ->
+                    writer.appendLine("    {")
+                    writer.appendLine("      \"dispatcher\": ${jsonString(binding.dispatcher)},")
+                    writer.appendLine("      \"contextType\": ${jsonString(binding.contextTypeName.toString())},")
+                    writer.appendLine("      \"messageType\": ${jsonString(binding.messageClassName.canonicalName)},")
+                    writer.appendLine("      \"handlerType\": ${jsonString(binding.handler.toClassName().canonicalName)},")
+                    writer.appendLine("      \"generatedMessage\": ${binding.generatedMessage}")
+                    writer.append("    }")
+                    if (index != handlerBindings.lastIndex) {
+                        writer.append(',')
+                    }
+                    writer.appendLine()
+                }
+            writer.appendLine("  ],")
+            writer.appendLine("  \"gatewayRoutes\": [")
+            gatewayRouteBindings
+                .sortedBy { it.messageClassName.canonicalName }
+                .forEachIndexed { index, binding ->
+                    writer.appendLine("    {")
+                    writer.appendLine("      \"messageType\": ${jsonString(binding.messageClassName.canonicalName)},")
+                    writer.appendLine("      \"handlerType\": ${jsonString(binding.handler.toClassName().canonicalName)},")
+                    writer.appendLine("      \"route\": ${jsonString(binding.route)},")
+                    if (binding.entityId.isBlank()) {
+                        writer.appendLine("      \"entityId\": null,")
+                    } else {
+                        writer.appendLine("      \"entityId\": ${jsonString(binding.entityId)},")
+                    }
+                    writer.appendLine("      \"inject\": ${stringArrayJson(binding.inject)},")
+                    writer.appendLine("      \"clearFields\": ${stringArrayJson(binding.clearFields)}")
+                    writer.append("    }")
+                    if (index != gatewayRouteBindings.lastIndex) {
+                        writer.append(',')
+                    }
+                    writer.appendLine()
+                }
             writer.appendLine("  ]")
             writer.appendLine("}")
         }
@@ -539,7 +604,33 @@ private class AsteriaMessageHandlerSymbolProcessor(
     }
 
     private fun stringArrayJson(values: List<String>): String {
-        return values.joinToString(prefix = "[", postfix = "]") { value -> "\"$value\"" }
+        return values.joinToString(prefix = "[", postfix = "]") { value -> jsonString(value) }
+    }
+
+    private fun jsonString(value: String): String {
+        return buildString {
+            append('"')
+            value.forEach { char ->
+                when (char) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\b' -> append("\\b")
+                    '\u000C' -> append("\\f")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> {
+                        if (char < ' ') {
+                            append("\\u")
+                            append(char.code.toString(16).padStart(4, '0'))
+                        } else {
+                            append(char)
+                        }
+                    }
+                }
+            }
+            append('"')
+        }
     }
 
     companion object {

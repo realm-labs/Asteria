@@ -44,14 +44,105 @@ private class AsteriaMongoEntitySymbolProcessor(
         if (invalid.isNotEmpty()) {
             return invalid
         }
+        val models = mutableListOf<MongoEntityCodegenModel>()
+        val sourceFiles = mutableListOf<KSFile>()
         symbols.forEach { symbol ->
             val model = readModel(symbol) ?: return@forEach
+            models += model
             val file = AsteriaMongoEntityCodeGenerator.buildFile(model)
             val sourceFile = symbol.containingFile
+            sourceFile?.let { sourceFiles += it }
             file.writeTo(codeGenerator, Dependencies(aggregating = false, *listOfNotNull(sourceFile).toTypedArray()))
+        }
+        if (models.isNotEmpty()) {
+            generateCodegenSnapshot(models, sourceFiles)
         }
         generated = true
         return emptyList()
+    }
+
+    private fun generateCodegenSnapshot(
+        models: List<MongoEntityCodegenModel>,
+        sourceFiles: List<KSFile>,
+    ) {
+        val output = codeGenerator.createNewFile(
+            dependencies = Dependencies(aggregating = false, *sourceFiles.distinctBy { it.filePath }.toTypedArray()),
+            packageName = "META-INF/asteria/codegen-snapshots/persistence-mongodb",
+            fileName = "entities",
+            extensionName = "json",
+        )
+        output.bufferedWriter().use { writer ->
+            writer.appendLine("{")
+            writer.appendLine("  \"schemaVersion\": 1,")
+            writer.appendLine("  \"kind\": \"persistence-mongodb\",")
+            writer.appendLine("  \"valueTypes\": ${stringArrayJson(valueTypes.sorted())},")
+            writer.appendLine("  \"entities\": [")
+            models.sortedBy { it.entityType.canonicalName }.forEachIndexed { index, model ->
+                writer.appendLine("    {")
+                writer.appendLine("      \"entityType\": ${jsonString(model.entityType.canonicalName)},")
+                writer.appendLine("      \"packageName\": ${jsonString(model.packageName)},")
+                writer.appendLine("      \"collectionName\": ${jsonString(model.collectionName)},")
+                writer.appendLine("      \"wrapperName\": ${jsonString(model.wrapperName)},")
+                writer.appendLine("      \"helperName\": ${jsonString(model.helperName)},")
+                writer.appendLine("      \"idProperty\": ${jsonString(model.id.name)},")
+                writer.appendLine("      \"properties\": [")
+                model.properties.sortedBy { it.name }.forEachIndexed { propertyIndex, property ->
+                    appendPropertySnapshot(writer, property, indent = "        ")
+                    if (propertyIndex != model.properties.lastIndex) {
+                        writer.append(',')
+                    }
+                    writer.appendLine()
+                }
+                writer.appendLine("      ],")
+                writer.appendLine("      \"nestedObjects\": [")
+                model.nestedObjects
+                    .sortedBy { it.sourceType.canonicalName }
+                    .forEachIndexed { nestedIndex, nested ->
+                        writer.appendLine("        {")
+                        writer.appendLine("          \"sourceType\": ${jsonString(nested.sourceType.canonicalName)},")
+                        writer.appendLine("          \"wrapperType\": ${jsonString(nested.wrapperType.canonicalName)},")
+                        writer.appendLine("          \"properties\": [")
+                        nested.properties.sortedBy { it.name }.forEachIndexed { propertyIndex, property ->
+                            appendPropertySnapshot(writer, property, indent = "            ")
+                            if (propertyIndex != nested.properties.lastIndex) {
+                                writer.append(',')
+                            }
+                            writer.appendLine()
+                        }
+                        writer.appendLine("          ]")
+                        writer.append("        }")
+                        if (nestedIndex != model.nestedObjects.lastIndex) {
+                            writer.append(',')
+                        }
+                        writer.appendLine()
+                    }
+                writer.appendLine("      ]")
+                writer.append("    }")
+                if (index != models.lastIndex) {
+                    writer.append(',')
+                }
+                writer.appendLine()
+            }
+            writer.appendLine("  ]")
+            writer.appendLine("}")
+        }
+    }
+
+    private fun appendPropertySnapshot(
+        writer: java.io.Writer,
+        property: MongoEntityPropertyModel,
+        indent: String,
+    ) {
+        writer.appendLine("${indent}{")
+        writer.appendLine("$indent  \"name\": ${jsonString(property.name)},")
+        writer.appendLine("$indent  \"fieldName\": ${jsonString(property.fieldName)},")
+        writer.appendLine("$indent  \"type\": ${jsonString(property.type.toString())},")
+        writer.appendLine("$indent  \"kind\": ${jsonString(property.kind.name)},")
+        writer.appendLine("$indent  \"trackedType\": ${jsonString(property.trackedType.toString())},")
+        writer.appendLine("$indent  \"valueKind\": ${jsonString(property.valueKind.name)},")
+        writer.appendLine("$indent  \"scanIgnored\": ${property.scanIgnored},")
+        writer.appendLine("$indent  \"scanWholeField\": ${property.scanWholeField}")
+        writer.append("$indent}")
     }
 
     private fun readModel(symbol: KSClassDeclaration): MongoEntityCodegenModel? {
@@ -506,6 +597,36 @@ private class AsteriaMongoEntitySymbolProcessor(
 
     private fun KSAnnotation.stringArg(name: String): String {
         return arguments.firstOrNull { it.name?.asString() == name }?.value as? String ?: ""
+    }
+
+    private fun stringArrayJson(values: List<String>): String {
+        return values.joinToString(prefix = "[", postfix = "]") { value -> jsonString(value) }
+    }
+
+    private fun jsonString(value: String): String {
+        return buildString {
+            append('"')
+            value.forEach { char ->
+                when (char) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\b' -> append("\\b")
+                    '\u000C' -> append("\\f")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> {
+                        if (char < ' ') {
+                            append("\\u")
+                            append(char.code.toString(16).padStart(4, '0'))
+                        } else {
+                            append(char)
+                        }
+                    }
+                }
+            }
+            append('"')
+        }
     }
 
     private companion object {

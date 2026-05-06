@@ -52,17 +52,29 @@ private class AsteriaConfigSymbolProcessor(
             return emptyList()
         }
 
+        var tableCodegenConfig: ConfigCodegenConfig? = null
+        var tableModels = emptyList<ConfigTableModel>()
+        val tableSourceFiles = tableSymbols.mapNotNull { it.containingFile }
         if (tableSymbols.isNotEmpty()) {
             val config = readCodegenConfig(resolver)
             val tables = tableSymbols.mapNotNull(::readTableModel)
+            tableCodegenConfig = config
+            tableModels = tables
             val sourceFiles = tableSymbols.mapNotNull { it.containingFile }.toTypedArray()
             AsteriaConfigCodeGenerator.buildFiles(config, tables).forEach { generated ->
                 generated.file.writeTo(codeGenerator, Dependencies(aggregating = true, *sourceFiles))
             }
         }
+        var changeSnapshot: ConfigChangeCodegenSnapshot? = null
         if (handlerSymbols.isNotEmpty() || hasConfigChangeCatalog(resolver)) {
-            generateConfigChangeHandlers(resolver, handlerSymbols)
+            changeSnapshot = generateConfigChangeHandlers(resolver, handlerSymbols)
         }
+        generateCodegenSnapshot(
+            tableCodegenConfig = tableCodegenConfig,
+            tables = tableModels,
+            tableSourceFiles = tableSourceFiles,
+            changeSnapshot = changeSnapshot,
+        )
         generated = true
         return emptyList()
     }
@@ -70,8 +82,8 @@ private class AsteriaConfigSymbolProcessor(
     private fun generateConfigChangeHandlers(
         resolver: Resolver,
         handlerSymbols: List<KSClassDeclaration>,
-    ) {
-        val processorConfig = readConfigChangeCodegenConfig(resolver) ?: return
+    ): ConfigChangeCodegenSnapshot? {
+        val processorConfig = readConfigChangeCodegenConfig(resolver) ?: return null
         val handlers = handlerSymbols.mapNotNull { handler ->
             readConfigChangeHandlerModel(
                 resolver = resolver,
@@ -84,6 +96,89 @@ private class AsteriaConfigSymbolProcessor(
             .toTypedArray()
         AsteriaConfigChangeCodeGenerator.buildFiles(processorConfig.codegen, handlers).forEach { generated ->
             generated.file.writeTo(codeGenerator, Dependencies(aggregating = true, *sourceFiles))
+        }
+        return ConfigChangeCodegenSnapshot(
+            codegen = processorConfig.codegen,
+            handlers = handlers,
+            sourceFiles = sourceFiles.toList(),
+        )
+    }
+
+    private fun generateCodegenSnapshot(
+        tableCodegenConfig: ConfigCodegenConfig?,
+        tables: List<ConfigTableModel>,
+        tableSourceFiles: List<KSFile>,
+        changeSnapshot: ConfigChangeCodegenSnapshot?,
+    ) {
+        val sourceFiles = (tableSourceFiles + changeSnapshot?.sourceFiles.orEmpty())
+            .distinctBy { it.filePath }
+            .toTypedArray()
+        val output = codeGenerator.createNewFile(
+            dependencies = Dependencies(aggregating = true, *sourceFiles),
+            packageName = "META-INF/asteria/codegen-snapshots/config",
+            fileName = "config",
+            extensionName = "json",
+        )
+        output.bufferedWriter().use { writer ->
+            writer.appendLine("{")
+            writer.appendLine("  \"schemaVersion\": 1,")
+            writer.appendLine("  \"kind\": \"config\",")
+            if (tableCodegenConfig == null) {
+                writer.appendLine("  \"tablesCodegen\": null,")
+            } else {
+                writer.appendLine("  \"tablesCodegen\": {")
+                writer.appendLine("    \"packageName\": ${jsonString(tableCodegenConfig.packageName)},")
+                writer.appendLine("    \"tablesObjectName\": ${jsonString(tableCodegenConfig.tablesObjectName)},")
+                writer.appendLine("    \"accessorClassName\": ${jsonString(tableCodegenConfig.accessorClassName)}")
+                writer.appendLine("  },")
+            }
+            writer.appendLine("  \"tables\": [")
+            tables.sortedBy { it.tableName }.forEachIndexed { index, table ->
+                writer.appendLine("    {")
+                writer.appendLine("      \"name\": ${jsonString(table.tableName)},")
+                writer.appendLine("      \"shape\": ${jsonString(table.shape.name)},")
+                if (table.keyType == null) {
+                    writer.appendLine("      \"keyType\": null,")
+                } else {
+                    writer.appendLine("      \"keyType\": ${jsonString(table.keyType.toString())},")
+                }
+                writer.appendLine("      \"rowType\": ${jsonString(table.rowType.toString())},")
+                if (table.tableType == null) {
+                    writer.appendLine("      \"tableType\": null,")
+                } else {
+                    writer.appendLine("      \"tableType\": ${jsonString(table.tableType.rawType.canonicalName)},")
+                }
+                writer.appendLine("      \"refName\": ${jsonString(table.refName)},")
+                writer.appendLine("      \"propertyName\": ${jsonString(table.propertyName)}")
+                writer.append("    }")
+                if (index != tables.lastIndex) {
+                    writer.append(',')
+                }
+                writer.appendLine()
+            }
+            writer.appendLine("  ],")
+            if (changeSnapshot == null) {
+                writer.appendLine("  \"changeCodegen\": null,")
+                writer.appendLine("  \"changeHandlers\": []")
+            } else {
+                writer.appendLine("  \"changeCodegen\": {")
+                writer.appendLine("    \"packageName\": ${jsonString(changeSnapshot.codegen.packageName)},")
+                writer.appendLine("    \"className\": ${jsonString(changeSnapshot.codegen.className)},")
+                writer.appendLine("    \"receiverType\": ${jsonString(changeSnapshot.codegen.receiverType.toString())}")
+                writer.appendLine("  },")
+                writer.appendLine("  \"changeHandlers\": [")
+                changeSnapshot.handlers
+                    .sortedBy { it.handlerType.canonicalName }
+                    .forEachIndexed { index, handler ->
+                        writer.append("    ${jsonString(handler.handlerType.canonicalName)}")
+                        if (index != changeSnapshot.handlers.lastIndex) {
+                            writer.append(',')
+                        }
+                        writer.appendLine()
+                    }
+                writer.appendLine("  ]")
+            }
+            writer.appendLine("}")
         }
     }
 
@@ -300,6 +395,32 @@ private class AsteriaConfigSymbolProcessor(
         return declaration.qualifiedName?.asString() == "kotlin.Nothing"
     }
 
+    private fun jsonString(value: String): String {
+        return buildString {
+            append('"')
+            value.forEach { char ->
+                when (char) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\b' -> append("\\b")
+                    '\u000C' -> append("\\f")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> {
+                        if (char < ' ') {
+                            append("\\u")
+                            append(char.code.toString(16).padStart(4, '0'))
+                        } else {
+                            append(char)
+                        }
+                    }
+                }
+            }
+            append('"')
+        }
+    }
+
     private fun KSClassDeclaration.hasSuperType(qualifiedName: String): Boolean {
         if (this.qualifiedName?.asString() == qualifiedName) {
             return true
@@ -313,5 +434,11 @@ private class AsteriaConfigSymbolProcessor(
 private data class ConfigChangeProcessorConfig(
     val codegen: ConfigChangeCodegenConfig,
     val receiverType: KSType,
+    val sourceFiles: List<KSFile>,
+)
+
+private data class ConfigChangeCodegenSnapshot(
+    val codegen: ConfigChangeCodegenConfig,
+    val handlers: List<ConfigChangeHandlerModel>,
     val sourceFiles: List<KSFile>,
 )

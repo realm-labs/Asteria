@@ -31,6 +31,17 @@
 
 - [Antares](https://github.com/mikai233/antares)：一个真实游戏服务器脚手架，展示基于 Asteria 的服务如何拆分网关、世界、玩家、GM、配置、协议和工具等区域。
 
+## KSP 生成快照
+
+使用 Asteria KSP 的模块会额外生成 JSON 快照，记录本次代码生成扫描到的原始模型。快照用于业务项目做可选的生成结果校验，不作为运行时配置读取。
+
+- `META-INF/asteria/codegen-snapshots/message/<moduleId>.json`
+- `META-INF/asteria/codegen-snapshots/event/<rootPackage>.json`，文件名会把 root package 中的非字母数字字符替换为 `_`
+- `META-INF/asteria/codegen-snapshots/config/config.json`
+- `META-INF/asteria/codegen-snapshots/persistence-mongodb/entities.json`
+
+业务项目可以把这些快照同步到版本管理中，在 CI 或发布构建前重新生成并比较 diff，用来发现 handler、topic、配置表或 Mongo wrapper 模型的意外变化。
+
 ## 文档约定
 
 文档里的示例优先展示框架期望的集成方式，不覆盖业务侧完整实现。需要业务实现的地方会明确标出，比如认证、玩家绑定、脚本审批、配置事件投递、Mongo
