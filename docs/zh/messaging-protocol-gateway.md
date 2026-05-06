@@ -22,6 +22,20 @@ class EnterWorldHandler : MessageHandler<PlayerHandlerContext, EnterWorldReq> {
 `MessageDispatcher` 是 exact-type dispatch：注册 `BaseMessage` 不会自动处理所有子类。handler 多时使用
 `foundation-message-ksp` 和 Gradle plugin 生成注册代码，避免启动时反射扫描。
 
+```kotlin
+plugins {
+    id("io.github.realm-labs.asteria.message-codegen")
+}
+
+asteriaMessageCodegen {
+    generatedPackage.set("com.example.game.generated")
+    moduleId.set("game")
+}
+```
+
+给 handler class 添加 `@AsteriaMessageHandler` 后，KSP 会按上面的生成包和模块 ID 统一生成 catalog 与 dispatcher。
+handler 需要定义 `handle(context, message)` 方法。
+
 ## Protobuf 协议生成
 
 `protocol-protobuf` 提供 gateway protocol registry；`rpc-protobuf` 提供 RPC registry。`protobuf-codegen` 从 proto 描述生成

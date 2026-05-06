@@ -3,37 +3,16 @@ package io.github.realmlabs.asteria.message.ksp
 import com.google.devtools.ksp.getAllSuperTypes
 import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.getDeclaredFunctions
-import com.google.devtools.ksp.processing.CodeGenerator
-import com.google.devtools.ksp.processing.Dependencies
-import com.google.devtools.ksp.processing.KSPLogger
-import com.google.devtools.ksp.processing.Resolver
-import com.google.devtools.ksp.processing.SymbolProcessor
-import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
-import com.google.devtools.ksp.processing.SymbolProcessorProvider
-import com.google.devtools.ksp.symbol.ClassKind
-import com.google.devtools.ksp.symbol.KSAnnotated
-import com.google.devtools.ksp.symbol.KSAnnotation
-import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.symbol.KSFile
-import com.google.devtools.ksp.symbol.KSType
-import com.google.devtools.ksp.symbol.KSTypeAlias
-import com.google.devtools.ksp.symbol.Modifier
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
+import com.google.devtools.ksp.processing.*
+import com.google.devtools.ksp.symbol.*
+import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.PropertySpec
-import com.squareup.kotlinpoet.TypeName
-import com.squareup.kotlinpoet.TypeSpec
-import com.squareup.kotlinpoet.asClassName
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
 import io.github.realmlabs.asteria.message.MessageCatalog
 import io.github.realmlabs.asteria.message.MessageCatalogEntry
-import java.util.Locale
+import java.util.*
 
 class AsteriaMessageHandlerSymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
@@ -42,7 +21,6 @@ class AsteriaMessageHandlerSymbolProcessorProvider : SymbolProcessorProvider {
 }
 
 private data class HandlerBinding(
-    val rootPackage: String,
     val contextTypeName: TypeName,
     val handler: KSClassDeclaration,
     val messageDeclaration: KSClassDeclaration,
@@ -53,7 +31,6 @@ private data class HandlerBinding(
 )
 
 private data class GatewayRouteBinding(
-    val rootPackage: String,
     val handler: KSClassDeclaration,
     val messageClassName: ClassName,
     val sourceFile: KSFile,
@@ -61,6 +38,12 @@ private data class GatewayRouteBinding(
     val entityId: String,
     val inject: List<String>,
     val clearFields: List<String>,
+)
+
+private data class MessageCodegenTarget(
+    val generatedPackage: String,
+    val moduleId: String,
+    val generatedTypeNamePart: String,
 )
 
 private class AsteriaMessageHandlerSymbolProcessor(
@@ -77,29 +60,37 @@ private class AsteriaMessageHandlerSymbolProcessor(
             return emptyList()
         }
 
-        val handlerBindings = resolver.getSymbolsWithAnnotation(messageHandlerAnnotationName)
-            .filterIsInstance<KSClassDeclaration>()
+        val handlerDeclarations = resolver.getSymbolsWithAnnotation(messageHandlerAnnotationName)
+            .filterIsInstance<KSClassDeclaration>().toList()
+        val gatewayRouteDeclarations = resolver.getSymbolsWithAnnotation(gatewayRouteAnnotationName)
+            .filterIsInstance<KSClassDeclaration>().toList()
+
+        val target = if (handlerDeclarations.isNotEmpty() || gatewayRouteDeclarations.isNotEmpty()) {
+            codegenTarget() ?: run {
+                generated = true
+                return emptyList()
+            }
+        } else {
+            null
+        }
+
+        val handlerBindings = handlerDeclarations
             .mapNotNull { declaration ->
                 declaration.toHandlerBinding(declaration.containingFile ?: return@mapNotNull null)
             }
-            .toList()
         if (handlerBindings.isNotEmpty()) {
-            handlerBindings.groupBy(HandlerBinding::rootPackage).forEach { (rootPackage, bindings) ->
-                generateCatalog(rootPackage, bindings)
-                generateDispatchers(rootPackage, bindings)
-            }
+            checkNotNull(target)
+            generateCatalog(target, handlerBindings)
+            generateDispatchers(target, handlerBindings)
         }
 
-        val gatewayRouteBindings = resolver.getSymbolsWithAnnotation(gatewayRouteAnnotationName)
-            .filterIsInstance<KSClassDeclaration>()
+        val gatewayRouteBindings = gatewayRouteDeclarations
             .mapNotNull { declaration ->
                 declaration.toGatewayRouteBinding(declaration.containingFile ?: return@mapNotNull null)
             }
-            .toList()
         if (gatewayRouteBindings.isNotEmpty()) {
-            gatewayRouteBindings.groupBy(GatewayRouteBinding::rootPackage).forEach { (rootPackage, bindings) ->
-                generateGatewayRouteMetadata(rootPackage, bindings)
-            }
+            checkNotNull(target)
+            generateGatewayRouteMetadata(target, gatewayRouteBindings)
         }
 
         generated = true
@@ -108,22 +99,29 @@ private class AsteriaMessageHandlerSymbolProcessor(
 
     private fun KSClassDeclaration.toHandlerBinding(sourceFile: KSFile): HandlerBinding? {
         if (classKind != ClassKind.CLASS || Modifier.ABSTRACT in modifiers) {
+            logger.error("@AsteriaMessageHandler must target a non-abstract class: ${qualifiedName?.asString()}", this)
             return null
         }
-        val packageName = packageName.asString()
-        if (!packageName.contains(".handler.") || !simpleName.asString().endsWith("Handler")) {
-            return null
-        }
-        val rootPackage = packageName.substringBefore(".handler.")
         val handleFunction = getDeclaredFunctions().firstOrNull {
             it.simpleName.asString() == "handle" && it.parameters.size == 2
-        } ?: return null
+        } ?: run {
+            logger.error(
+                "@AsteriaMessageHandler class must define handle(context, message): ${qualifiedName?.asString()}",
+                this
+            )
+            return null
+        }
         val contextType = handleFunction.parameters[0].type.toTypeName()
         val messageDeclaration = handleFunction.parameters[1].type.resolve().targetClassDeclaration()
-            ?: return null
+            ?: run {
+                logger.error(
+                    "@AsteriaMessageHandler message parameter must be a class type: ${qualifiedName?.asString()}",
+                    this
+                )
+                return null
+            }
         val annotation = findAnnotation(messageHandlerAnnotationName) ?: return null
         return HandlerBinding(
-            rootPackage = rootPackage,
             contextTypeName = contextType,
             handler = this,
             messageDeclaration = messageDeclaration,
@@ -136,27 +134,28 @@ private class AsteriaMessageHandlerSymbolProcessor(
 
     private fun KSClassDeclaration.toGatewayRouteBinding(sourceFile: KSFile): GatewayRouteBinding? {
         if (classKind != ClassKind.CLASS || Modifier.ABSTRACT in modifiers) {
+            logger.error("@AsteriaGatewayRoute must target a non-abstract class: ${qualifiedName?.asString()}", this)
             return null
         }
-        val packageName = packageName.asString()
-        if (!packageName.contains(".handler.") || !simpleName.asString().endsWith("Handler")) {
-            return null
-        }
-        val rootPackage = packageName.substringBefore(".handler.")
         val handleFunction = getDeclaredFunctions().firstOrNull {
             it.simpleName.asString() == "handle" && it.parameters.size == 2
         } ?: run {
-            logger.error("gateway route handler must define handle(context, message): ${qualifiedName?.asString()}", this)
+            logger.error(
+                "@AsteriaGatewayRoute class must define handle(context, message): ${qualifiedName?.asString()}",
+                this
+            )
             return null
         }
         val messageDeclaration = handleFunction.parameters[1].type.resolve().targetClassDeclaration()
             ?: run {
-                logger.error("gateway route handler message must be a class type: ${qualifiedName?.asString()}", this)
+                logger.error(
+                    "@AsteriaGatewayRoute message parameter must be a class type: ${qualifiedName?.asString()}",
+                    this
+                )
                 return null
             }
         val annotation = findAnnotation(gatewayRouteAnnotationName) ?: return null
         return GatewayRouteBinding(
-            rootPackage = rootPackage,
             handler = this,
             messageClassName = messageDeclaration.toClassName(),
             sourceFile = sourceFile,
@@ -167,10 +166,33 @@ private class AsteriaMessageHandlerSymbolProcessor(
         )
     }
 
-    private fun generateCatalog(rootPackage: String, bindings: List<HandlerBinding>) {
-        val generatedPackage = "$rootPackage.generated"
-        val moduleName = rootPackage.substringAfterLast('.').toUpperCamel()
-        val generatedType = TypeSpec.objectBuilder("Generated${moduleName}MessageCatalog")
+    private fun codegenTarget(): MessageCodegenTarget? {
+        val generatedPackage = options[GENERATED_PACKAGE_OPTION]?.trim().orEmpty()
+        val moduleId = options[MODULE_ID_OPTION]?.trim().orEmpty()
+        var valid = true
+        if (generatedPackage.isBlank()) {
+            logger.error("KSP option $GENERATED_PACKAGE_OPTION must be configured when using Asteria message codegen")
+            valid = false
+        }
+        if (moduleId.isBlank()) {
+            logger.error("KSP option $MODULE_ID_OPTION must be configured when using Asteria message codegen")
+            valid = false
+        }
+        return if (valid) {
+            MessageCodegenTarget(
+                generatedPackage = generatedPackage,
+                moduleId = moduleId,
+                generatedTypeNamePart = moduleId.toTypeNamePart(default = "Module"),
+            )
+        } else {
+            null
+        }
+    }
+
+    private fun generateCatalog(target: MessageCodegenTarget, bindings: List<HandlerBinding>) {
+        val generatedPackage = target.generatedPackage
+        val typeNamePart = target.generatedTypeNamePart
+        val generatedType = TypeSpec.objectBuilder("Generated${typeNamePart}MessageCatalog")
             .addSuperinterface(MessageCatalog::class)
             .addProperty(
                 PropertySpec.builder(
@@ -182,7 +204,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
                     .build(),
             )
             .build()
-        FileSpec.builder(generatedPackage, "Generated${moduleName}MessageCatalog")
+        FileSpec.builder(generatedPackage, "Generated${typeNamePart}MessageCatalog")
             .addType(generatedType)
             .build()
             .writeTo(
@@ -194,12 +216,12 @@ private class AsteriaMessageHandlerSymbolProcessor(
             )
     }
 
-    private fun generateDispatchers(rootPackage: String, bindings: List<HandlerBinding>) {
-        val generatedPackage = "$rootPackage.generated"
-        val moduleName = rootPackage.substringAfterLast('.').toUpperCamel()
+    private fun generateDispatchers(target: MessageCodegenTarget, bindings: List<HandlerBinding>) {
+        val generatedPackage = target.generatedPackage
+        val typeNamePart = target.generatedTypeNamePart
         val contextType = bindings.first().contextTypeName
         if (bindings.any { it.contextTypeName != contextType }) {
-            logger.error("all @AsteriaMessageHandler bindings under $rootPackage must share the same handler context")
+            logger.error("all @AsteriaMessageHandler bindings in module ${target.moduleId} must share the same handler context")
             return
         }
         val dispatcherType = ClassName("io.github.realmlabs.asteria.message", "MessageDispatcher")
@@ -208,9 +230,9 @@ private class AsteriaMessageHandlerSymbolProcessor(
         dispatchers.forEach { dispatcherKey ->
             val dispatcherBindings = bindings.filter { it.dispatcher == dispatcherKey }
             val messageSuperType = resolveMessageSuperType(dispatcherKey, dispatcherBindings, generatedMessageType)
-            generateDispatcherHandles(rootPackage, moduleName, contextType, dispatcherKey, dispatcherBindings, messageSuperType)
+            generateDispatcherHandles(target, contextType, dispatcherKey, dispatcherBindings, messageSuperType)
         }
-        val generatedType = TypeSpec.objectBuilder("Generated${moduleName}NodeDispatchers")
+        val generatedType = TypeSpec.objectBuilder("Generated${typeNamePart}NodeDispatchers")
             .apply {
                 dispatchers.forEach { dispatcherKey ->
                     val dispatcherBindings = bindings.filter { it.dispatcher == dispatcherKey }
@@ -220,13 +242,13 @@ private class AsteriaMessageHandlerSymbolProcessor(
                             dispatcherKey.toDispatcherPropertyName(),
                             dispatcherType.parameterizedBy(contextType, messageSuperType),
                         )
-                            .initializer(buildDispatcherExpression(moduleName, dispatcherBindings, messageSuperType))
+                            .initializer(buildDispatcherExpression(target, dispatcherBindings, messageSuperType))
                             .build(),
                     )
                 }
             }
             .build()
-        FileSpec.builder(generatedPackage, "Generated${moduleName}NodeDispatchers")
+        FileSpec.builder(generatedPackage, "Generated${typeNamePart}NodeDispatchers")
             .addType(generatedType)
             .build()
             .writeTo(
@@ -239,15 +261,15 @@ private class AsteriaMessageHandlerSymbolProcessor(
     }
 
     private fun generateDispatcherHandles(
-        rootPackage: String,
-        moduleName: String,
+        target: MessageCodegenTarget,
         contextType: TypeName,
         dispatcherKey: String,
         bindings: List<HandlerBinding>,
         messageSuperType: ClassName,
     ) {
-        val generatedPackage = "$rootPackage.generated"
-        val objectName = "Generated${moduleName}${dispatcherKey.toDispatcherTypeNamePart()}MessageHandles"
+        val generatedPackage = target.generatedPackage
+        val typeNamePart = target.generatedTypeNamePart
+        val objectName = "Generated${typeNamePart}${dispatcherKey.toDispatcherTypeNamePart()}MessageHandles"
         val messageHandleType = ClassName("io.github.realmlabs.asteria.message", "MessageHandle")
             .parameterizedBy(contextType, messageSuperType)
         val chunkedBindings = bindings.sortedBy { it.messageClassName.canonicalName }.chunked(HANDLER_CHUNK_SIZE)
@@ -293,20 +315,20 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }
     }
 
-    private fun generateGatewayRouteMetadata(rootPackage: String, bindings: List<GatewayRouteBinding>) {
-        val moduleName = rootPackage.substringAfterLast('.').lowercase(Locale.getDefault())
+    private fun generateGatewayRouteMetadata(target: MessageCodegenTarget, bindings: List<GatewayRouteBinding>) {
+        val moduleId = target.moduleId.lowercase(Locale.getDefault())
         val output = codeGenerator.createNewFile(
             dependencies = Dependencies(
                 aggregating = false,
                 *bindings.map(GatewayRouteBinding::sourceFile).toTypedArray(),
             ),
             packageName = "META-INF/asteria/gateway-route-hints",
-            fileName = moduleName,
+            fileName = moduleId,
             extensionName = "json",
         )
         output.bufferedWriter().use { writer ->
             writer.appendLine("{")
-            writer.appendLine("  \"module\": \"$moduleName\",")
+            writer.appendLine("  \"module\": \"$moduleId\",")
             writer.appendLine("  \"routes\": [")
             bindings.sortedBy { it.messageClassName.canonicalName }.forEachIndexed { index, binding ->
                 writer.appendLine("    {")
@@ -377,15 +399,16 @@ private class AsteriaMessageHandlerSymbolProcessor(
     }
 
     private fun buildDispatcherExpression(
-        moduleName: String,
+        target: MessageCodegenTarget,
         bindings: List<HandlerBinding>,
         messageSuperType: ClassName,
     ): CodeBlock {
+        val typeNamePart = target.generatedTypeNamePart
         val registryType = ClassName("io.github.realmlabs.asteria.message", "PatchableMessageHandlerRegistry")
         val dispatcherType = ClassName("io.github.realmlabs.asteria.message", "MessageDispatcher")
         val handlesObject = ClassName(
-            "${bindings.first().rootPackage}.generated",
-            "Generated${moduleName}${bindings.first().dispatcher.toDispatcherTypeNamePart()}MessageHandles",
+            target.generatedPackage,
+            "Generated${typeNamePart}${bindings.first().dispatcher.toDispatcherTypeNamePart()}MessageHandles",
         )
         return CodeBlock.of(
             "%T(%T(%T.all()))",
@@ -493,12 +516,12 @@ private class AsteriaMessageHandlerSymbolProcessor(
         return (arguments.firstOrNull { it.name?.asString() == name }?.value as? List<String>).orEmpty()
     }
 
-    private fun String.toUpperCamel(): String {
-        return replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+    private fun String.toDispatcherTypeNamePart(): String {
+        return toTypeNamePart(default = "Default")
     }
 
-    private fun String.toDispatcherTypeNamePart(): String {
-        val tokens = split(Regex("[^A-Za-z0-9]+")).filter { it.isNotBlank() }.ifEmpty { listOf("default") }
+    private fun String.toTypeNamePart(default: String): String {
+        val tokens = split(Regex("[^A-Za-z0-9]+")).filter { it.isNotBlank() }.ifEmpty { listOf(default) }
         return tokens.joinToString("") { token ->
             token.lowercase(Locale.getDefault()).replaceFirstChar { it.titlecase(Locale.getDefault()) }
         }
@@ -521,5 +544,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
 
     companion object {
         private const val HANDLER_CHUNK_SIZE = 200
+        private const val GENERATED_PACKAGE_OPTION = "asteria.message.generated.package"
+        private const val MODULE_ID_OPTION = "asteria.message.module.id"
     }
 }

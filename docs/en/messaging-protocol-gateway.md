@@ -24,6 +24,20 @@ class EnterWorldHandler : MessageHandler<PlayerHandlerContext, EnterWorldReq> {
 `MessageDispatcher` uses exact-type dispatch. Registering `BaseMessage` does not automatically handle subclasses. Use
 `foundation-message-ksp` and its Gradle plugin when handler registration would otherwise become large and manual.
 
+```kotlin
+plugins {
+    id("io.github.realm-labs.asteria.message-codegen")
+}
+
+asteriaMessageCodegen {
+    generatedPackage.set("com.example.game.generated")
+    moduleId.set("game")
+}
+```
+
+After a handler class is annotated with `@AsteriaMessageHandler`, KSP generates the catalog and dispatchers under the
+configured package and module id. A handler must define a `handle(context, message)` method.
+
 ## Protobuf Protocol Generation
 
 `protocol-protobuf` provides the gateway protocol registry; `rpc-protobuf` provides the RPC registry. `protobuf-codegen`

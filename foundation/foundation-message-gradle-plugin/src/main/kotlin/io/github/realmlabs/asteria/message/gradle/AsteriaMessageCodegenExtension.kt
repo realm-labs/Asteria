@@ -20,6 +20,16 @@ abstract class AsteriaMessageCodegenExtension @Inject constructor(objects: Objec
         .convention(true)
 
     /**
+     * Package that receives generated message catalog and dispatcher sources.
+     */
+    val generatedPackage: Property<String> = objects.property(String::class.java)
+
+    /**
+     * Logical module id used in generated type names and gateway route metadata.
+     */
+    val moduleId: Property<String> = objects.property(String::class.java)
+
+    /**
      * Dispatcher key to common message super type mapping.
      *
      * Example:
