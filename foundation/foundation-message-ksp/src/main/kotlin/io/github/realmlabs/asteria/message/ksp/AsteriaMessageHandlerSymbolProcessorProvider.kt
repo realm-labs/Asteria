@@ -35,9 +35,6 @@ private data class GatewayRouteBinding(
     val messageClassName: ClassName,
     val sourceFile: KSFile,
     val route: String,
-    val entityId: String,
-    val inject: List<String>,
-    val clearFields: List<String>,
 )
 
 private data class MessageCodegenTarget(
@@ -156,14 +153,16 @@ private class AsteriaMessageHandlerSymbolProcessor(
                 return null
             }
         val annotation = findAnnotation(gatewayRouteAnnotationName) ?: return null
+        val route = annotation.stringArg("route")
+        if (route.isBlank()) {
+            logger.error("@AsteriaGatewayRoute route must not be blank: ${qualifiedName?.asString()}", this)
+            return null
+        }
         return GatewayRouteBinding(
             handler = this,
             messageClassName = messageDeclaration.toClassName(),
             sourceFile = sourceFile,
-            route = annotation.stringArg("route"),
-            entityId = annotation.stringArg("entityId"),
-            inject = annotation.stringListArg("inject"),
-            clearFields = annotation.stringListArg("clearFields"),
+            route = route,
         )
     }
 
@@ -329,20 +328,14 @@ private class AsteriaMessageHandlerSymbolProcessor(
         )
         output.bufferedWriter().use { writer ->
             writer.appendLine("{")
+            writer.appendLine("  \"schemaVersion\": 1,")
             writer.appendLine("  \"module\": \"$moduleId\",")
             writer.appendLine("  \"routes\": [")
             bindings.sortedBy { it.messageClassName.canonicalName }.forEachIndexed { index, binding ->
                 writer.appendLine("    {")
                 writer.appendLine("      \"messageType\": ${jsonString(binding.messageClassName.canonicalName)},")
                 writer.appendLine("      \"handlerType\": ${jsonString(binding.handler.toClassName().canonicalName)},")
-                writer.appendLine("      \"route\": ${jsonString(binding.route)},")
-                if (binding.entityId.isBlank()) {
-                    writer.appendLine("      \"entityId\": null,")
-                } else {
-                    writer.appendLine("      \"entityId\": ${jsonString(binding.entityId)},")
-                }
-                writer.appendLine("      \"inject\": ${stringArrayJson(binding.inject)},")
-                writer.appendLine("      \"clearFields\": ${stringArrayJson(binding.clearFields)}")
+                writer.appendLine("      \"route\": ${jsonString(binding.route)}")
                 writer.append("    }")
                 if (index != bindings.lastIndex) {
                     writer.append(',')
@@ -399,14 +392,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
                     writer.appendLine("    {")
                     writer.appendLine("      \"messageType\": ${jsonString(binding.messageClassName.canonicalName)},")
                     writer.appendLine("      \"handlerType\": ${jsonString(binding.handler.toClassName().canonicalName)},")
-                    writer.appendLine("      \"route\": ${jsonString(binding.route)},")
-                    if (binding.entityId.isBlank()) {
-                        writer.appendLine("      \"entityId\": null,")
-                    } else {
-                        writer.appendLine("      \"entityId\": ${jsonString(binding.entityId)},")
-                    }
-                    writer.appendLine("      \"inject\": ${stringArrayJson(binding.inject)},")
-                    writer.appendLine("      \"clearFields\": ${stringArrayJson(binding.clearFields)}")
+                    writer.appendLine("      \"route\": ${jsonString(binding.route)}")
                     writer.append("    }")
                     if (index != gatewayRouteBindings.lastIndex) {
                         writer.append(',')
@@ -576,11 +562,6 @@ private class AsteriaMessageHandlerSymbolProcessor(
         return arguments.firstOrNull { it.name?.asString() == name }?.value as? String ?: ""
     }
 
-    private fun KSAnnotation.stringListArg(name: String): List<String> {
-        @Suppress("UNCHECKED_CAST")
-        return (arguments.firstOrNull { it.name?.asString() == name }?.value as? List<String>).orEmpty()
-    }
-
     private fun String.toDispatcherTypeNamePart(): String {
         return toTypeNamePart(default = "Default")
     }
@@ -601,10 +582,6 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }.joinToString("")
         val normalized = if (sanitized.firstOrNull()?.isDigit() == true) "_$sanitized" else sanitized
         return normalized.ifBlank { "DEFAULT" }
-    }
-
-    private fun stringArrayJson(values: List<String>): String {
-        return values.joinToString(prefix = "[", postfix = "]") { value -> jsonString(value) }
     }
 
     private fun jsonString(value: String): String {

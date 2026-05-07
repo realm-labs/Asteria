@@ -4,7 +4,4 @@ package io.github.realmlabs.asteria.message
 @Retention(AnnotationRetention.SOURCE)
 annotation class AsteriaGatewayRoute(
     val route: String,
-    val entityId: String = "",
-    val inject: Array<String> = [],
-    val clearFields: Array<String> = [],
 )
