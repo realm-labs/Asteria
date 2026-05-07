@@ -58,6 +58,7 @@ include(
     "gm:gm-config",
     "gm:gm-config-spring-boot-starter",
     "gm:gm-cluster",
+    "gm:gm-shutdown",
     "gm:gm-cluster-spring-boot-starter",
     "gm:gm-cluster-pekko",
     "gm:gm-cluster-pekko-management",

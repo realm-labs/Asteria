@@ -99,6 +99,45 @@ through Java `ServiceLoader`; Spring starters expose feature lists and concrete 
 `highRisk` is metadata only. It does not automatically add approval, MFA, or ticket workflows. Production systems should
 implement those policies in `GmPrincipalResolver`, `GmPolicyEvaluator`, or business controllers.
 
+## Shutdown Orchestration
+
+`gm-shutdown` provides a runtime-neutral framework for business-side graceful shutdown. A plan runs phases in order, and
+each phase runs its steps in order. The framework records status, timeouts, failures, and GM permission metadata. It does
+not bind itself to player actors, world actors, gateways, or process-exit semantics.
+
+```kotlin
+install(gmShutdownModule {
+    phase("gateway-drain") {
+        step("stop-accepting") { context ->
+            context.services.get<GatewayControl>().stopAccepting()
+            GmShutdownStepResult.succeeded()
+        }
+        step("close-sessions") { context ->
+            context.services.get<GatewayControl>().closeAllSessions()
+            GmShutdownStepResult.succeeded()
+        }
+    }
+
+    phase("player-drain") {
+        step("flush-players") { context ->
+            context.services.get<PlayerDrainService>().drainOnlinePlayers()
+            GmShutdownStepResult.succeeded()
+        }
+    }
+
+    phase("world-drain") {
+        step("flush-worlds") { context ->
+            context.services.get<WorldDrainService>().drainWorlds()
+            GmShutdownStepResult.succeeded()
+        }
+    }
+})
+```
+
+GM or operations controllers can retrieve `GmShutdownOperations` from `ServiceRegistry`, submit a `GmShutdownRequest`,
+and inspect `status()`. After business drain completes, the final step can call a business-provided node-exit service, or
+only mark the node as `ready-to-exit` and let the deployment system scale down or send SIGTERM.
+
 ## Spring Starters
 
 - `gm-spring-boot-starter`: feature metadata API, principal support, exception handling.

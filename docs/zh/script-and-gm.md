@@ -90,6 +90,43 @@ starter 暴露 feature 列表和具体 HTTP API。
 `highRisk` 只是元数据标记，不会自动触发审批、MFA 或工单流。生产系统要在 `GmPrincipalResolver`、`GmPolicyEvaluator` 或业务
 controller 中补上这些策略。
 
+## 停服编排
+
+`gm-shutdown` 提供业务侧 graceful shutdown 的通用编排框架：plan 按 phase 顺序执行，每个 phase 内按 step 顺序执行。框架只记录
+状态、超时、失败和 GM 权限元数据，不绑定 PlayerActor、WorldActor、网关或进程退出语义。
+
+```kotlin
+install(gmShutdownModule {
+    phase("gateway-drain") {
+        step("stop-accepting") { context ->
+            context.services.get<GatewayControl>().stopAccepting()
+            GmShutdownStepResult.succeeded()
+        }
+        step("close-sessions") { context ->
+            context.services.get<GatewayControl>().closeAllSessions()
+            GmShutdownStepResult.succeeded()
+        }
+    }
+
+    phase("player-drain") {
+        step("flush-players") { context ->
+            context.services.get<PlayerDrainService>().drainOnlinePlayers()
+            GmShutdownStepResult.succeeded()
+        }
+    }
+
+    phase("world-drain") {
+        step("flush-worlds") { context ->
+            context.services.get<WorldDrainService>().drainWorlds()
+            GmShutdownStepResult.succeeded()
+        }
+    }
+})
+```
+
+GM 或运维入口可以从 `ServiceRegistry` 取出 `GmShutdownOperations`，提交 `GmShutdownRequest` 并查询 `status()`。完成业务 drain
+后，最后的 step 可以调用业务提供的节点退出服务，或者只把节点标记为 `ready-to-exit`，交给部署系统缩容或发 SIGTERM。
+
 ## Spring starter
 
 - `gm-spring-boot-starter`：feature 元数据 API、principal、异常处理。

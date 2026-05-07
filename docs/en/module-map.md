@@ -58,6 +58,7 @@
 | `script-pekko`                                               | Maps script targets to Pekko nodes, roles, entities, and singletons | Scripts need to run against actor runtime        |
 | `script-job` / `script-job-mongodb`                          | Async script jobs, persisted results, throttling, leases            | GM scripts may be long-running or multi-target   |
 | `gm-core`                                                    | GM feature metadata, permissions, audit context                     | The service has GM tools                         |
+| `gm-shutdown`                                                | Business-side shutdown plans, phases, steps, and GM permissions     | GM or operations workflows trigger graceful stop |
 | `gm-*` starters                                              | Spring HTTP APIs and concrete feature adapters                      | GM operations are exposed over HTTP              |
 | `patch-core` / `patch-jar` / `patch-mongodb` / `patch-pekko` | Runtime patches, plugin resolution, repositories, cluster control   | Online runtime patches or patch audit are needed |
 | `observability-core` / `observability-opentelemetry`         | Metrics/tracing abstractions and OTel implementation                | The service reports observability data           |

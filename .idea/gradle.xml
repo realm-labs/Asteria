@@ -70,6 +70,7 @@
             <option value="$PROJECT_DIR$/gm/gm-patch-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-script" />
             <option value="$PROJECT_DIR$/gm/gm-script-spring-boot-starter" />
+            <option value="$PROJECT_DIR$/gm/gm-shutdown" />
             <option value="$PROJECT_DIR$/gm/gm-spring-boot-starter" />
             <option value="$PROJECT_DIR$/observability" />
             <option value="$PROJECT_DIR$/observability/observability-core" />
