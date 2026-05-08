@@ -3,6 +3,7 @@ package io.github.realmlabs.asteria.config.ksp
 import com.squareup.kotlinpoet.ClassName
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertFalse
 
 class AsteriaConfigChangeCodeGeneratorTest {
     @Test
@@ -56,6 +57,25 @@ class AsteriaConfigChangeCodeGeneratorTest {
         assertContains(chunk0, "internal object GeneratedPlayerConfigChangeHandlersChunk0")
         assertContains(chunk1, "internal object GeneratedPlayerConfigChangeHandlersChunk1")
         assertContains(chunk1, "listOf(")
+    }
+
+    @Test
+    fun `uses single handler file when handler count drops below chunk threshold`() {
+        val files = AsteriaConfigChangeCodeGenerator.buildFiles(
+            config = ConfigChangeCodegenConfig(
+                packageName = "com.example.generated",
+                className = "GeneratedPlayerConfigChangeHandlers",
+                receiverType = PLAYER_ACTOR,
+            ),
+            handlers = listOf(ConfigChangeHandlerModel(ACTIVITY_HANDLER)),
+        )
+
+        val fileNames = files.map { it.fileName }
+        val main = files.single { it.fileName == "GeneratedPlayerConfigChangeHandlers" }.file.toString()
+
+        assertFalse(fileNames.any { it.startsWith("GeneratedPlayerConfigChangeHandlersChunk") })
+        assertContains(main, "object GeneratedPlayerConfigChangeHandlers")
+        assertContains(main, "ActivityConfigChangeHandler()")
     }
 
     private companion object {

@@ -4,6 +4,7 @@ import com.squareup.kotlinpoet.ClassName
 import io.github.realmlabs.asteria.config.annotations.AsteriaConfigTableShape
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertFalse
 
 class AsteriaConfigCodeGeneratorTest {
     @Test
@@ -99,6 +100,35 @@ class AsteriaConfigCodeGeneratorTest {
         assertContains(main, "class GameConfigs(")
         assertContains(chunk0, "val ConfigSnapshot.table")
         assertContains(chunk1, "val ConfigService.table")
+    }
+
+    @Test
+    fun `uses single accessor file when table count drops below chunk threshold`() {
+        val files = AsteriaConfigCodeGenerator.buildFiles(
+            config = ConfigCodegenConfig(
+                packageName = "com.example.generated",
+                tablesObjectName = "GameConfigTables",
+                accessorClassName = "GameConfigs",
+            ),
+            tables = listOf(
+                ConfigTableModel(
+                    tableName = "table_0",
+                    keyType = INT,
+                    rowType = ITEM_CONFIG,
+                    refName = "Table0",
+                    propertyName = "table0",
+                ),
+            ),
+        )
+
+        val fileNames = files.map { it.fileName }
+        val main = files.single { it.fileName == "GameConfigs" }.file.toString()
+
+        assertFalse(fileNames.any { it.startsWith("GameConfigsExtensionsChunk") })
+        assertContains(main, "object GameConfigTables")
+        assertContains(main, "class GameConfigs(")
+        assertContains(main, "val ConfigSnapshot.table0")
+        assertContains(main, "val ConfigService.table0")
     }
 
     private companion object {
