@@ -3,13 +3,18 @@ package io.github.realmlabs.asteria.config.gradle
 import groovy.json.JsonSlurper
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.*
 import java.io.File
+import javax.inject.Inject
 
 @CacheableTask
 abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
+    @get:Inject
+    abstract val fileSystemOperations: FileSystemOperations
+
     @get:Input
     abstract val generationEnabled: Property<Boolean>
 
@@ -42,6 +47,9 @@ abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
         val metadata = metadataFile.orNull?.asFile
             ?: error("Luban config marker generation is enabled but metadataFile is not configured")
         val tables = readTables(metadata)
+        fileSystemOperations.delete {
+            it.delete(outputDirectory)
+        }
         AsteriaLubanConfigMarkerGenerator.generate(
             config = LubanMarkerGeneratorConfig(
                 outputDirectory = outputDirectory.get().asFile.toPath(),

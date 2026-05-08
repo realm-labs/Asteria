@@ -1,11 +1,20 @@
 package io.github.realmlabs.asteria.config.gradle
 
+import org.gradle.testkit.runner.GradleRunner
+import org.gradle.testkit.runner.TaskOutcome
 import org.gradle.testfixtures.ProjectBuilder
+import java.nio.file.Path as NioPath
 import kotlin.io.path.Path
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.exists
+import kotlin.io.path.readText
+import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class AsteriaConfigCodegenPluginTest {
     @Test
@@ -106,5 +115,141 @@ class AsteriaConfigCodegenPluginTest {
         assertContains(catalog, "@AsteriaConfigCatalog(")
         assertContains(chunk0, "@AsteriaConfigTable(")
         assertContains(chunk1, "@AsteriaConfigTable(")
+    }
+
+    @Test
+    fun `Luban marker task removes stale chunk outputs before regenerating`() {
+        val projectDir = createTempDirectory("asteria-config-marker-task")
+        val project = ProjectBuilder.builder()
+            .withProjectDir(projectDir.toFile())
+            .build()
+        val metadataFile = projectDir.resolve("asteria-config-tables.json")
+        val outputDirectory = projectDir.resolve("build/generated/asteria/lubanConfigMarkers")
+        val generatedPackageDirectory = outputDirectory.resolve(Path("com/example/generated"))
+        val task = project.tasks.register(
+            "generateAsteriaLubanConfigMarkers",
+            AsteriaLubanConfigMarkerTask::class.java,
+        ).get()
+        task.generationEnabled.set(true)
+        task.metadataFile.set(project.layout.projectDirectory.file("asteria-config-tables.json"))
+        task.outputDirectory.set(project.layout.projectDirectory.dir("build/generated/asteria/lubanConfigMarkers"))
+        task.packageName.set("com.example.generated")
+        task.fileName.set("GeneratedLubanMarkers")
+        task.tablesObjectName.set("GameConfigTables")
+        task.accessorClassName.set("GameConfigs")
+
+        metadataFile.writeText(markerMetadata(201))
+        task.generate()
+
+        assertTrue(generatedPackageDirectory.resolve("GeneratedLubanMarkersChunk0.kt").exists())
+        assertTrue(generatedPackageDirectory.resolve("GeneratedLubanMarkersChunk1.kt").exists())
+
+        metadataFile.writeText(markerMetadata(1))
+        task.generate()
+
+        val singleSource = generatedPackageDirectory.resolve("GeneratedLubanMarkers.kt")
+        assertTrue(singleSource.exists())
+        assertFalse(generatedPackageDirectory.resolve("GeneratedLubanMarkersChunk0.kt").exists())
+        assertFalse(generatedPackageDirectory.resolve("GeneratedLubanMarkersChunk1.kt").exists())
+        assertContains(singleSource.readText(), "object Table0Marker")
+    }
+
+    @Test
+    fun `compileKotlin depends on Luban marker generation`() {
+        val projectDir = createTempDirectory("asteria-config-marker-compile")
+        writeMarkerBuild(projectDir)
+        projectDir.resolve("asteria-config-tables.json").writeText(markerMetadata(1))
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("compileKotlin", "--dry-run", "--stacktrace")
+            .build()
+
+        assertContains(result.output, ":generateAsteriaLubanConfigMarkers SKIPPED")
+        assertContains(result.output, ":compileKotlin SKIPPED")
+        val markerIndex = result.output.indexOf(":generateAsteriaLubanConfigMarkers SKIPPED")
+        val compileIndex = result.output.indexOf(":compileKotlin SKIPPED")
+        assertTrue(markerIndex < compileIndex)
+    }
+
+    @Test
+    fun `Luban marker task is up-to-date when metadata is unchanged`() {
+        val projectDir = createTempDirectory("asteria-config-marker-incremental")
+        writeMarkerBuild(projectDir)
+        projectDir.resolve("asteria-config-tables.json").writeText(markerMetadata(1))
+
+        val first = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("generateAsteriaLubanConfigMarkers", "--stacktrace")
+            .build()
+        val second = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("generateAsteriaLubanConfigMarkers", "--stacktrace")
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, first.task(":generateAsteriaLubanConfigMarkers")?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, second.task(":generateAsteriaLubanConfigMarkers")?.outcome)
+    }
+
+    private fun markerMetadata(tableCount: Int): String {
+        val tables = (0 until tableCount).joinToString(",\n") { index ->
+            """
+            {
+              "name": "table_$index",
+              "keyType": "kotlin.Int",
+              "rowType": "cfg.item.ItemConfig",
+              "markerName": "Table${index}Marker"
+            }
+            """.trimIndent()
+        }
+        return """
+        {
+          "tables": [
+        $tables
+          ]
+        }
+        """.trimIndent()
+    }
+
+    private fun writeMarkerBuild(projectDir: NioPath) {
+        projectDir.resolve("settings.gradle.kts").writeText(
+            """
+            pluginManagement {
+                repositories {
+                    mavenCentral()
+                    gradlePluginPortal()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "config-marker-test"
+            """.trimIndent(),
+        )
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                kotlin("jvm") version "2.3.21"
+                id("io.github.realm-labs.asteria.config-codegen")
+            }
+
+            asteriaConfigCodegen {
+                addDependencies.set(false)
+                packageName.set("com.example.generated")
+
+                luban {
+                    enabled.set(true)
+                    metadataFile.set(layout.projectDirectory.file("asteria-config-tables.json"))
+                    fileName.set("GeneratedLubanMarkers")
+                }
+            }
+            """.trimIndent(),
+        )
     }
 }

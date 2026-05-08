@@ -54,6 +54,9 @@ class AsteriaConfigCodegenPlugin : Plugin<Project> {
         project.tasks.matching { it.name == "kspKotlin" }.configureEach {
             it.dependsOn(markerTask)
         }
+        project.tasks.matching { it.name == "compileKotlin" }.configureEach {
+            it.dependsOn(markerTask)
+        }
     }
 
     private fun configureKsp(project: Project, extension: AsteriaConfigCodegenExtension) {
