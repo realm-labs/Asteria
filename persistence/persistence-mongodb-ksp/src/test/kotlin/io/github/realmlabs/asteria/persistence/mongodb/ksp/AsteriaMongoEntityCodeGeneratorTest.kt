@@ -85,17 +85,18 @@ class AsteriaMongoEntityCodeGeneratorTest {
             code,
             "trackChild(TrackedPlayerProfile(ctx.path(\"profile\"), entity.profile, ctx.queue, ::currentDirtyTarget))"
         )
-        assertContains(code, "public val bag: MutableMap<String, TrackedItemStack> by")
-        assertContains(code, "mongoTrackedMap(path = ctx.path(\"bag\")")
+        assertContains(code, "public val bag: TrackedPlayerEntityBagMap =")
         assertContains(
             code,
-            "entity.bag.mapValues { (key, value) -> trackChild(com.example.player.TrackedItemStack(ctx.path(\"bag\").child(key), value, ctx.queue, ::currentDirtyTarget)) }.toMutableMap()"
+            "trackChild(TrackedPlayerEntityBagMap(ctx.path(\"bag\"), entity.bag, ctx.queue, ::currentDirtyTarget))"
         )
-        assertContains(code, "public val quests: MutableList<TrackedQuestState> by")
-        assertContains(code, "mongoTrackedList(path = ctx.path(\"quests\")")
         assertContains(
             code,
-            "entity.quests.mapIndexed { index, value -> trackChild(com.example.player.TrackedQuestState(ctx.path(\"quests\").child(index), value, ctx.queue, ::currentDirtyTarget)) }.toMutableList()"
+            "public val quests: TrackedPlayerEntityQuestsList ="
+        )
+        assertContains(
+            code,
+            "trackChild(TrackedPlayerEntityQuestsList(ctx.path(\"quests\"), entity.quests, ctx.queue, ::currentDirtyTarget))"
         )
         assertContains(code, "class TrackedPlayerProfile(")
         assertContains(code, "class TrackedItemStack(")
@@ -108,13 +109,45 @@ class AsteriaMongoEntityCodeGeneratorTest {
         assertContains(code, "fun toEntity(): Profile")
         assertContains(code, "override fun toEntity(): PlayerEntity")
         assertContains(code, "profile = profile.toEntity()")
-        assertContains(code, "bag = bag.mapValues { (_, value) -> value.toEntity() }.toMutableMap()")
-        assertContains(code, "quests = quests.map { it.toEntity() }.toMutableList()")
+        assertContains(code, "bag = bag.toEntityMap()")
+        assertContains(code, "quests = quests.toEntityList()")
         assertContains(code, "override fun toMongoValue(): Any?")
         assertContains(code, "\"_id\" to mongoValueOf(id)")
         assertContains(code, "\"lv\" to mongoValueOf(level)")
         assertContains(code, "object PlayerEntityMongo")
         assertContains(code, "const val COLLECTION: String = \"players\"")
+        assertContains(code, "class TrackedPlayerEntityBagMap(")
+        assertContains(code, ") : MongoTrackedObjectSupport(queue),\n    MutableMap<String, TrackedItemStack> {")
+        assertContains(code, "private val backing: MongoTrackedMutableMap<String, TrackedItemStack> =")
+        assertContains(
+            code,
+            "initialValue = initialValue.mapValues { (key, value) -> trackEntity(key, value) }.toMutableMap(),"
+        )
+        assertContains(code, "trackedValue = { _, value -> trackChild(value) },")
+        assertContains(code, "public operator fun `set`(key: String, `value`: ItemStack)")
+        assertContains(code, "backing[key] = trackEntity(key, value)")
+        assertContains(code, "public fun toEntityMap(): MutableMap<String, ItemStack> =")
+        assertContains(
+            code,
+            "private fun trackEntity(key: String, `value`: ItemStack): TrackedItemStack = TrackedItemStack(path.child(key), value, queue, ::effectiveDirtyTarget)"
+        )
+        assertContains(code, "class TrackedPlayerEntityQuestsList(")
+        assertContains(code, ") : MongoTrackedObjectSupport(queue),\n    MutableList<TrackedQuestState> {")
+        assertContains(code, "private var wholeListDirty: Boolean = false")
+        assertContains(code, "private val backing: MongoTrackedMutableList<TrackedQuestState> =")
+        assertContains(
+            code,
+            "initialValue = initialValue.mapIndexed { index, value -> trackEntity(index, value) }.toMutableList(),"
+        )
+        assertContains(code, "public operator fun `set`(index: Int, `value`: QuestState)")
+        assertContains(code, "public fun add(`value`: QuestState): Boolean")
+        assertContains(code, "public fun add(index: Int, `value`: QuestState)")
+        assertContains(code, "public fun toEntityList(): MutableList<QuestState> =")
+        assertContains(code, "private fun markWholeListDirty()")
+        assertContains(
+            code,
+            "if (wholeListDirty) MongoDirtyTarget(path, this) else null"
+        )
         assertContains(code, "public val SCAN_PLAN: EntityScanPlan<PlayerEntity> = mongoScanPlan(")
         assertContains(code, "mongoScannedField(\"name\") { entity: PlayerEntity -> entity.name }")
         assertContains(code, "mongoScannedField(\"lv\") { entity: PlayerEntity -> entity.level }")

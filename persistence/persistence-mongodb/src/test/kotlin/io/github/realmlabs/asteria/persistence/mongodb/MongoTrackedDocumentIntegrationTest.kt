@@ -41,7 +41,11 @@ class MongoTrackedDocumentIntegrationTest {
         player.profile.nickname = "bobby"
         player.bag.getValue("potion").count = 7
         player.bag.remove("sword")
+        player.bag["shield"] = ItemStack(3001, 1)
+        player.bag["shield"]!!.count = 2
         player.quests[0].status = "done"
+        player.quests.add(QuestState(20, "open"))
+        player.quests[1].status = "done"
         player.tags.remove("newbie")
         player.tags.add("returning")
         assertTrue(runtime.flushSafely())
@@ -50,8 +54,15 @@ class MongoTrackedDocumentIntegrationTest {
         assertEquals("bob", document.getString("name"))
         assertEquals(Document(mapOf("nickname" to "bobby", "avatar" to 1)), document["profile"])
         assertEquals(Document(mapOf("itemId" to 2001, "count" to 7)), document.get("bag", Document::class.java)["potion"])
+        assertEquals(Document(mapOf("itemId" to 3001, "count" to 2)), document.get("bag", Document::class.java)["shield"])
         assertEquals(false, document.get("bag", Document::class.java).containsKey("sword"))
-        assertEquals(listOf(Document(mapOf("questId" to 10, "status" to "done"))), document["quests"])
+        assertEquals(
+            listOf(
+                Document(mapOf("questId" to 10, "status" to "done")),
+                Document(mapOf("questId" to 20, "status" to "done")),
+            ),
+            document["quests"],
+        )
         assertEquals(listOf("vip", "returning"), document["tags"])
     }
 
@@ -78,8 +89,126 @@ class MongoTrackedDocumentIntegrationTest {
         assertTrue(database.getCollection<Document>(COLLECTION).find(Document()).toList().isEmpty())
     }
 
+    @Test
+    fun `tracked map facade handles raw writes and mutable view removals`() {
+        val queue = MongoPendingWriteQueue()
+        val player = trackedPlayer(
+            queue,
+            bag = linkedMapOf(
+                "sword.1" to ItemStack(1001, 1),
+                "%gem" to ItemStack(2001, 2),
+                "" to ItemStack(3001, 3),
+            ),
+        )
+
+        player.bag["shield.2"] = ItemStack(4001, 4)
+        player.bag.getValue("shield.2").count = 5
+        player.bag.entries.first { (key) -> key == "sword.1" }
+            .setValue(TrackedItemStack(MongoPath(COLLECTION, 1, "bag").child("sword.1"), ItemStack(1001, 9), queue))
+        player.bag.keys.remove("%gem")
+        player.bag.values.remove(player.bag.getValue(""))
+
+        val write = queue.drain().single()
+        assertEquals(
+            mapOf(
+                "bag.shield%2E2" to Document(mapOf("itemId" to 4001, "count" to 5)),
+                "bag.sword%2E1" to Document(mapOf("itemId" to 1001, "count" to 9)),
+            ),
+            write.sets,
+        )
+        assertEquals(setOf("bag.%25gem", "bag.%EMPTY"), write.unsets)
+    }
+
+    @Test
+    fun `tracked list facade supports raw writes and whole-list dirty after structural changes`() {
+        val queue = MongoPendingWriteQueue()
+        val player = trackedPlayer(
+            queue,
+            quests = mutableListOf(
+                QuestState(10, "open"),
+                QuestState(20, "open"),
+                QuestState(30, "open"),
+            ),
+        )
+
+        player.quests[1].status = "active"
+        queue.drain().single().also { write ->
+            assertEquals(mapOf("quests.1.status" to "active"), write.sets)
+        }
+
+        player.quests[1] = QuestState(22, "replaced")
+        queue.drain().single().also { write ->
+            assertEquals(mapOf("quests.1" to Document(mapOf("questId" to 22, "status" to "replaced"))), write.sets)
+        }
+
+        player.quests.add(1, QuestState(15, "inserted"))
+        player.quests[2].status = "done-after-insert"
+        queue.drain().single().also { write ->
+            assertEquals(
+                mapOf(
+                    "quests" to listOf(
+                        Document(mapOf("questId" to 10, "status" to "open")),
+                        Document(mapOf("questId" to 15, "status" to "inserted")),
+                        Document(mapOf("questId" to 22, "status" to "done-after-insert")),
+                        Document(mapOf("questId" to 30, "status" to "open")),
+                    ),
+                ),
+                write.sets,
+            )
+        }
+
+        val iterator = player.quests.listIterator(1)
+        iterator.next()
+        iterator.remove()
+        player.quests[1].status = "done-after-iterator-remove"
+        queue.drain().single().also { write ->
+            assertEquals(
+                mapOf(
+                    "quests" to listOf(
+                        Document(mapOf("questId" to 10, "status" to "open")),
+                        Document(mapOf("questId" to 22, "status" to "done-after-iterator-remove")),
+                        Document(mapOf("questId" to 30, "status" to "open")),
+                    ),
+                ),
+                write.sets,
+            )
+        }
+
+        player.quests.subList(1, 3).removeAt(1)
+        player.quests[1].status = "done-after-sublist-remove"
+        queue.drain().single().also { write ->
+            assertEquals(
+                mapOf(
+                    "quests" to listOf(
+                        Document(mapOf("questId" to 10, "status" to "open")),
+                        Document(mapOf("questId" to 22, "status" to "done-after-sublist-remove")),
+                    ),
+                ),
+                write.sets,
+            )
+        }
+    }
+
     private fun runtimeFor(id: Int, database: MongoDatabase): MongoTrackedDocumentRuntime {
         return MongoTrackedDocumentRuntime(COLLECTION, id, database)
+    }
+
+    private fun trackedPlayer(
+        queue: MongoPendingWriteQueue,
+        bag: MutableMap<String, ItemStack> = linkedMapOf("sword" to ItemStack(1001, 1)),
+        quests: MutableList<QuestState> = mutableListOf(QuestState(10, "open")),
+    ): TrackedPlayer {
+        return TrackedPlayer(
+            MongoTrackContext(COLLECTION, 1, queue),
+            PlayerEntity(
+                id = 1,
+                name = "alice",
+                profile = Profile("alice", 1),
+                bag = bag,
+                quests = quests,
+                tags = linkedSetOf("newbie"),
+            ),
+        )
     }
 
     private fun withDatabase(block: suspend (MongoDatabase) -> Unit) = runBlocking {
@@ -128,21 +257,11 @@ class MongoTrackedDocumentIntegrationTest {
         override val id: Int = entity.id
         var name: String by ctx.trackedValue("name", entity.name)
         val profile: TrackedProfile = trackChild(TrackedProfile(ctx.path("profile"), entity.profile, ctx.queue))
-        val bag: MutableMap<String, TrackedItemStack> by mongoTrackedMap(
-            path = ctx.path("bag"),
-            initialValue = entity.bag.mapValues { (key, value) ->
-                trackChild(TrackedItemStack(ctx.path("bag").child(key), value, ctx.queue))
-            }.toMutableMap(),
-            queue = ctx.queue,
-            persistentValue = { value -> value.toMongoValue() },
+        val bag: TrackedPlayerBagMap = trackChild(
+            TrackedPlayerBagMap(ctx.path("bag"), entity.bag, ctx.queue, ::currentDirtyTarget),
         )
-        val quests: MutableList<TrackedQuestState> by mongoTrackedList(
-            path = ctx.path("quests"),
-            initialValue = entity.quests.mapIndexed { index, value ->
-                trackChild(TrackedQuestState(ctx.path("quests").child(index), value, ctx.queue))
-            }.toMutableList(),
-            queue = ctx.queue,
-            persistentValue = { value -> value.toMongoValue() },
+        val quests: TrackedPlayerQuestsList = trackChild(
+            TrackedPlayerQuestsList(ctx.path("quests"), entity.quests, ctx.queue, ::currentDirtyTarget),
         )
         val tags: MutableSet<String> by mongoTrackedSet(ctx.path("tags"), entity.tags, ctx.queue)
 
@@ -151,8 +270,8 @@ class MongoTrackedDocumentIntegrationTest {
                 id = id,
                 name = name,
                 profile = profile.toEntity(),
-                bag = bag.mapValues { (_, value) -> value.toEntity() }.toMutableMap(),
-                quests = quests.map { value -> value.toEntity() }.toMutableList(),
+                bag = bag.toEntityMap(),
+                quests = quests.toEntityList(),
                 tags = tags.toMutableSet(),
             )
         }
@@ -166,6 +285,255 @@ class MongoTrackedDocumentIntegrationTest {
                 "quests" to mongoValueOf(quests),
                 "tags" to mongoValueOf(tags),
             )
+        }
+    }
+
+    private class TrackedPlayerBagMap(
+        private val path: MongoPath,
+        initialValue: MutableMap<String, ItemStack>,
+        private val queue: MongoChangeQueue,
+        private val dirtyTargetProvider: () -> MongoDirtyTarget? = { null },
+    ) : MongoTrackedObjectSupport(queue), MutableMap<String, TrackedItemStack> {
+        private val backing: MongoTrackedMutableMap<String, TrackedItemStack> = MongoTrackedMutableMap(
+            path = path,
+            initialValue = initialValue.mapValues { (key, value) -> trackEntity(key, value) }.toMutableMap(),
+            queue = queue,
+            persistentValue = { value -> value.toMongoValue() },
+            trackedValue = { _, value -> trackChild(value) },
+            dirtyTargetProvider = ::effectiveDirtyTarget,
+        )
+
+        override val entries: MutableSet<MutableMap.MutableEntry<String, TrackedItemStack>>
+            get() = backing.entries
+
+        override val keys: MutableSet<String>
+            get() = backing.keys
+
+        override val values: MutableCollection<TrackedItemStack>
+            get() = backing.values
+
+        override val size: Int
+            get() = backing.size
+
+        override fun containsKey(key: String): Boolean = backing.containsKey(key)
+
+        override fun containsValue(value: TrackedItemStack): Boolean = backing.containsValue(value)
+
+        override fun get(key: String): TrackedItemStack? = backing[key]
+
+        override fun isEmpty(): Boolean = backing.isEmpty()
+
+        override fun clear() {
+            backing.clear()
+        }
+
+        override fun put(key: String, value: TrackedItemStack): TrackedItemStack? = backing.put(key, value)
+
+        override fun putAll(from: Map<out String, TrackedItemStack>) {
+            backing.putAll(from)
+        }
+
+        override fun remove(key: String): TrackedItemStack? = backing.remove(key)
+
+        operator fun set(key: String, value: ItemStack) {
+            backing[key] = trackEntity(key, value)
+        }
+
+        fun toEntityMap(): MutableMap<String, ItemStack> {
+            return backing.mapValues { (_, value) -> value.toEntity() }.toMutableMap()
+        }
+
+        override fun toMongoValue(): Any? = backing.toMongoValue()
+
+        private fun trackEntity(key: String, value: ItemStack): TrackedItemStack {
+            return TrackedItemStack(path.child(key), value, queue, ::effectiveDirtyTarget)
+        }
+
+        private fun effectiveDirtyTarget(): MongoDirtyTarget? = dirtyTargetProvider() ?: currentDirtyTarget()
+    }
+
+    private class TrackedPlayerQuestsList(
+        private val path: MongoPath,
+        initialValue: List<QuestState>,
+        private val queue: MongoChangeQueue,
+        private val dirtyTargetProvider: () -> MongoDirtyTarget? = { null },
+    ) : MongoTrackedObjectSupport(queue), MutableList<TrackedQuestState> {
+        private var wholeListDirty: Boolean = false
+
+        private val backing: MongoTrackedMutableList<TrackedQuestState> = MongoTrackedMutableList(
+            path = path,
+            initialValue = initialValue.mapIndexed { index, value -> trackEntity(index, value) }.toMutableList(),
+            queue = queue,
+            persistentValue = { value -> value.toMongoValue() },
+            trackedValue = { _, value -> trackChild(value) },
+            dirtyTargetProvider = ::effectiveDirtyTarget,
+        )
+
+        override val size: Int
+            get() = backing.size
+
+        override fun contains(element: TrackedQuestState): Boolean = backing.contains(element)
+
+        override fun containsAll(elements: Collection<TrackedQuestState>): Boolean = backing.containsAll(elements)
+
+        override fun get(index: Int): TrackedQuestState = backing[index]
+
+        override fun indexOf(element: TrackedQuestState): Int = backing.indexOf(element)
+
+        override fun isEmpty(): Boolean = backing.isEmpty()
+
+        override fun iterator(): MutableIterator<TrackedQuestState> = listIterator()
+
+        override fun lastIndexOf(element: TrackedQuestState): Int = backing.lastIndexOf(element)
+
+        override fun listIterator(): MutableListIterator<TrackedQuestState> = listIterator(0)
+
+        override fun listIterator(index: Int): MutableListIterator<TrackedQuestState> {
+            val iterator = backing.listIterator(index)
+            return object : MutableListIterator<TrackedQuestState> {
+                override fun add(element: TrackedQuestState) {
+                    iterator.add(element)
+                    markWholeListDirty()
+                }
+
+                override fun hasNext(): Boolean = iterator.hasNext()
+
+                override fun hasPrevious(): Boolean = iterator.hasPrevious()
+
+                override fun next(): TrackedQuestState = iterator.next()
+
+                override fun nextIndex(): Int = iterator.nextIndex()
+
+                override fun previous(): TrackedQuestState = iterator.previous()
+
+                override fun previousIndex(): Int = iterator.previousIndex()
+
+                override fun remove() {
+                    iterator.remove()
+                    markWholeListDirty()
+                }
+
+                override fun set(element: TrackedQuestState) {
+                    iterator.set(element)
+                }
+            }
+        }
+
+        override fun subList(fromIndex: Int, toIndex: Int): MutableList<TrackedQuestState> {
+            var endExclusive = toIndex
+            return object : AbstractMutableList<TrackedQuestState>() {
+                override val size: Int
+                    get() = endExclusive - fromIndex
+
+                override fun get(index: Int): TrackedQuestState = this@TrackedPlayerQuestsList[fromIndex + index]
+
+                override fun set(index: Int, element: TrackedQuestState): TrackedQuestState {
+                    return this@TrackedPlayerQuestsList.set(fromIndex + index, element)
+                }
+
+                override fun add(index: Int, element: TrackedQuestState) {
+                    this@TrackedPlayerQuestsList.add(fromIndex + index, element)
+                    endExclusive++
+                }
+
+                override fun removeAt(index: Int): TrackedQuestState {
+                    val removed = this@TrackedPlayerQuestsList.removeAt(fromIndex + index)
+                    endExclusive--
+                    return removed
+                }
+            }
+        }
+
+        override fun add(element: TrackedQuestState): Boolean {
+            val added = backing.add(element)
+            if (added) markWholeListDirty()
+            return added
+        }
+
+        override fun add(index: Int, element: TrackedQuestState) {
+            backing.add(index, element)
+            markWholeListDirty()
+        }
+
+        override fun addAll(elements: Collection<TrackedQuestState>): Boolean {
+            val added = backing.addAll(elements)
+            if (added) markWholeListDirty()
+            return added
+        }
+
+        override fun addAll(index: Int, elements: Collection<TrackedQuestState>): Boolean {
+            val added = backing.addAll(index, elements)
+            if (added) markWholeListDirty()
+            return added
+        }
+
+        override fun clear() {
+            if (backing.isEmpty()) return
+            backing.clear()
+            markWholeListDirty()
+        }
+
+        override fun remove(element: TrackedQuestState): Boolean {
+            val removed = backing.remove(element)
+            if (removed) markWholeListDirty()
+            return removed
+        }
+
+        override fun removeAll(elements: Collection<TrackedQuestState>): Boolean {
+            val removed = backing.removeAll(elements)
+            if (removed) markWholeListDirty()
+            return removed
+        }
+
+        override fun removeAt(index: Int): TrackedQuestState {
+            val removed = backing.removeAt(index)
+            markWholeListDirty()
+            return removed
+        }
+
+        override fun retainAll(elements: Collection<TrackedQuestState>): Boolean {
+            val changed = backing.retainAll(elements)
+            if (changed) markWholeListDirty()
+            return changed
+        }
+
+        override fun set(index: Int, element: TrackedQuestState): TrackedQuestState = backing.set(index, element)
+
+        operator fun set(index: Int, value: QuestState) {
+            backing[index] = trackEntity(index, value)
+        }
+
+        fun add(value: QuestState): Boolean {
+            backing.add(trackEntity(backing.size, value))
+            markWholeListDirty()
+            return true
+        }
+
+        fun add(index: Int, value: QuestState) {
+            backing.add(index, trackEntity(index, value))
+            markWholeListDirty()
+        }
+
+        fun toEntityList(): MutableList<QuestState> {
+            return backing.map { value -> value.toEntity() }.toMutableList()
+        }
+
+        override fun toMongoValue(): Any? = backing.toMongoValue()
+
+        private fun trackEntity(index: Int, value: QuestState): TrackedQuestState {
+            return TrackedQuestState(path.child(index), value, queue, ::effectiveDirtyTarget)
+        }
+
+        private fun markWholeListDirty() {
+            wholeListDirty = true
+        }
+
+        private fun effectiveDirtyTarget(): MongoDirtyTarget? {
+            return dirtyTargetProvider() ?: currentDirtyTarget() ?: if (wholeListDirty) {
+                MongoDirtyTarget(path, this)
+            } else {
+                null
+            }
         }
     }
 
@@ -188,30 +556,36 @@ class MongoTrackedDocumentIntegrationTest {
         private val path: MongoPath,
         entity: ItemStack,
         queue: MongoChangeQueue,
+        private val dirtyTargetProvider: () -> MongoDirtyTarget? = { null },
     ) : MongoTrackedObjectSupport(queue) {
-        var itemId: Int by mongoTrackedValue(path.child("itemId"), entity.itemId, queue, ::currentDirtyTarget)
-        var count: Int by mongoTrackedValue(path.child("count"), entity.count, queue, ::currentDirtyTarget)
+        var itemId: Int by mongoTrackedValue(path.child("itemId"), entity.itemId, queue, ::effectiveDirtyTarget)
+        var count: Int by mongoTrackedValue(path.child("count"), entity.count, queue, ::effectiveDirtyTarget)
 
         fun toEntity(): ItemStack = ItemStack(itemId, count)
 
         override fun toMongoValue(): Any? {
             return Document(mapOf("itemId" to mongoValueOf(itemId), "count" to mongoValueOf(count)))
         }
+
+        private fun effectiveDirtyTarget(): MongoDirtyTarget? = dirtyTargetProvider() ?: currentDirtyTarget()
     }
 
     private class TrackedQuestState(
         private val path: MongoPath,
         entity: QuestState,
         queue: MongoChangeQueue,
+        private val dirtyTargetProvider: () -> MongoDirtyTarget? = { null },
     ) : MongoTrackedObjectSupport(queue) {
-        var questId: Int by mongoTrackedValue(path.child("questId"), entity.questId, queue, ::currentDirtyTarget)
-        var status: String by mongoTrackedValue(path.child("status"), entity.status, queue, ::currentDirtyTarget)
+        var questId: Int by mongoTrackedValue(path.child("questId"), entity.questId, queue, ::effectiveDirtyTarget)
+        var status: String by mongoTrackedValue(path.child("status"), entity.status, queue, ::effectiveDirtyTarget)
 
         fun toEntity(): QuestState = QuestState(questId, status)
 
         override fun toMongoValue(): Any? {
             return Document(mapOf("questId" to mongoValueOf(questId), "status" to mongoValueOf(status)))
         }
+
+        private fun effectiveDirtyTarget(): MongoDirtyTarget? = dirtyTargetProvider() ?: currentDirtyTarget()
     }
 
     private companion object {

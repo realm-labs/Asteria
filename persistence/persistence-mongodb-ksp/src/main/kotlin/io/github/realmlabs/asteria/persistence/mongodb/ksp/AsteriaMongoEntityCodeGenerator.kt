@@ -59,6 +59,16 @@ object AsteriaMongoEntityCodeGenerator {
                 model.nestedObjects.forEach { nested ->
                     addType(buildNestedWrapper(nested))
                 }
+                model.properties.forEach { property ->
+                    buildMapFacade(wrapperType, property)?.let(::addType)
+                    buildListFacade(wrapperType, property)?.let(::addType)
+                }
+                model.nestedObjects.forEach { nested ->
+                    nested.properties.forEach { property ->
+                        buildMapFacade(nested.wrapperType, property)?.let(::addType)
+                        buildListFacade(nested.wrapperType, property)?.let(::addType)
+                    }
+                }
             }
             .addType(buildHelper(model, helperType, wrapperType))
             .build()
@@ -96,7 +106,7 @@ object AsteriaMongoEntityCodeGenerator {
             )
             .apply {
                 model.properties.filterNot { it.name == model.id.name }.forEach { property ->
-                    addProperty(buildTrackedProperty(property))
+                    addProperty(buildTrackedProperty(wrapperType, property))
                 }
             }
             .addFunction(buildToEntity(model))
@@ -104,7 +114,7 @@ object AsteriaMongoEntityCodeGenerator {
             .build()
     }
 
-    private fun buildTrackedProperty(property: MongoEntityPropertyModel): PropertySpec {
+    private fun buildTrackedProperty(ownerType: ClassName, property: MongoEntityPropertyModel): PropertySpec {
         val builder = when (property.kind) {
             MongoEntityPropertyKind.Value -> PropertySpec.builder(property.name, property.type, KModifier.PUBLIC)
                 .mutable(true)
@@ -124,49 +134,75 @@ object AsteriaMongoEntityCodeGenerator {
 
             MongoEntityPropertyKind.Map -> PropertySpec.builder(
                 property.name,
-                property.trackedType.copy(nullable = false).asMutableCollection(),
+                mapFacadeType(ownerType, property)
+                    ?: property.trackedType.copy(nullable = false).asMutableCollection(),
                 KModifier.PUBLIC
             )
-                .delegate(
-                    CodeBlock.builder()
-                        .add(
-                            "%M(path = ctx.path(%S), initialValue = %L, queue = ctx.queue, ",
-                            MONGO_TRACKED_MAP,
+                .apply {
+                    val facadeType = mapFacadeType(ownerType, property)
+                    if (facadeType != null) {
+                        initializer(
+                            "trackChild(%T(ctx.path(%S), entity.%L, ctx.queue, ::currentDirtyTarget))",
+                            facadeType,
                             property.fieldName,
-                            collectionInitialValueExpression(
-                                property,
-                                "ctx.path(${property.fieldName.toCodeString()})",
-                                "entity.${property.name}",
-                                "ctx.queue",
-                                "::currentDirtyTarget"
-                            ),
+                            property.name,
                         )
-                        .add("dirtyTargetProvider = ::currentDirtyTarget)")
-                        .build(),
-                )
+                    } else {
+                        delegate(
+                            CodeBlock.builder()
+                                .add(
+                                    "%M(path = ctx.path(%S), initialValue = %L, queue = ctx.queue, ",
+                                    MONGO_TRACKED_MAP,
+                                    property.fieldName,
+                                    collectionInitialValueExpression(
+                                        property,
+                                        "ctx.path(${property.fieldName.toCodeString()})",
+                                        "entity.${property.name}",
+                                        "ctx.queue",
+                                        "::currentDirtyTarget"
+                                    ),
+                                )
+                                .add("dirtyTargetProvider = ::currentDirtyTarget)")
+                                .build(),
+                        )
+                    }
+                }
 
             MongoEntityPropertyKind.List -> PropertySpec.builder(
                 property.name,
-                property.trackedType.copy(nullable = false).asMutableCollection(),
+                listFacadeType(ownerType, property)
+                    ?: property.trackedType.copy(nullable = false).asMutableCollection(),
                 KModifier.PUBLIC
             )
-                .delegate(
-                    CodeBlock.builder()
-                        .add(
-                            "%M(path = ctx.path(%S), initialValue = %L, queue = ctx.queue, ",
-                            MONGO_TRACKED_LIST,
+                .apply {
+                    val facadeType = listFacadeType(ownerType, property)
+                    if (facadeType != null) {
+                        initializer(
+                            "trackChild(%T(ctx.path(%S), entity.%L, ctx.queue, ::currentDirtyTarget))",
+                            facadeType,
                             property.fieldName,
-                            collectionInitialValueExpression(
-                                property,
-                                "ctx.path(${property.fieldName.toCodeString()})",
-                                "entity.${property.name}",
-                                "ctx.queue",
-                                "::currentDirtyTarget"
-                            ),
+                            property.name,
                         )
-                        .add("dirtyTargetProvider = ::currentDirtyTarget)")
-                        .build(),
-                )
+                    } else {
+                        delegate(
+                            CodeBlock.builder()
+                                .add(
+                                    "%M(path = ctx.path(%S), initialValue = %L, queue = ctx.queue, ",
+                                    MONGO_TRACKED_LIST,
+                                    property.fieldName,
+                                    collectionInitialValueExpression(
+                                        property,
+                                        "ctx.path(${property.fieldName.toCodeString()})",
+                                        "entity.${property.name}",
+                                        "ctx.queue",
+                                        "::currentDirtyTarget"
+                                    ),
+                                )
+                                .add("dirtyTargetProvider = ::currentDirtyTarget)")
+                                .build(),
+                        )
+                    }
+                }
 
             MongoEntityPropertyKind.Set -> PropertySpec.builder(
                 property.name,
@@ -194,13 +230,13 @@ object AsteriaMongoEntityCodeGenerator {
                 MongoEntityPropertyKind.Value -> property.name
                 MongoEntityPropertyKind.Object -> "${property.name}.toEntity()"
                 MongoEntityPropertyKind.Map -> if (property.valueKind == MongoEntityPropertyKind.Object) {
-                    "${property.name}.mapValues { (_, value) -> value.toEntity() }.toMutableMap()"
+                    "${property.name}.toEntityMap()"
                 } else {
                     "${property.name}.toMutableMap()"
                 }
 
                 MongoEntityPropertyKind.List -> if (property.valueKind == MongoEntityPropertyKind.Object) {
-                    "${property.name}.map { it.toEntity() }.toMutableList()"
+                    "${property.name}.toEntityList()"
                 } else {
                     "${property.name}.toMutableList()"
                 }
@@ -251,7 +287,7 @@ object AsteriaMongoEntityCodeGenerator {
             .addSuperclassConstructorParameter("queue")
             .apply {
                 model.properties.forEach { property ->
-                    addProperty(buildNestedTrackedProperty(property))
+                    addProperty(buildNestedTrackedProperty(model.wrapperType, property))
                 }
             }
             .addFunction(
@@ -266,7 +302,7 @@ object AsteriaMongoEntityCodeGenerator {
             .build()
     }
 
-    private fun buildNestedTrackedProperty(property: MongoEntityPropertyModel): PropertySpec {
+    private fun buildNestedTrackedProperty(ownerType: ClassName, property: MongoEntityPropertyModel): PropertySpec {
         return when (property.kind) {
             MongoEntityPropertyKind.Value -> PropertySpec.builder(property.name, property.type, KModifier.PUBLIC)
                 .mutable(true)
@@ -295,44 +331,70 @@ object AsteriaMongoEntityCodeGenerator {
 
             MongoEntityPropertyKind.Map -> PropertySpec.builder(
                 property.name,
-                property.trackedType.copy(nullable = false).asMutableCollection(),
+                mapFacadeType(ownerType, property)
+                    ?: property.trackedType.copy(nullable = false).asMutableCollection(),
                 KModifier.PUBLIC
             )
-                .delegate(
-                    CodeBlock.of(
-                        "%M(path = path.child(%S), initialValue = %L, queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
-                        MONGO_TRACKED_MAP,
-                        property.fieldName,
-                        collectionInitialValueExpression(
-                            property,
-                            "path.child(${property.fieldName.toCodeString()})",
-                            "entity.${property.name}",
-                            "queue",
-                            "::effectiveDirtyTarget"
-                        ),
-                    ),
-                )
+                .apply {
+                    val facadeType = mapFacadeType(ownerType, property)
+                    if (facadeType != null) {
+                        initializer(
+                            "trackChild(%T(path.child(%S), entity.%L, queue, ::effectiveDirtyTarget))",
+                            facadeType,
+                            property.fieldName,
+                            property.name,
+                        )
+                    } else {
+                        delegate(
+                            CodeBlock.of(
+                                "%M(path = path.child(%S), initialValue = %L, queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
+                                MONGO_TRACKED_MAP,
+                                property.fieldName,
+                                collectionInitialValueExpression(
+                                    property,
+                                    "path.child(${property.fieldName.toCodeString()})",
+                                    "entity.${property.name}",
+                                    "queue",
+                                    "::effectiveDirtyTarget"
+                                ),
+                            ),
+                        )
+                    }
+                }
                 .build()
 
             MongoEntityPropertyKind.List -> PropertySpec.builder(
                 property.name,
-                property.trackedType.copy(nullable = false).asMutableCollection(),
+                listFacadeType(ownerType, property)
+                    ?: property.trackedType.copy(nullable = false).asMutableCollection(),
                 KModifier.PUBLIC
             )
-                .delegate(
-                    CodeBlock.of(
-                        "%M(path = path.child(%S), initialValue = %L, queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
-                        MONGO_TRACKED_LIST,
-                        property.fieldName,
-                        collectionInitialValueExpression(
-                            property,
-                            "path.child(${property.fieldName.toCodeString()})",
-                            "entity.${property.name}",
-                            "queue",
-                            "::effectiveDirtyTarget"
-                        ),
-                    ),
-                )
+                .apply {
+                    val facadeType = listFacadeType(ownerType, property)
+                    if (facadeType != null) {
+                        initializer(
+                            "trackChild(%T(path.child(%S), entity.%L, queue, ::effectiveDirtyTarget))",
+                            facadeType,
+                            property.fieldName,
+                            property.name,
+                        )
+                    } else {
+                        delegate(
+                            CodeBlock.of(
+                                "%M(path = path.child(%S), initialValue = %L, queue = queue, dirtyTargetProvider = ::effectiveDirtyTarget)",
+                                MONGO_TRACKED_LIST,
+                                property.fieldName,
+                                collectionInitialValueExpression(
+                                    property,
+                                    "path.child(${property.fieldName.toCodeString()})",
+                                    "entity.${property.name}",
+                                    "queue",
+                                    "::effectiveDirtyTarget"
+                                ),
+                            ),
+                        )
+                    }
+                }
                 .build()
 
             MongoEntityPropertyKind.Set -> PropertySpec.builder(
@@ -358,13 +420,13 @@ object AsteriaMongoEntityCodeGenerator {
                 MongoEntityPropertyKind.Value -> property.name
                 MongoEntityPropertyKind.Object -> "${property.name}.toEntity()"
                 MongoEntityPropertyKind.Map -> if (property.valueKind == MongoEntityPropertyKind.Object) {
-                    "${property.name}.mapValues { (_, value) -> value.toEntity() }.toMutableMap()"
+                    "${property.name}.toEntityMap()"
                 } else {
                     "${property.name}.toMutableMap()"
                 }
 
                 MongoEntityPropertyKind.List -> if (property.valueKind == MongoEntityPropertyKind.Object) {
-                    "${property.name}.map { it.toEntity() }.toMutableList()"
+                    "${property.name}.toEntityList()"
                 } else {
                     "${property.name}.toMutableList()"
                 }
@@ -438,6 +500,625 @@ object AsteriaMongoEntityCodeGenerator {
                     .add("\n))\n")
                     .build(),
             )
+            .build()
+    }
+
+    private fun buildMapFacade(ownerType: ClassName, property: MongoEntityPropertyModel): TypeSpec? {
+        if (property.kind != MongoEntityPropertyKind.Map || property.valueKind != MongoEntityPropertyKind.Object) {
+            return null
+        }
+        val facadeType = mapFacadeType(ownerType, property) ?: return null
+        val sourceMapType = property.type as? ParameterizedTypeName ?: return null
+        val trackedMapType = property.trackedType as? ParameterizedTypeName ?: return null
+        val keyType = sourceMapType.typeArguments.getOrNull(0) ?: return null
+        val valueType = sourceMapType.typeArguments.getOrNull(1) ?: return null
+        val trackedValueType = trackedMapType.typeArguments.getOrNull(1) ?: return null
+        val pathType = ClassName(MONGODB_PACKAGE, "MongoPath")
+        val queueType = ClassName(MONGODB_PACKAGE, "MongoChangeQueue")
+        val dirtyTargetType = ClassName(MONGODB_PACKAGE, "MongoDirtyTarget").copy(nullable = true)
+        val supportType = ClassName(MONGODB_PACKAGE, "MongoTrackedObjectSupport")
+        val trackedMap = MUTABLE_MAP.parameterizedBy(keyType, trackedValueType)
+        val sourceMap = MAP.parameterizedBy(keyType, valueType)
+        val sourceMutableMap = MUTABLE_MAP.parameterizedBy(keyType, valueType)
+        val entryType = MUTABLE_MAP.nestedClass("MutableEntry").parameterizedBy(keyType, trackedValueType)
+
+        return TypeSpec.classBuilder(facadeType)
+            .addKdoc(
+                "Generated tracked map facade for [%T.%L]. Reads return tracked values; raw values can be assigned with `set`.\n",
+                ownerType,
+                property.name,
+            )
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("path", pathType)
+                    .addParameter("initialValue", sourceMap)
+                    .addParameter("queue", queueType)
+                    .addParameter(
+                        ParameterSpec.builder(
+                            "dirtyTargetProvider",
+                            LambdaTypeName.get(returnType = dirtyTargetType),
+                        )
+                            .defaultValue("{ null }")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .superclass(supportType)
+            .addSuperclassConstructorParameter("queue")
+            .addSuperinterface(trackedMap)
+            .addProperty(
+                PropertySpec.builder("path", pathType, KModifier.PRIVATE)
+                    .initializer("path")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("queue", queueType, KModifier.PRIVATE)
+                    .initializer("queue")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder(
+                    "dirtyTargetProvider",
+                    LambdaTypeName.get(returnType = dirtyTargetType),
+                    KModifier.PRIVATE,
+                )
+                    .initializer("dirtyTargetProvider")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder(
+                    "backing",
+                    MONGO_TRACKED_MUTABLE_MAP.parameterizedBy(keyType, trackedValueType),
+                    KModifier.PRIVATE,
+                )
+                    .initializer(
+                        CodeBlock.builder()
+                            .add("%T(\n", MONGO_TRACKED_MUTABLE_MAP)
+                            .indent()
+                            .add("path = path,\n")
+                            .add("initialValue = initialValue.mapValues { (key, value) -> trackEntity(key, value) }.toMutableMap(),\n")
+                            .add("queue = queue,\n")
+                            .add("persistentValue = { value -> value.toMongoValue() },\n")
+                            .add("trackedValue = { _, value -> trackChild(value) },\n")
+                            .add("dirtyTargetProvider = ::effectiveDirtyTarget,\n")
+                            .unindent()
+                            .add(")")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("entries", MUTABLE_SET.parameterizedBy(entryType), KModifier.OVERRIDE)
+                    .getter(FunSpec.getterBuilder().addStatement("return backing.entries").build())
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("keys", MUTABLE_SET.parameterizedBy(keyType), KModifier.OVERRIDE)
+                    .getter(FunSpec.getterBuilder().addStatement("return backing.keys").build())
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder(
+                    "values",
+                    MUTABLE_COLLECTION.parameterizedBy(trackedValueType),
+                    KModifier.OVERRIDE,
+                )
+                    .getter(FunSpec.getterBuilder().addStatement("return backing.values").build())
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("size", INT, KModifier.OVERRIDE)
+                    .getter(FunSpec.getterBuilder().addStatement("return backing.size").build())
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("containsKey")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("key", keyType)
+                    .returns(BOOLEAN)
+                    .addStatement("return backing.containsKey(key)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("containsValue")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("value", trackedValueType)
+                    .returns(BOOLEAN)
+                    .addStatement("return backing.containsValue(value)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("get")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("key", keyType)
+                    .returns(trackedValueType.copy(nullable = true))
+                    .addStatement("return backing[key]")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("isEmpty")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(BOOLEAN)
+                    .addStatement("return backing.isEmpty()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("clear")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addStatement("backing.clear()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("put")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("key", keyType)
+                    .addParameter("value", trackedValueType)
+                    .returns(trackedValueType.copy(nullable = true))
+                    .addStatement("return backing.put(key, value)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("putAll")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter(
+                        "from",
+                        MAP.parameterizedBy(WildcardTypeName.producerOf(keyType), trackedValueType),
+                    )
+                    .addStatement("backing.putAll(from)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("remove")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("key", keyType)
+                    .returns(trackedValueType.copy(nullable = true))
+                    .addStatement("return backing.remove(key)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("set")
+                    .addModifiers(KModifier.OPERATOR)
+                    .addParameter("key", keyType)
+                    .addParameter("value", valueType)
+                    .addStatement("backing[key] = trackEntity(key, value)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("toEntityMap")
+                    .returns(sourceMutableMap)
+                    .addStatement("return backing.mapValues { (_, value) -> value.toEntity() }.toMutableMap()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("toMongoValue")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(ANY_NULLABLE)
+                    .addStatement("return backing.toMongoValue()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("trackEntity")
+                    .addModifiers(KModifier.PRIVATE)
+                    .addParameter("key", keyType)
+                    .addParameter("value", valueType)
+                    .returns(trackedValueType)
+                    .addStatement("return %T(path.child(key), value, queue, ::effectiveDirtyTarget)", trackedValueType)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("effectiveDirtyTarget")
+                    .addModifiers(KModifier.PRIVATE)
+                    .returns(dirtyTargetType)
+                    .addStatement("return dirtyTargetProvider() ?: currentDirtyTarget()")
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun buildListFacade(ownerType: ClassName, property: MongoEntityPropertyModel): TypeSpec? {
+        if (property.kind != MongoEntityPropertyKind.List || property.valueKind != MongoEntityPropertyKind.Object) {
+            return null
+        }
+        val facadeType = listFacadeType(ownerType, property) ?: return null
+        val sourceListType = property.type as? ParameterizedTypeName ?: return null
+        val trackedListType = property.trackedType as? ParameterizedTypeName ?: return null
+        val valueType = sourceListType.typeArguments.getOrNull(0) ?: return null
+        val trackedValueType = trackedListType.typeArguments.getOrNull(0) ?: return null
+        val pathType = ClassName(MONGODB_PACKAGE, "MongoPath")
+        val queueType = ClassName(MONGODB_PACKAGE, "MongoChangeQueue")
+        val dirtyTargetType = ClassName(MONGODB_PACKAGE, "MongoDirtyTarget").copy(nullable = true)
+        val dirtyTarget = ClassName(MONGODB_PACKAGE, "MongoDirtyTarget")
+        val supportType = ClassName(MONGODB_PACKAGE, "MongoTrackedObjectSupport")
+        val trackedList = MUTABLE_LIST.parameterizedBy(trackedValueType)
+        val sourceList = LIST.parameterizedBy(valueType)
+        val sourceMutableList = MUTABLE_LIST.parameterizedBy(valueType)
+
+        return TypeSpec.classBuilder(facadeType)
+            .addKdoc(
+                "Generated tracked list facade for [%T.%L]. Reads return tracked values; raw values can be assigned or added.\n",
+                ownerType,
+                property.name,
+            )
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("path", pathType)
+                    .addParameter("initialValue", sourceList)
+                    .addParameter("queue", queueType)
+                    .addParameter(
+                        ParameterSpec.builder(
+                            "dirtyTargetProvider",
+                            LambdaTypeName.get(returnType = dirtyTargetType),
+                        )
+                            .defaultValue("{ null }")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .superclass(supportType)
+            .addSuperclassConstructorParameter("queue")
+            .addSuperinterface(trackedList)
+            .addProperty(
+                PropertySpec.builder("path", pathType, KModifier.PRIVATE)
+                    .initializer("path")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("queue", queueType, KModifier.PRIVATE)
+                    .initializer("queue")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder(
+                    "dirtyTargetProvider",
+                    LambdaTypeName.get(returnType = dirtyTargetType),
+                    KModifier.PRIVATE,
+                )
+                    .initializer("dirtyTargetProvider")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("wholeListDirty", BOOLEAN, KModifier.PRIVATE)
+                    .mutable(true)
+                    .initializer("false")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder(
+                    "backing",
+                    MONGO_TRACKED_MUTABLE_LIST.parameterizedBy(trackedValueType),
+                    KModifier.PRIVATE,
+                )
+                    .initializer(
+                        CodeBlock.builder()
+                            .add("%T(\n", MONGO_TRACKED_MUTABLE_LIST)
+                            .indent()
+                            .add("path = path,\n")
+                            .add("initialValue = initialValue.mapIndexed { index, value -> trackEntity(index, value) }.toMutableList(),\n")
+                            .add("queue = queue,\n")
+                            .add("persistentValue = { value -> value.toMongoValue() },\n")
+                            .add("trackedValue = { _, value -> trackChild(value) },\n")
+                            .add("dirtyTargetProvider = ::effectiveDirtyTarget,\n")
+                            .unindent()
+                            .add(")")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("size", INT, KModifier.OVERRIDE)
+                    .getter(FunSpec.getterBuilder().addStatement("return backing.size").build())
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("contains")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("element", trackedValueType)
+                    .returns(BOOLEAN)
+                    .addStatement("return backing.contains(element)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("containsAll")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("elements", COLLECTION.parameterizedBy(trackedValueType))
+                    .returns(BOOLEAN)
+                    .addStatement("return backing.containsAll(elements)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("get")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("index", INT)
+                    .returns(trackedValueType)
+                    .addStatement("return backing[index]")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("indexOf")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("element", trackedValueType)
+                    .returns(INT)
+                    .addStatement("return backing.indexOf(element)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("isEmpty")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(BOOLEAN)
+                    .addStatement("return backing.isEmpty()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("iterator")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(MUTABLE_ITERATOR.parameterizedBy(trackedValueType))
+                    .addStatement("return listIterator()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("lastIndexOf")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("element", trackedValueType)
+                    .returns(INT)
+                    .addStatement("return backing.lastIndexOf(element)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("listIterator")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(MUTABLE_LIST_ITERATOR.parameterizedBy(trackedValueType))
+                    .addStatement("return listIterator(0)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("listIterator")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("index", INT)
+                    .returns(MUTABLE_LIST_ITERATOR.parameterizedBy(trackedValueType))
+                    .addCode(buildTrackedListIteratorCode(trackedValueType))
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("subList")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("fromIndex", INT)
+                    .addParameter("toIndex", INT)
+                    .returns(trackedList)
+                    .addCode(buildTrackedSubListCode(facadeType, trackedValueType))
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("add")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("element", trackedValueType)
+                    .returns(BOOLEAN)
+                    .addStatement("val added = backing.add(element)")
+                    .addStatement("if (added) markWholeListDirty()")
+                    .addStatement("return added")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("add")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("index", INT)
+                    .addParameter("element", trackedValueType)
+                    .addStatement("backing.add(index, element)")
+                    .addStatement("markWholeListDirty()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("addAll")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("elements", COLLECTION.parameterizedBy(trackedValueType))
+                    .returns(BOOLEAN)
+                    .addStatement("val added = backing.addAll(elements)")
+                    .addStatement("if (added) markWholeListDirty()")
+                    .addStatement("return added")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("addAll")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("index", INT)
+                    .addParameter("elements", COLLECTION.parameterizedBy(trackedValueType))
+                    .returns(BOOLEAN)
+                    .addStatement("val added = backing.addAll(index, elements)")
+                    .addStatement("if (added) markWholeListDirty()")
+                    .addStatement("return added")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("clear")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addStatement("if (backing.isEmpty()) return")
+                    .addStatement("backing.clear()")
+                    .addStatement("markWholeListDirty()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("remove")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("element", trackedValueType)
+                    .returns(BOOLEAN)
+                    .addStatement("val removed = backing.remove(element)")
+                    .addStatement("if (removed) markWholeListDirty()")
+                    .addStatement("return removed")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("removeAll")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("elements", COLLECTION.parameterizedBy(trackedValueType))
+                    .returns(BOOLEAN)
+                    .addStatement("val removed = backing.removeAll(elements)")
+                    .addStatement("if (removed) markWholeListDirty()")
+                    .addStatement("return removed")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("removeAt")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("index", INT)
+                    .returns(trackedValueType)
+                    .addStatement("val removed = backing.removeAt(index)")
+                    .addStatement("markWholeListDirty()")
+                    .addStatement("return removed")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("retainAll")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("elements", COLLECTION.parameterizedBy(trackedValueType))
+                    .returns(BOOLEAN)
+                    .addStatement("val changed = backing.retainAll(elements)")
+                    .addStatement("if (changed) markWholeListDirty()")
+                    .addStatement("return changed")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("set")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("index", INT)
+                    .addParameter("element", trackedValueType)
+                    .returns(trackedValueType)
+                    .addStatement("return backing.set(index, element)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("set")
+                    .addModifiers(KModifier.OPERATOR)
+                    .addParameter("index", INT)
+                    .addParameter("value", valueType)
+                    .addStatement("backing[index] = trackEntity(index, value)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("add")
+                    .addParameter("value", valueType)
+                    .returns(BOOLEAN)
+                    .addStatement("backing.add(trackEntity(backing.size, value))")
+                    .addStatement("markWholeListDirty()")
+                    .addStatement("return true")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("add")
+                    .addParameter("index", INT)
+                    .addParameter("value", valueType)
+                    .addStatement("backing.add(index, trackEntity(index, value))")
+                    .addStatement("markWholeListDirty()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("toEntityList")
+                    .returns(sourceMutableList)
+                    .addStatement("return backing.map { value -> value.toEntity() }.toMutableList()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("toMongoValue")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(ANY_NULLABLE)
+                    .addStatement("return backing.toMongoValue()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("trackEntity")
+                    .addModifiers(KModifier.PRIVATE)
+                    .addParameter("index", INT)
+                    .addParameter("value", valueType)
+                    .returns(trackedValueType)
+                    .addStatement("return %T(path.child(index), value, queue, ::effectiveDirtyTarget)", trackedValueType)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("markWholeListDirty")
+                    .addModifiers(KModifier.PRIVATE)
+                    .addStatement("wholeListDirty = true")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("effectiveDirtyTarget")
+                    .addModifiers(KModifier.PRIVATE)
+                    .returns(dirtyTargetType)
+                    .addStatement(
+                        "return dirtyTargetProvider() ?: currentDirtyTarget() ?: if (wholeListDirty) %T(path, this) else null",
+                        dirtyTarget,
+                    )
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun buildTrackedListIteratorCode(trackedValueType: TypeName): CodeBlock {
+        return CodeBlock.builder()
+            .addStatement("val iterator = backing.listIterator(index)")
+            .add("return object : %T<%T> {\n", MUTABLE_LIST_ITERATOR, trackedValueType)
+            .indent()
+            .add("override fun add(element: %T) {\n", trackedValueType)
+            .indent()
+            .addStatement("iterator.add(element)")
+            .addStatement("markWholeListDirty()")
+            .unindent()
+            .add("}\n\n")
+            .addStatement("override fun hasNext(): Boolean = iterator.hasNext()")
+            .addStatement("override fun hasPrevious(): Boolean = iterator.hasPrevious()")
+            .addStatement("override fun next(): %T = iterator.next()", trackedValueType)
+            .addStatement("override fun nextIndex(): Int = iterator.nextIndex()")
+            .addStatement("override fun previous(): %T = iterator.previous()", trackedValueType)
+            .addStatement("override fun previousIndex(): Int = iterator.previousIndex()")
+            .add("\n")
+            .add("override fun remove() {\n")
+            .indent()
+            .addStatement("iterator.remove()")
+            .addStatement("markWholeListDirty()")
+            .unindent()
+            .add("}\n\n")
+            .add("override fun set(element: %T) {\n", trackedValueType)
+            .indent()
+            .addStatement("iterator.set(element)")
+            .unindent()
+            .add("}\n")
+            .unindent()
+            .add("}\n")
+            .build()
+    }
+
+    private fun buildTrackedSubListCode(
+        facadeType: ClassName,
+        trackedValueType: TypeName,
+    ): CodeBlock {
+        return CodeBlock.builder()
+            .addStatement("var endExclusive = toIndex")
+            .add("return object : %T<%T>() {\n", ABSTRACT_MUTABLE_LIST, trackedValueType)
+            .indent()
+            .add("override val size: Int\n")
+            .indent()
+            .addStatement("get() = endExclusive - fromIndex")
+            .unindent()
+            .add("\n")
+            .addStatement("override fun get(index: Int): %T = this@%L[fromIndex + index]", trackedValueType, facadeType.simpleName)
+            .add("\n")
+            .add("override fun set(index: Int, element: %T): %T {\n", trackedValueType, trackedValueType)
+            .indent()
+            .addStatement("return this@%L.set(fromIndex + index, element)", facadeType.simpleName)
+            .unindent()
+            .add("}\n\n")
+            .add("override fun add(index: Int, element: %T) {\n", trackedValueType)
+            .indent()
+            .addStatement("this@%L.add(fromIndex + index, element)", facadeType.simpleName)
+            .addStatement("endExclusive++")
+            .unindent()
+            .add("}\n\n")
+            .add("override fun removeAt(index: Int): %T {\n", trackedValueType)
+            .indent()
+            .addStatement("val removed = this@%L.removeAt(fromIndex + index)", facadeType.simpleName)
+            .addStatement("endExclusive--")
+            .addStatement("return removed")
+            .unindent()
+            .add("}\n")
+            .unindent()
+            .add("}\n")
             .build()
     }
 
@@ -703,6 +1384,29 @@ object AsteriaMongoEntityCodeGenerator {
         return parameterized.typeArguments.lastOrNull()
     }
 
+    private fun mapFacadeType(ownerType: ClassName, property: MongoEntityPropertyModel): ClassName? {
+        if (property.kind != MongoEntityPropertyKind.Map || property.valueKind != MongoEntityPropertyKind.Object) {
+            return null
+        }
+        return ClassName(ownerType.packageName, "${ownerType.simpleName}${property.name.toUpperCamelIdentifier()}Map")
+    }
+
+    private fun listFacadeType(ownerType: ClassName, property: MongoEntityPropertyModel): ClassName? {
+        if (property.kind != MongoEntityPropertyKind.List || property.valueKind != MongoEntityPropertyKind.Object) {
+            return null
+        }
+        return ClassName(ownerType.packageName, "${ownerType.simpleName}${property.name.toUpperCamelIdentifier()}List")
+    }
+
+    private fun String.toUpperCamelIdentifier(): String {
+        return split(Regex("[^A-Za-z0-9]+"))
+            .filter { it.isNotBlank() }
+            .joinToString("") { part ->
+                part.replaceFirstChar { char -> char.uppercaseChar() }
+            }
+            .ifBlank { "Value" }
+    }
+
     private fun String.toCodeString(): String = buildString {
         append('"')
         this@toCodeString.forEach { char ->
@@ -719,10 +1423,21 @@ object AsteriaMongoEntityCodeGenerator {
     }
 
     private val ANY_NULLABLE = ClassName("kotlin", "Any").copy(nullable = true)
+    private val BOOLEAN = ClassName("kotlin", "Boolean")
+    private val INT = ClassName("kotlin", "Int")
     private val STRING = ClassName("kotlin", "String")
+    private val ABSTRACT_MUTABLE_LIST = ClassName("kotlin.collections", "AbstractMutableList")
+    private val COLLECTION = ClassName("kotlin.collections", "Collection")
+    private val LIST = ClassName("kotlin.collections", "List")
+    private val MAP = ClassName("kotlin.collections", "Map")
+    private val MUTABLE_COLLECTION = ClassName("kotlin.collections", "MutableCollection")
+    private val MUTABLE_ITERATOR = ClassName("kotlin.collections", "MutableIterator")
+    private val MUTABLE_LIST_ITERATOR = ClassName("kotlin.collections", "MutableListIterator")
     private val MUTABLE_MAP = ClassName("kotlin.collections", "MutableMap")
     private val MUTABLE_LIST = ClassName("kotlin.collections", "MutableList")
     private val MUTABLE_SET = ClassName("kotlin.collections", "MutableSet")
+    private val MONGO_TRACKED_MUTABLE_MAP = ClassName(MONGODB_PACKAGE, "MongoTrackedMutableMap")
+    private val MONGO_TRACKED_MUTABLE_LIST = ClassName(MONGODB_PACKAGE, "MongoTrackedMutableList")
     private val MONGO_TRACKED_MAP = MemberName(MONGODB_PACKAGE, "mongoTrackedMap")
     private val MONGO_TRACKED_LIST = MemberName(MONGODB_PACKAGE, "mongoTrackedList")
     private val MONGO_TRACKED_SET = MemberName(MONGODB_PACKAGE, "mongoTrackedSet")

@@ -62,6 +62,33 @@ class MongoTrackedValueTest {
     }
 
     @Test
+    fun `tracked map mutable views write encoded child unsets`() {
+        val queue = MongoPendingWriteQueue()
+        val bag = MongoTrackedMutableMap(
+            MongoPath("player", 1001L, "bag"),
+            linkedMapOf(
+                "item.1" to 5,
+                "\$.cash" to 10,
+                "%raw" to 15,
+            ),
+            queue,
+        )
+
+        bag.entries.iterator().apply {
+            assertEquals("item.1", next().key)
+            remove()
+        }
+        bag.keys.remove("\$.cash")
+        bag.values.remove(15)
+
+        val write = queue.drain().single()
+        assertEquals(
+            setOf("bag.item%2E1", "bag.%24%2Ecash", "bag.%25raw"),
+            write.unsets,
+        )
+    }
+
+    @Test
     fun `tracked map clear writes empty document`() {
         val queue = MongoPendingWriteQueue()
         val bag = MongoTrackedMutableMap(MongoPath("player", 1001L, "bag"), mutableMapOf("item" to 5), queue)
@@ -95,6 +122,31 @@ class MongoTrackedValueTest {
     }
 
     @Test
+    fun `tracked list iterator structural changes write whole list`() {
+        val queue = MongoPendingWriteQueue()
+        val list = MongoTrackedMutableList(MongoPath("player", 1001L, "rewards"), mutableListOf(1, 2, 3), queue)
+        val iterator = list.listIterator(1)
+
+        assertEquals(2, iterator.next())
+        iterator.remove()
+        iterator.add(4)
+
+        val write = queue.drain().single()
+        assertEquals(mapOf("rewards" to listOf(1, 4, 3)), write.sets)
+    }
+
+    @Test
+    fun `tracked list sublist structural changes write whole list`() {
+        val queue = MongoPendingWriteQueue()
+        val list = MongoTrackedMutableList(MongoPath("player", 1001L, "rewards"), mutableListOf(1, 2, 3, 4), queue)
+
+        list.subList(1, 3).removeAt(0)
+
+        val write = queue.drain().single()
+        assertEquals(mapOf("rewards" to listOf(1, 3, 4)), write.sets)
+    }
+
+    @Test
     fun `tracked list remove writes whole list`() {
         val queue = MongoPendingWriteQueue()
         val list = MongoTrackedMutableList(MongoPath("player", 1001L, "rewards"), mutableListOf(1, 2), queue)
@@ -125,6 +177,24 @@ class MongoTrackedValueTest {
 
         val write = queue.drain().single()
         assertEquals(mapOf("tags" to listOf("b")), write.sets)
+    }
+
+    @Test
+    fun `tracked set iterator remove and clear write whole set`() {
+        val queue = MongoPendingWriteQueue()
+        val set = MongoTrackedMutableSet(MongoPath("player", 1001L, "tags"), linkedSetOf("a", "b", "c"), queue)
+
+        val iterator = set.iterator()
+        assertEquals("a", iterator.next())
+        iterator.remove()
+        queue.drain().single().also { write ->
+            assertEquals(mapOf("tags" to listOf("b", "c")), write.sets)
+        }
+
+        set.clear()
+
+        val write = queue.drain().single()
+        assertEquals(mapOf("tags" to emptyList<String>()), write.sets)
     }
 
     @Test
