@@ -20,7 +20,7 @@ abstract class AsteriaMessageCodegenExtension @Inject constructor(objects: Objec
         .convention(true)
 
     /**
-     * Package that receives generated message catalog and dispatcher sources.
+     * Package that receives generated message codegen sources.
      */
     val generatedPackage: Property<String> = objects.property(String::class.java)
 
@@ -37,6 +37,12 @@ abstract class AsteriaMessageCodegenExtension @Inject constructor(objects: Objec
      */
     val dispatcherSuperTypes: MapProperty<String, String> = objects.mapProperty(String::class.java, String::class.java)
         .convention(emptyMap())
+
+    /**
+     * Whether to generate the read-only MessageCatalog for tooling and diagnostics.
+     */
+    val messageCatalogEnabled: Property<Boolean> = objects.property(Boolean::class.javaObjectType)
+        .convention(false)
 
     fun dispatcherSuperType(dispatcher: String, superType: String) {
         dispatcherSuperTypes.put(dispatcher, superType)

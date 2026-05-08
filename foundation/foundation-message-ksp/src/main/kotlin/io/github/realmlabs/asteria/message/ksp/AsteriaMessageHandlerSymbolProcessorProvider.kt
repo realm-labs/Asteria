@@ -10,8 +10,6 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
-import io.github.realmlabs.asteria.message.MessageCatalog
-import io.github.realmlabs.asteria.message.MessageCatalogEntry
 import java.util.*
 
 class AsteriaMessageHandlerSymbolProcessorProvider : SymbolProcessorProvider {
@@ -77,7 +75,9 @@ private class AsteriaMessageHandlerSymbolProcessor(
             }
         if (handlerBindings.isNotEmpty()) {
             checkNotNull(target)
-            generateCatalog(target, handlerBindings)
+            if (messageCatalogEnabled()) {
+                generateCatalog(target, handlerBindings)
+            }
             generateDispatchers(target, handlerBindings)
         }
 
@@ -189,31 +189,40 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }
     }
 
+    private fun messageCatalogEnabled(): Boolean {
+        val value = options[MESSAGE_CATALOG_ENABLED_OPTION] ?: return false
+        return when (value.lowercase(Locale.getDefault())) {
+            "true" -> true
+            "false" -> false
+            else -> {
+                logger.error("KSP option $MESSAGE_CATALOG_ENABLED_OPTION must be true or false")
+                true
+            }
+        }
+    }
+
     private fun generateCatalog(target: MessageCodegenTarget, bindings: List<HandlerBinding>) {
-        val generatedPackage = target.generatedPackage
-        val typeNamePart = target.generatedTypeNamePart
-        val generatedType = TypeSpec.objectBuilder("Generated${typeNamePart}MessageCatalog")
-            .addSuperinterface(MessageCatalog::class)
-            .addProperty(
-                PropertySpec.builder(
-                    "bindings",
-                    List::class.asClassName().parameterizedBy(MessageCatalogEntry::class.asClassName()),
-                )
-                    .addModifiers(KModifier.OVERRIDE)
-                    .initializer(buildCatalogInitializer(bindings))
-                    .build(),
+        val sourceFiles = bindings.map(HandlerBinding::sourceFile).toTypedArray()
+        val catalogBindings = bindings.map { binding ->
+            MessageCatalogBindingModel(
+                messageClassName = binding.messageClassName,
+                handlerClassName = binding.handler.toClassName(),
+                dispatcher = binding.dispatcher,
             )
-            .build()
-        FileSpec.builder(generatedPackage, "Generated${typeNamePart}MessageCatalog")
-            .addType(generatedType)
-            .build()
-            .writeTo(
+        }
+        AsteriaMessageCatalogCodeGenerator.buildFiles(
+            generatedPackage = target.generatedPackage,
+            typeNamePart = target.generatedTypeNamePart,
+            bindings = catalogBindings,
+        ).forEach { generated ->
+            generated.file.writeTo(
                 codeGenerator = codeGenerator,
                 dependencies = Dependencies(
                     aggregating = false,
-                    *bindings.map(HandlerBinding::sourceFile).toTypedArray(),
+                    *sourceFiles,
                 ),
             )
+        }
     }
 
     private fun generateDispatchers(target: MessageCodegenTarget, bindings: List<HandlerBinding>) {
@@ -427,28 +436,6 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }
     }
 
-    private fun buildCatalogInitializer(bindings: List<HandlerBinding>): CodeBlock {
-        val builder = CodeBlock.builder()
-        builder.add("listOf(\n")
-        bindings.sortedWith(compareBy({ it.dispatcher }, { it.messageClassName.canonicalName }))
-            .forEachIndexed { index, binding ->
-                builder.add(
-                    "  %T(\n    messageClass = %T::class,\n    handlerClass = %T::class,\n    dispatcher = %S,\n  )",
-                    MessageCatalogEntry::class,
-                    binding.messageClassName,
-                    binding.handler.toClassName(),
-                    binding.dispatcher,
-                )
-                if (index != bindings.lastIndex) {
-                    builder.add(",\n")
-                } else {
-                    builder.add("\n")
-                }
-            }
-        builder.add(")")
-        return builder.build()
-    }
-
     private fun buildDispatcherExpression(
         target: MessageCodegenTarget,
         bindings: List<HandlerBinding>,
@@ -614,5 +601,6 @@ private class AsteriaMessageHandlerSymbolProcessor(
         private const val HANDLER_CHUNK_SIZE = 200
         private const val GENERATED_PACKAGE_OPTION = "asteria.message.generated.package"
         private const val MODULE_ID_OPTION = "asteria.message.module.id"
+        private const val MESSAGE_CATALOG_ENABLED_OPTION = "asteria.message.catalog.enabled"
     }
 }

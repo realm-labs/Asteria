@@ -38,6 +38,7 @@ class AsteriaMessageCodegenPlugin : Plugin<Project> {
             extension.moduleId.orNull?.let { moduleId ->
                 ksp.arg("asteria.message.module.id", moduleId)
             }
+            ksp.arg("asteria.message.catalog.enabled", extension.messageCatalogEnabled.get().toString())
             extension.dispatcherSuperTypes.get().toSortedMap().forEach { (dispatcher, superType) ->
                 ksp.arg("asteria.message.dispatcher.$dispatcher.superType", superType)
             }
