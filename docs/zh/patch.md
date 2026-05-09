@@ -1,11 +1,13 @@
 # 运行时补丁
 
-补丁模块用于把可热替换的逻辑包装成 `RuntimePatch`，在单节点或集群范围应用、停用和审计。
+补丁模块用于把可热替换的逻辑包装成持久化的 `RuntimePatchDescriptor`，在单节点或集群范围应用、停用和审计。
 
 ## 核心对象
 
-- `PatchRuntime`：当前节点已安装的补丁运行态。
-- `RuntimePatchRepository`：补丁元数据仓库。
+- `RuntimePatchDescriptor`：GM/repository 层的补丁元数据，包含 artifact、兼容版本、目标节点和状态。
+- `RuntimePatch`：节点执行层的补丁身份，只包含 patch id 和 repository 分配的 revision。
+- `PatchRuntime`：当前节点已安装的补丁运行态，只执行已经筛选过的 `RuntimePatch`。
+- `RuntimePatchRepository`：补丁元数据仓库，保存 descriptor 并分配递增 revision。
 - `RuntimePatchPluginResolver`：把补丁 artifact 解析成可安装 plugin。
 - `PatchApplicationService`：单节点应用补丁、停用补丁、处理兼容性。
 - `PatchClusterApplicationService`：选择目标节点并记录每个节点的应用结果。
@@ -53,15 +55,16 @@ runtimePatches(
 
 ## 补丁生命周期
 
-补丁应该声明自己兼容的应用、版本和目标节点。节点启动时可以自动过期不兼容补丁，再对本节点执行一次 desired-state
-reconcile：repository 中 `Enabled` 且匹配当前 `PatchEnvironment` 的补丁会被应用；本地 runtime 中已经存在但 repository
-里不再匹配的补丁会被移除。节点重启后不依赖 GM 推送，只要 repository 和 artifact store 是持久化的，就能从 enabled
-metadata 重新加载 jar 并恢复 patch layer。
+补丁 descriptor 声明自己兼容的应用、版本和目标节点。节点启动时可以自动过期不兼容 descriptor，再对本节点执行一次
+desired-state reconcile：repository 中 `Enabled` 且匹配当前 `PatchEnvironment` 的 descriptor 会先被筛选出来，再转换成只含
+`id/revision` 的 `RuntimePatch` 交给节点本地 `PatchRuntime` 执行。执行层不再判断 app/version/target/status。节点重启后不依赖
+GM 推送，只要 repository 和 artifact store 是持久化的，就能从 enabled metadata 重新加载 jar 并恢复 patch layer。
 
 集群补丁不应该假设所有节点同时成功。`PatchClusterApplicationService` 会记录每个节点结果；GM 或运维流程应该基于结果决定重试、回滚或人工介入。
 
-补丁应用顺序由 `PatchOrder` 决定：更高 `priority` 更先应用，同 priority 下更小 `sequence` 更先应用。`sequence` 应由
-`RuntimePatchRepository.nextSequence()` 原子生成，保证补丁创建顺序稳定。
+补丁覆盖顺序由 repository 分配的 `revision` 决定。业务创建 descriptor 时不需要填写顺序字段；保存新 descriptor 或替换已有
+descriptor 时，repository 会分配新的递增 revision。多个 patch 替换同一个 handler 或 service 时，revision 更新的 patch 覆盖旧
+patch；禁用新 patch 后会回落到前一个仍然存在的 layer。生命周期状态变更走 `updateStatus`，不会改变 descriptor revision。
 
 Jar resolver 会优先读取 manifest 中的 `Patch-Class`，失败时再尝试 `ServiceLoader<RuntimePatchPlugin>`。artifact checksum
 使用 `sha256:<hex>` 格式，artifact store 在返回 bytes 前必须校验 checksum。
@@ -76,7 +79,7 @@ Jar resolver 会优先读取 manifest 中的 `Patch-Class`，失败时再尝试 
 {root}/apps/{appName}/versions/{appVersion}/artifacts/{artifactKey}/content
 {root}/apps/{appName}/versions/{appVersion}/node-results/{patchId}/{nodeKey}/{attempt}
 {root}/index/patches/{patchId}
-{root}/counters/patch-sequence
+{root}/counters/patch-revision
 {root}/counters/node-results/{patchId}/{address}
 ```
 

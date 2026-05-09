@@ -96,14 +96,14 @@ class PatchClusterApplicationServiceTest {
     private fun patch(
         id: String,
         target: PatchTarget = PatchTarget.AllNodes,
-    ): RuntimePatch {
-        return RuntimePatch(
+    ): RuntimePatchDescriptor {
+        return RuntimePatchDescriptor(
             id = PatchId(id),
-            name = id,
             artifact = PatchArtifact("$id.jar", "sha256:$id"),
             compatibility = PatchCompatibility("game", setOf("1.0.0")),
+            name = id,
             target = target,
-            sequence = 1,
+            revision = 1,
         )
     }
 

@@ -72,8 +72,8 @@ class ZookeeperPatchPaths(
         return "$rootPath/index/patches/${patchId.value.segment()}"
     }
 
-    fun patchSequenceCounterPath(): String {
-        return "$rootPath/counters/patch-sequence"
+    fun patchRevisionCounterPath(): String {
+        return "$rootPath/counters/patch-revision"
     }
 
     fun nodeResultAttemptCounterPath(

@@ -39,8 +39,7 @@ class MongoRuntimePatchRepository(
             )
             patches.createIndex(
                 Indexes.compoundIndex(
-                    Indexes.ascending("priority"),
-                    Indexes.ascending("sequence"),
+                    Indexes.ascending("revision"),
                     Indexes.ascending("_id"),
                 ),
             )
@@ -48,10 +47,10 @@ class MongoRuntimePatchRepository(
         }
     }
 
-    override suspend fun nextSequence(): Long {
-        return measured("next_sequence") {
+    override suspend fun nextRevision(): Long {
+        return measured("next_revision") {
             val updated = counters.findOneAndUpdate(
-                eq("_id", SEQUENCE_COUNTER_ID),
+                eq("_id", REVISION_COUNTER_ID),
                 inc("value", 1),
                 FindOneAndUpdateOptions()
                     .upsert(true)
@@ -61,38 +60,45 @@ class MongoRuntimePatchRepository(
         }
     }
 
-    override suspend fun save(patch: RuntimePatch) {
-        measured("save") {
+    override suspend fun save(patch: RuntimePatchDescriptor): RuntimePatchDescriptor {
+        return measured("save") {
+            val existing = find(patch.id)
+            val stored = when {
+                patch.revision <= 0 -> patch.copy(revision = nextRevision())
+                existing != null && patch != existing -> patch.copy(revision = nextRevision())
+                else -> patch
+            }
             patches.replaceOne(
-                eq("_id", patch.id.value),
-                patch.toDocument(),
+                eq("_id", stored.id.value),
+                stored.toDocument(),
                 ReplaceOptions().upsert(true),
             )
+            stored
         }
     }
 
-    override suspend fun find(id: PatchId): RuntimePatch? {
+    override suspend fun find(id: PatchId): RuntimePatchDescriptor? {
         return measured("find") {
-            patches.find(eq("_id", id.value)).firstOrNull()?.toRuntimePatch()
+            patches.find(eq("_id", id.value)).firstOrNull()?.toRuntimePatchDescriptor()
         }
     }
 
-    override suspend fun list(query: RuntimePatchQuery): List<RuntimePatch> {
+    override suspend fun list(query: RuntimePatchQuery): List<RuntimePatchDescriptor> {
         return measured("list") {
             patches.find(query.toFilter())
-                .sort(Sorts.ascending("priority", "sequence", "_id"))
+                .sort(Sorts.ascending("revision", "_id"))
                 .toList()
-                .map { it.toRuntimePatch() }
+                .map { it.toRuntimePatchDescriptor() }
         }
     }
 
-    override suspend fun updateStatus(id: PatchId, status: PatchStatus): RuntimePatch? {
+    override suspend fun updateStatus(id: PatchId, status: PatchStatus): RuntimePatchDescriptor? {
         return measured("update_status") {
             patches.findOneAndUpdate(
                 eq("_id", id.value),
                 set("status", status.name),
                 FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER),
-            )?.toRuntimePatch()
+            )?.toRuntimePatchDescriptor()
         }
     }
 
@@ -125,15 +131,14 @@ class MongoRuntimePatchRepository(
         }
     }
 
-    private fun RuntimePatch.toDocument(): Document {
+    private fun RuntimePatchDescriptor.toDocument(): Document {
         return Document("_id", id.value)
             .append("name", name)
             .append("artifact", artifact.toDocument())
             .append("compatibility", compatibility.toDocument())
             .append("target", target.toDocument())
-            .append("priority", priority)
-            .append("sequence", sequence)
             .append("status", status.name)
+            .append("revision", revision)
     }
 
     private fun PatchArtifact.toDocument(): Document {
@@ -158,16 +163,15 @@ class MongoRuntimePatchRepository(
         }
     }
 
-    private fun Document.toRuntimePatch(): RuntimePatch {
-        return RuntimePatch(
+    private fun Document.toRuntimePatchDescriptor(): RuntimePatchDescriptor {
+        return RuntimePatchDescriptor(
             id = PatchId(requiredString("_id")),
-            name = requiredString("name"),
             artifact = requiredDocument("artifact").toPatchArtifact(),
             compatibility = requiredDocument("compatibility").toPatchCompatibility(),
+            name = requiredString("name"),
             target = requiredDocument("target").toPatchTarget(),
-            priority = requiredNumber("priority").toInt(),
-            sequence = requiredNumber("sequence").toLong(),
             status = PatchStatus.valueOf(requiredString("status")),
+            revision = requiredNumber("revision").toLong(),
         )
     }
 
@@ -215,6 +219,6 @@ class MongoRuntimePatchRepository(
     }
 
     private companion object {
-        const val SEQUENCE_COUNTER_ID: String = "runtime_patch_sequence"
+        const val REVISION_COUNTER_ID: String = "runtime_patch_revision"
     }
 }

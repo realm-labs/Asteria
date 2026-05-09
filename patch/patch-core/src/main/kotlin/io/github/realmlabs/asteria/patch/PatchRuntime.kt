@@ -7,11 +7,11 @@ import org.slf4j.LoggerFactory
 import java.io.Serializable
 
 /**
- * Runtime patch unit loaded and applied by a node.
+ * Runtime patch plugin loaded and applied by a node.
  *
  * Implementations should prefer declaring changes through [PatchInstallContext], especially
  * [PatchInstallContext.replace]. Replacement operations are tracked by the framework as ordered patch layers. When a
- * later patch is disabled, the registry is rebuilt from the remaining layers, so the active implementation falls back
+ * newer patch is disabled, the registry is rebuilt from the remaining layers, so the active implementation falls back
  * to the previous patch instead of the original base entry.
  *
  * For type-keyed business services, use [PatchableServiceRegistry] and [PatchInstallContext.replace]. This gives
@@ -84,7 +84,6 @@ class PatchUninstallContext internal constructor(
 )
 
 class PatchRuntime(
-    val environment: PatchEnvironment,
     private val tracer: Tracer = NoopTracer,
     private val metrics: Metrics = NoopMetrics,
 ) {
@@ -93,11 +92,10 @@ class PatchRuntime(
     private val applied: MutableMap<PatchId, AppliedRuntimePatch> = linkedMapOf()
 
     /**
-     * Applies one patch if it is enabled, compatible, targeted at this node, and not already applied.
+     * Applies one patch execution if it is not already applied.
      *
-     * Result handling is split in two paths:
-     * - inapplicable patches return [PatchApplyResult.Ignored];
-     * - validation, install, commit, or rollback failures throw.
+     * Status, compatibility, and targeting are handled before a descriptor reaches this node-local runtime. Validation,
+     * install, commit, or rollback failures throw.
      *
      * Successful application records the patch in the in-memory applied set so later [remove] calls can uninstall it.
      */
@@ -112,21 +110,6 @@ class PatchRuntime(
                             "patch ${patch.id} is already applied"
                         )
 
-                        patch.status != PatchStatus.Enabled -> PatchApplyResult.Ignored(
-                            patch.id,
-                            "patch ${patch.id} is ${patch.status}"
-                        )
-
-                        !patch.compatibility.matches(environment) -> PatchApplyResult.Ignored(
-                            patch.id,
-                            "patch ${patch.id} is not compatible with ${environment.appName}:${environment.version}",
-                        )
-
-                        !patch.target.matches(environment) -> PatchApplyResult.Ignored(
-                            patch.id,
-                            "patch ${patch.id} does not target this node",
-                        )
-
                         else -> applyEnabled(patch, plugin)
                     }
                     val tags = patch.metricTags() + MetricTags.of("result" to result.resultTag())
@@ -139,7 +122,7 @@ class PatchRuntime(
     }
 
     /**
-     * Applies several patches in ascending [RuntimePatch.order].
+     * Applies several patches in ascending revision order.
      *
      * This method is sequential, not transactional across the whole batch: if one patch throws, previously applied
      * earlier patches remain applied.
@@ -196,11 +179,10 @@ class PatchRuntime(
                 }
                 applied[patch.id] = AppliedRuntimePatch(patch, plugin, operations)
                 logger.info(
-                    "patch applied id={} operations={} priority={} sequence={}",
+                    "patch applied id={} operations={} revision={}",
                     patch.id.value,
                     operations.size,
-                    patch.priority,
-                    patch.sequence,
+                    patch.revision
                 )
                 return PatchApplyResult.Applied(patch.id, operations.size)
             } catch (error: Throwable) {
@@ -218,17 +200,14 @@ class PatchRuntime(
 private fun RuntimePatch.metricTags(): MetricTags {
     return MetricTags.of(
         "patch_id" to id.value,
-        "app" to compatibility.appName,
+        "revision" to revision.toString(),
     )
 }
 
 private fun RuntimePatch.traceAttributes(): TraceAttributes {
     return TraceAttributes.of(
         "patch.id" to id.value,
-        "patch.name" to name,
-        "patch.app" to compatibility.appName,
-        "patch.priority" to priority.toString(),
-        "patch.sequence" to sequence.toString(),
+        "patch.revision" to revision.toString(),
     )
 }
 

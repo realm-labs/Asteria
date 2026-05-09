@@ -19,10 +19,7 @@ class ZookeeperRuntimePatchStoreTest {
             val root = "/asteria/test/runtime-patches"
             val paths = ZookeeperPatchPaths(root)
             val repository = ZookeeperRuntimePatchRepository(AsyncCuratorFramework.wrap(client), root)
-            val sequence = repository.nextSequence()
-            val patch = runtimePatch(sequence = sequence)
-
-            repository.save(patch)
+            val patch = repository.save(runtimePatch())
 
             assertEquals(patch, repository.find(patch.id))
             assertEquals(listOf(patch), repository.list(RuntimePatchQuery(appName = "game", version = "1.0.0")))
@@ -45,11 +42,9 @@ class ZookeeperRuntimePatchStoreTest {
             val root = "/asteria/test/runtime-patches"
             val paths = ZookeeperPatchPaths(root)
             val repository = ZookeeperRuntimePatchRepository(AsyncCuratorFramework.wrap(client), root)
-            val patch = runtimePatch(sequence = repository.nextSequence())
-            repository.save(patch)
+            val patch = repository.save(runtimePatch())
 
-            val moved = patch.copy(compatibility = PatchCompatibility("game", setOf("1.0.1")))
-            repository.save(moved)
+            val moved = repository.save(patch.copy(compatibility = PatchCompatibility("game", setOf("1.0.1"))))
 
             assertNull(client.checkExists().forPath(paths.patchMetadataPath("game", "1.0.0", patch.id)))
             assertNotNull(client.checkExists().forPath(paths.patchMetadataPath("game", "1.0.1", patch.id)))
@@ -108,15 +103,13 @@ class ZookeeperRuntimePatchStoreTest {
         }
     }
 
-    private fun runtimePatch(sequence: Long): RuntimePatch {
-        return RuntimePatch(
+    private fun runtimePatch(): RuntimePatchDescriptor {
+        return RuntimePatchDescriptor(
             id = PatchId("fix/player:bag"),
-            name = "Fix player bag",
             artifact = PatchArtifact("fix-player-bag.jar", "sha256:${"jar".encodeToByteArray().sha256Hex()}"),
             compatibility = PatchCompatibility("game", setOf("1.0.0", "1.0.1")),
+            name = "Fix player bag",
             target = PatchTarget.Roles(setOf(RoleKey("player"))),
-            priority = 100,
-            sequence = sequence,
         )
     }
 

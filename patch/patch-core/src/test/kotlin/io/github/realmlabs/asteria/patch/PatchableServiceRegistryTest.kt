@@ -12,8 +12,8 @@ class PatchableServiceRegistryTest {
         val services = PatchableServiceRegistry()
         services.register(GreetingService::class, GreetingService("base"))
         val runtime = runtime()
-        val first = patch("first", sequence = 1)
-        val second = patch("second", sequence = 2)
+        val first = patch("first", revision = 1)
+        val second = patch("second", revision = 2)
 
         assertIs<PatchApplyResult.Applied>(
             runtime.apply(first, plugin { replaceService<GreetingService>(services, GreetingService("first")) }),
@@ -37,7 +37,7 @@ class PatchableServiceRegistryTest {
 
         val failed = runCatching {
             runtime.apply(
-                patch("missing", sequence = 1),
+                patch("missing", revision = 1),
                 plugin { replaceService<GreetingService>(services, GreetingService("patched")) },
             )
         }
@@ -52,7 +52,7 @@ class PatchableServiceRegistryTest {
         val runtime = runtime()
 
         val result = runtime.apply(
-            patch("generic-service-replace", sequence = 1),
+            patch("generic-service-replace", revision = 1),
             plugin {
                 replace(services, GreetingService::class, GreetingService("patched"))
             },
@@ -63,20 +63,14 @@ class PatchableServiceRegistryTest {
     }
 
     private fun runtime(): PatchRuntime {
-        return PatchRuntime(PatchEnvironment("game", "1.0.0"))
+        return PatchRuntime()
     }
 
     private fun patch(
         id: String,
-        sequence: Long,
+        revision: Long,
     ): RuntimePatch {
-        return RuntimePatch(
-            id = PatchId(id),
-            name = id,
-            artifact = PatchArtifact("$id.jar", "sha256:$id"),
-            compatibility = PatchCompatibility("game", setOf("1.0.0")),
-            sequence = sequence,
-        )
+        return RuntimePatch(PatchId(id), revision)
     }
 
     private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {

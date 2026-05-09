@@ -11,8 +11,8 @@ class PatchApplicationServiceTest {
     @Test
     fun applicationServiceAppliesEnabledCompatiblePatchesInOrder() = runBlocking {
         val registry = PatchableRegistry(mapOf("handler" to "base"))
-        val first = patch("first", priority = 0, sequence = 1)
-        val second = patch("second", priority = 0, sequence = 2)
+        val first = patch("first", revision = 1)
+        val second = patch("second", revision = 2)
         val repository = InMemoryRuntimePatchRepository(listOf(second, first))
         val resolver = StaticRuntimePatchPluginResolver(
             mapOf(
@@ -22,6 +22,7 @@ class PatchApplicationServiceTest {
         )
         val service = PatchApplicationService(
             runtime = runtime(),
+            environment = environment(),
             repository = repository,
             resolver = resolver,
         )
@@ -35,15 +36,15 @@ class PatchApplicationServiceTest {
     @Test
     fun applicationServiceSkipsDisabledAndIncompatiblePatchesBeforeResolvingPlugin() = runBlocking {
         val registry = PatchableRegistry(mapOf("handler" to "base"))
-        val disabled = patch("disabled", sequence = 1, status = PatchStatus.Disabled)
-        val incompatible = patch("incompatible", sequence = 2, versions = setOf("2.0.0"))
-        val enabled = patch("enabled", sequence = 3)
+        val disabled = patch("disabled", revision = 1, status = PatchStatus.Disabled)
+        val incompatible = patch("incompatible", revision = 2, versions = setOf("2.0.0"))
+        val enabled = patch("enabled", revision = 3)
         val repository = InMemoryRuntimePatchRepository(listOf(disabled, incompatible, enabled))
         val resolver = StaticRuntimePatchPluginResolver(
             mapOf(enabled.id to plugin { replace(registry, "handler", "enabled") }),
         )
 
-        val report = PatchApplicationService(runtime(), repository, resolver).applyEnabledPatches()
+        val report = PatchApplicationService(runtime(), environment(), repository, resolver).applyEnabledPatches()
 
         assertEquals(1, report.appliedCount)
         assertEquals("enabled", registry.require("handler"))
@@ -52,7 +53,7 @@ class PatchApplicationServiceTest {
     @Test
     fun moduleRegistersPatchServicesAndAppliesPatchesOnStart() = runBlocking {
         val registry = PatchableRegistry(mapOf("handler" to "base"))
-        val patch = patch("startup", sequence = 1)
+        val patch = patch("startup", revision = 1)
         val app = gameApplication {
             name = "patch-module-test"
             install(
@@ -84,10 +85,11 @@ class PatchApplicationServiceTest {
     @Test
     fun disablingPatchUpdatesRepositoryAndRemovesRuntimePatch() = runBlocking {
         val registry = PatchableRegistry(mapOf("handler" to "base"))
-        val patch = patch("disable", sequence = 1)
+        val patch = patch("disable", revision = 1)
         val repository = InMemoryRuntimePatchRepository(listOf(patch))
         val service = PatchApplicationService(
             runtime = runtime(),
+            environment = environment(),
             repository = repository,
             resolver = StaticRuntimePatchPluginResolver(
                 mapOf(patch.id to plugin { replace(registry, "handler", "patched") }),
@@ -108,11 +110,12 @@ class PatchApplicationServiceTest {
     @Test
     fun reconcileRemovesRuntimePatchThatIsNoLongerDesired() = runBlocking {
         val registry = PatchableRegistry(mapOf("handler" to "base"))
-        val patch = patch("disable", sequence = 1)
+        val patch = patch("disable", revision = 1)
         val repository = InMemoryRuntimePatchRepository(listOf(patch))
         val runtime = runtime()
         val service = PatchApplicationService(
             runtime = runtime,
+            environment = environment(),
             repository = repository,
             resolver = StaticRuntimePatchPluginResolver(
                 mapOf(patch.id to plugin { replace(registry, "handler", "patched") }),
@@ -133,14 +136,15 @@ class PatchApplicationServiceTest {
     @Test
     fun reconcileReappliesPatchWhenStoredMetadataChanges() = runBlocking {
         val registry = PatchableRegistry(mapOf("handler" to "base"))
-        val patch = patch("reload", sequence = 1)
+        val patch = patch("reload", revision = 1)
         val repository = InMemoryRuntimePatchRepository(listOf(patch))
         val runtime = runtime()
         val service = PatchApplicationService(
             runtime = runtime,
+            environment = environment(),
             repository = repository,
             resolver = object : RuntimePatchPluginResolver {
-                override suspend fun resolve(patch: RuntimePatch): RuntimePatchPlugin {
+                override suspend fun resolve(patch: RuntimePatchDescriptor): RuntimePatchPlugin {
                     return plugin { replace(registry, "handler", patch.artifact.checksum) }
                 }
             },
@@ -149,23 +153,23 @@ class PatchApplicationServiceTest {
         service.reconcileEnabledPatches()
         assertEquals("sha256:reload", registry.require("handler"))
 
-        val changed = patch.copy(artifact = PatchArtifact("reload.jar", "sha256:reload-v2"))
-        repository.save(changed)
+        val changed = repository.save(patch.copy(artifact = PatchArtifact("reload.jar", "sha256:reload-v2")))
         val report = service.reconcileEnabledPatches()
 
         assertEquals(1, report.appliedCount)
         assertEquals(listOf(patch.id), report.removedPatchIds)
         assertEquals("sha256:reload-v2", registry.require("handler"))
-        assertEquals(listOf(changed), runtime.appliedPatches())
+        assertEquals(listOf(changed.execution()), runtime.appliedPatches())
     }
 
     @Test
     fun serviceExpiresEnabledPatchesThatDoNotMatchCurrentVersion() = runBlocking {
-        val oldPatch = patch("old", sequence = 1, versions = setOf("0.9.0"))
-        val currentPatch = patch("current", sequence = 2)
+        val oldPatch = patch("old", revision = 1, versions = setOf("0.9.0"))
+        val currentPatch = patch("current", revision = 2)
         val repository = InMemoryRuntimePatchRepository(listOf(oldPatch, currentPatch))
         val service = PatchApplicationService(
             runtime = runtime(),
+            environment = environment(),
             repository = repository,
             resolver = StaticRuntimePatchPluginResolver(),
         )
@@ -178,7 +182,7 @@ class PatchApplicationServiceTest {
     }
 
     private fun runtime(): PatchRuntime {
-        return PatchRuntime(environment())
+        return PatchRuntime()
     }
 
     private fun environment(): PatchEnvironment {
@@ -191,19 +195,17 @@ class PatchApplicationServiceTest {
 
     private fun patch(
         id: String,
-        priority: Int = 0,
-        sequence: Long,
+        revision: Long,
         versions: Set<String> = setOf("1.0.0"),
         status: PatchStatus = PatchStatus.Enabled,
-    ): RuntimePatch {
-        return RuntimePatch(
+    ): RuntimePatchDescriptor {
+        return RuntimePatchDescriptor(
             id = PatchId(id),
-            name = id,
             artifact = PatchArtifact("$id.jar", "sha256:$id"),
             compatibility = PatchCompatibility("game", versions),
-            priority = priority,
-            sequence = sequence,
+            name = id,
             status = status,
+            revision = revision,
         )
     }
 

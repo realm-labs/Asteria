@@ -5,21 +5,9 @@ import io.github.realmlabs.asteria.core.NodeState
 import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.core.ServiceRegistry
 import io.github.realmlabs.asteria.message.DefaultHandlerContext
-import io.github.realmlabs.asteria.patch.PatchApplyResult
-import io.github.realmlabs.asteria.patch.PatchArtifact
-import io.github.realmlabs.asteria.patch.PatchCompatibility
-import io.github.realmlabs.asteria.patch.PatchEnvironment
-import io.github.realmlabs.asteria.patch.PatchId
-import io.github.realmlabs.asteria.patch.PatchInstallContext
-import io.github.realmlabs.asteria.patch.PatchRuntime
-import io.github.realmlabs.asteria.patch.RuntimePatch
-import io.github.realmlabs.asteria.patch.RuntimePatchPlugin
+import io.github.realmlabs.asteria.patch.*
 import kotlinx.coroutines.runBlocking
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class EventDispatcherTest {
     @Test
@@ -102,7 +90,7 @@ class EventDispatcherTest {
             records += "base:${event.newLevel}"
         }
         val dispatcher = EventDispatcher(registry)
-        val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
+        val runtime = PatchRuntime()
 
         dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 1, newLevel = 2))
         assertIs<PatchApplyResult.Applied>(
@@ -129,9 +117,9 @@ class EventDispatcherTest {
             records += "base"
         }
         val dispatcher = EventDispatcher(registry)
-        val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
-        val first = patch("first", sequence = 1)
-        val second = patch("second", sequence = 2)
+        val runtime = PatchRuntime()
+        val first = patch("first", revision = 1)
+        val second = patch("second", revision = 2)
 
         assertIs<PatchApplyResult.Applied>(
             runtime.apply(first, plugin {
@@ -338,15 +326,9 @@ class EventDispatcherTest {
 
     private fun patch(
         id: String,
-        sequence: Long = 1,
+        revision: Long = 1,
     ): RuntimePatch {
-        return RuntimePatch(
-            id = PatchId(id),
-            name = id,
-            artifact = PatchArtifact("$id.jar", "sha256:$id"),
-            compatibility = PatchCompatibility("game", setOf("1.0.0")),
-            sequence = sequence,
-        )
+        return RuntimePatch(PatchId(id), revision)
     }
 
     private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {

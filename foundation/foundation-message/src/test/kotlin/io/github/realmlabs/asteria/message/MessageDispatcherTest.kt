@@ -1,10 +1,6 @@
 package io.github.realmlabs.asteria.message
 
-import io.github.realmlabs.asteria.core.EntityKind
-import io.github.realmlabs.asteria.core.NodeRuntime
-import io.github.realmlabs.asteria.core.NodeState
-import io.github.realmlabs.asteria.core.RoleKey
-import io.github.realmlabs.asteria.core.ServiceRegistry
+import io.github.realmlabs.asteria.core.*
 import io.github.realmlabs.asteria.patch.*
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -18,7 +14,7 @@ class MessageDispatcherTest {
         val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
         registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
-        val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
+        val runtime = PatchRuntime()
 
         dispatcher.dispatch(context(), LoginReq("p1"))
         assertIs<PatchApplyResult.Applied>(
@@ -40,9 +36,9 @@ class MessageDispatcherTest {
         val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
         registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
-        val runtime = PatchRuntime(PatchEnvironment("game", "1.0.0"))
-        val first = patch("first", sequence = 1)
-        val second = patch("second", sequence = 2)
+        val runtime = PatchRuntime()
+        val first = patch("first", revision = 1)
+        val second = patch("second", revision = 2)
 
         assertIs<PatchApplyResult.Applied>(
             runtime.apply(first, plugin { replaceHandler(registry, LoginHandler(events, "first")) }),
@@ -102,15 +98,9 @@ class MessageDispatcherTest {
 
     private fun patch(
         id: String,
-        sequence: Long = 1,
+        revision: Long = 1,
     ): RuntimePatch {
-        return RuntimePatch(
-            id = PatchId(id),
-            name = id,
-            artifact = PatchArtifact("$id.jar", "sha256:$id"),
-            compatibility = PatchCompatibility("game", setOf("1.0.0")),
-            sequence = sequence,
-        )
+        return RuntimePatch(PatchId(id), revision)
     }
 
     private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {

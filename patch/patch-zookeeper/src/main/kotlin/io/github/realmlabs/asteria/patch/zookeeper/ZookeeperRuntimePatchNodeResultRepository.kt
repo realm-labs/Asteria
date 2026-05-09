@@ -3,7 +3,10 @@ package io.github.realmlabs.asteria.patch.zookeeper
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
-import io.github.realmlabs.asteria.patch.*
+import io.github.realmlabs.asteria.patch.PatchId
+import io.github.realmlabs.asteria.patch.RuntimePatchNodeResult
+import io.github.realmlabs.asteria.patch.RuntimePatchNodeResultQuery
+import io.github.realmlabs.asteria.patch.RuntimePatchNodeResultRepository
 import org.apache.curator.x.async.AsyncCuratorFramework
 import org.slf4j.LoggerFactory
 
@@ -52,7 +55,7 @@ class ZookeeperRuntimePatchNodeResultRepository(
             zk.children(paths.versionsPath(appSegment)).flatMap { versionSegment ->
                 val version = ZookeeperPatchPaths.decodeSegment(versionSegment)
                 val patchSegments = query.patchId?.let { listOf(it.value.segment()) }
-                    ?: zk.children("${paths.nodeResultsPath(appName, version)}")
+                    ?: zk.children(paths.nodeResultsPath(appName, version))
                 patchSegments.flatMap { patchSegment ->
                     val patchId = PatchId(ZookeeperPatchPaths.decodeSegment(patchSegment))
                     val patchPath = "${paths.nodeResultsPath(appName, version)}/$patchSegment"

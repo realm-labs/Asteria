@@ -198,7 +198,7 @@ class PatchClusterApplicationService(
         val availableNodes = nodes.nodes()
         val patches = repository.list(RuntimePatchQuery(status = PatchStatus.Enabled))
             .filter { patch -> availableNodes.any { node -> patch.canApplyTo(node.environment()) } }
-        return patches.sortedBy { it.order }.map { apply(it.id) }
+        return patches.sortedBy { it.revision }.map { apply(it.id) }
     }
 
     suspend fun disable(id: PatchId): PatchClusterApplyResult {

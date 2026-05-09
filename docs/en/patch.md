@@ -1,12 +1,15 @@
 # Runtime Patches
 
-Patch modules wrap hot-replaceable logic as `RuntimePatch` objects that can be applied, disabled, and audited on one
-node or across a cluster.
+Patch modules wrap hot-replaceable logic as persisted `RuntimePatchDescriptor` metadata that can be applied, disabled,
+and audited on one node or across a cluster.
 
 ## Core Objects
 
-- `PatchRuntime`: current node patch runtime.
-- `RuntimePatchRepository`: patch metadata repository.
+- `RuntimePatchDescriptor`: GM/repository patch metadata, including artifact, compatible versions, target nodes, and
+  lifecycle status.
+- `RuntimePatch`: node-local execution identity, containing only patch id and repository-assigned revision.
+- `PatchRuntime`: current node patch runtime. It only executes already-selected `RuntimePatch` values.
+- `RuntimePatchRepository`: patch metadata repository. It stores descriptors and assigns increasing revisions.
 - `RuntimePatchPluginResolver`: resolves a patch artifact into an installable plugin.
 - `PatchApplicationService`: applies, disables, and checks compatibility on one node.
 - `PatchClusterApplicationService`: selects target nodes and records per-node results.
@@ -55,17 +58,21 @@ runtimePatches(
 
 ## Patch Lifecycle
 
-Patches should declare compatible applications, versions, and targets. A node can expire incompatible patches during
-startup, then run a desired-state reconciliation: patches that are `Enabled` in the repository and match the current
-`PatchEnvironment` are applied, while locally applied patches that are no longer desired are removed. After a node
-restart, GM does not need to push patches again; if the repository and artifact store are durable, the node reloads
-enabled metadata and restores patch layers from the stored jars.
+Patch descriptors declare compatible applications, versions, and targets. A node can expire incompatible descriptors
+during startup, then run a desired-state reconciliation: descriptors that are `Enabled` in the repository and match the
+current `PatchEnvironment` are selected, converted into `RuntimePatch(id, revision)`, and handed to the local
+`PatchRuntime`. The execution layer does not check app/version/target/status again. After a node restart, GM does not
+need to push patches again; if the repository and artifact store are durable, the node reloads enabled metadata and
+restores patch layers from the stored jars.
 
 Cluster patching should not assume that every node succeeds at the same time. `PatchClusterApplicationService` records
 each node result; GM or operations workflows decide whether to retry, roll back, or escalate.
 
-Patch order is defined by `PatchOrder`: higher `priority` is applied first, and lower `sequence` is applied first within
-the same priority. `sequence` should be generated atomically by `RuntimePatchRepository.nextSequence()`.
+Patch precedence is defined by the repository-assigned `revision`. Business code does not need to provide an ordering
+field. `RuntimePatchRepository.save` assigns a revision for new descriptors and assigns a new revision again when an
+existing descriptor is replaced. Multiple patches that replace the same handler or service are replayed by revision, so
+the newer patch wins. Disabling the newer patch falls back to the previous remaining layer. Lifecycle state changes
+should use `updateStatus`, which preserves the descriptor revision.
 
 Jar resolution first checks the manifest `Patch-Class`, then falls back to `ServiceLoader<RuntimePatchPlugin>`. Artifact
 checksums use the `sha256:<hex>` format, and artifact stores must verify bytes before returning them.
@@ -80,7 +87,7 @@ checksums use the `sha256:<hex>` format, and artifact stores must verify bytes b
 {root}/apps/{appName}/versions/{appVersion}/artifacts/{artifactKey}/content
 {root}/apps/{appName}/versions/{appVersion}/node-results/{patchId}/{nodeKey}/{attempt}
 {root}/index/patches/{patchId}
-{root}/counters/patch-sequence
+{root}/counters/patch-revision
 {root}/counters/node-results/{patchId}/{address}
 ```
 

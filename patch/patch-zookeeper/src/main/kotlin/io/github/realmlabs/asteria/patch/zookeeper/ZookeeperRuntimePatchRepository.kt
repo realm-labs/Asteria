@@ -25,26 +25,38 @@ class ZookeeperRuntimePatchRepository(
     private val zk = ZookeeperPatchClient(client)
     private val logger = LoggerFactory.getLogger(ZookeeperRuntimePatchRepository::class.java)
 
-    override suspend fun nextSequence(): Long = measured("next_sequence") {
-        zk.incrementCounter(paths.patchSequenceCounterPath())
+    override suspend fun nextRevision(): Long = measured("next_revision") {
+        zk.incrementCounter(paths.patchRevisionCounterPath())
     }
 
-    override suspend fun save(patch: RuntimePatch) = measured("save") {
+    override suspend fun save(patch: RuntimePatchDescriptor): RuntimePatchDescriptor = measured("save") {
+        val existing = find(patch.id)
+        val stored = when {
+            patch.revision <= 0 -> patch.copy(revision = nextRevision())
+            existing != null && patch != existing -> patch.copy(revision = nextRevision())
+            else -> patch
+        }
         val oldIndex = zk.read(paths.patchIndexPath(patch.id))?.let(codec::decodePatchIndex)
         oldIndex?.versions
-            ?.filter { version -> oldIndex.appName != patch.compatibility.appName || version !in patch.compatibility.versions }
-            ?.forEach { version -> zk.deleteIfExists(paths.patchMetadataPath(oldIndex.appName, version, patch.id)) }
+            ?.filter { version ->
+                oldIndex.appName != stored.compatibility.appName || version !in stored.compatibility.versions
+            }
+            ?.forEach { version -> zk.deleteIfExists(paths.patchMetadataPath(oldIndex.appName, version, stored.id)) }
 
-        patch.compatibility.versions.forEach { version ->
-            zk.upsert(paths.patchMetadataPath(patch.compatibility.appName, version, patch.id), codec.encodePatch(patch))
+        stored.compatibility.versions.forEach { version ->
+            zk.upsert(
+                paths.patchMetadataPath(stored.compatibility.appName, version, stored.id),
+                codec.encodePatch(stored)
+            )
         }
         zk.upsert(
-            paths.patchIndexPath(patch.id),
-            codec.encodePatchIndex(ZookeeperPatchIndex(patch.compatibility.appName, patch.compatibility.versions)),
+            paths.patchIndexPath(stored.id),
+            codec.encodePatchIndex(ZookeeperPatchIndex(stored.compatibility.appName, stored.compatibility.versions)),
         )
+        stored
     }
 
-    override suspend fun find(id: PatchId): RuntimePatch? = measured("find") {
+    override suspend fun find(id: PatchId): RuntimePatchDescriptor? = measured("find") {
         val index = zk.read(paths.patchIndexPath(id))?.let(codec::decodePatchIndex) ?: return@measured null
         for (version in index.versions) {
             zk.read(paths.patchMetadataPath(index.appName, version, id))?.let(codec::decodePatch)?.let { patch ->
@@ -54,26 +66,33 @@ class ZookeeperRuntimePatchRepository(
         null
     }
 
-    override suspend fun list(query: RuntimePatchQuery): List<RuntimePatch> = measured("list") {
+    override suspend fun list(query: RuntimePatchQuery): List<RuntimePatchDescriptor> = measured("list") {
         scanPatches(query)
             .asSequence()
             .filter { patch -> query.status == null || patch.status == query.status }
             .filter { patch -> query.appName == null || patch.compatibility.appName == query.appName }
             .filter { patch -> query.version == null || query.version in patch.compatibility.versions }
             .distinctBy { it.id }
-            .sortedBy { it.order }
+            .sortedBy { it.revision }
             .toList()
     }
 
     override suspend fun updateStatus(
         id: PatchId,
         status: PatchStatus,
-    ): RuntimePatch? = measured("update_status") {
+    ): RuntimePatchDescriptor? = measured("update_status") {
         val patch = find(id) ?: return@measured null
-        patch.copy(status = status).also { save(it) }
+        patch.copy(status = status).also { updated ->
+            updated.compatibility.versions.forEach { version ->
+                zk.upsert(
+                    paths.patchMetadataPath(updated.compatibility.appName, version, updated.id),
+                    codec.encodePatch(updated),
+                )
+            }
+        }
     }
 
-    private suspend fun scanPatches(query: RuntimePatchQuery): List<RuntimePatch> {
+    private suspend fun scanPatches(query: RuntimePatchQuery): List<RuntimePatchDescriptor> {
         val appSegments = query.appName?.let { listOf(it.segment()) } ?: zk.children(paths.appsPath())
         return appSegments.flatMap { appSegment ->
             val appName = ZookeeperPatchPaths.decodeSegment(appSegment)

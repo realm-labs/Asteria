@@ -7,12 +7,12 @@ interface RuntimePatchPluginResolver {
     /**
      * Resolves the executable plugin implementation for [patch].
      */
-    suspend fun resolve(patch: RuntimePatch): RuntimePatchPlugin
+    suspend fun resolve(patch: RuntimePatchDescriptor): RuntimePatchPlugin
 
     /**
      * Optional cache eviction hook after a patch is disabled or otherwise no longer needed.
      */
-    suspend fun evict(patch: RuntimePatch) {
+    suspend fun evict(patch: RuntimePatchDescriptor) {
     }
 }
 
@@ -32,7 +32,7 @@ class StaticRuntimePatchPluginResolver(
         plugins[id] = plugin
     }
 
-    override suspend fun resolve(patch: RuntimePatch): RuntimePatchPlugin {
+    override suspend fun resolve(patch: RuntimePatchDescriptor): RuntimePatchPlugin {
         return requireNotNull(plugins[patch.id]) { "patch plugin ${patch.id} not found" }
     }
 }
@@ -46,6 +46,7 @@ class StaticRuntimePatchPluginResolver(
  */
 class PatchApplicationService(
     private val runtime: PatchRuntime,
+    val environment: PatchEnvironment,
     private val repository: RuntimePatchRepository,
     private val resolver: RuntimePatchPluginResolver,
     private val tracer: Tracer = NoopTracer,
@@ -54,16 +55,11 @@ class PatchApplicationService(
     private val logger = LoggerFactory.getLogger(PatchApplicationService::class.java)
 
     /**
-     * Environment of the underlying runtime patch engine.
-     */
-    val environment: PatchEnvironment get() = runtime.environment
-
-    /**
      * Marks incompatible stored patches as expired and returns those patches.
      */
-    suspend fun expireIncompatiblePatches(): List<RuntimePatch> {
+    suspend fun expireIncompatiblePatches(): List<RuntimePatchDescriptor> {
         return tracer.span("patch.expire_incompatible", environment.traceAttributes()) {
-            val expired = repository.expireIncompatible(runtime.environment)
+            val expired = repository.expireIncompatible(environment)
             metrics.counter("asteria.patch.expired.total", environment.metricTags()).increment(expired.size.toLong())
             if (expired.isNotEmpty()) {
                 logger.info(
@@ -88,10 +84,10 @@ class PatchApplicationService(
             val patches = repository.list(
                 RuntimePatchQuery(
                     status = PatchStatus.Enabled,
-                    appName = runtime.environment.appName,
-                    version = runtime.environment.version,
+                    appName = environment.appName,
+                    version = environment.version,
                 ),
-            ).filter { it.canApplyTo(runtime.environment) }
+            ).filter { it.canApplyTo(environment) }
             metrics.counter("asteria.patch.enabled.loaded.total", environment.metricTags())
                 .increment(patches.size.toLong())
             applyPatches(patches)
@@ -102,20 +98,19 @@ class PatchApplicationService(
      * Reconciles this node's in-memory patch layers with durable repository desired state.
      *
      * The repository remains the source of truth: enabled patches that match this node are applied, while currently
-     * applied patches that are no longer desired are removed. If a stored patch with the same id changes metadata, such
-     * as artifact checksum, target, priority, or sequence, the old in-memory layer is removed and the desired patch is
-     * applied again.
+     * applied patches that are no longer desired are removed. If a stored patch with the same id changes execution
+     * revision, the old in-memory layer is removed and the desired patch is applied again.
      */
     suspend fun reconcileEnabledPatches(): PatchReconcileReport {
         return tracer.span("patch.reconcile_enabled", environment.traceAttributes()) {
             val desired = repository.list(
                 RuntimePatchQuery(
                     status = PatchStatus.Enabled,
-                    appName = runtime.environment.appName,
-                    version = runtime.environment.version,
+                    appName = environment.appName,
+                    version = environment.version,
                 ),
-            ).filter { it.canApplyTo(runtime.environment) }
-                .sortedBy { it.order }
+            ).filter { it.canApplyTo(environment) }
+                .sortedBy { it.revision }
             metrics.counter("asteria.patch.reconcile.desired.total", environment.metricTags())
                 .increment(desired.size.toLong())
 
@@ -124,7 +119,7 @@ class PatchApplicationService(
             val activeIds = runtime.appliedPatches().mapTo(mutableSetOf()) { it.id }
             val applied = desired
                 .filter { patch -> patch.id !in activeIds }
-                .map { patch -> runtime.apply(patch, resolver.resolve(patch)) }
+                .map { patch -> runtime.apply(patch.execution(), resolver.resolve(patch)) }
             val report = PatchReconcileReport(applied, removed)
             metrics.counter("asteria.patch.reconcile.applied.total", environment.metricTags())
                 .increment(report.appliedCount.toLong())
@@ -140,8 +135,11 @@ class PatchApplicationService(
     suspend fun apply(id: PatchId): PatchApplyResult {
         return tracer.span("patch.apply_one", TraceAttributes.of("patch.id" to id.value)) {
             val patch = requireNotNull(repository.find(id)) { "patch $id not found" }
+            require(patch.canApplyTo(environment)) {
+                "patch $id cannot apply to ${environment.appName}:${environment.version}"
+            }
             val plugin = resolver.resolve(patch)
-            runtime.apply(patch, plugin)
+            runtime.apply(patch.execution(), plugin)
         }
     }
 
@@ -169,17 +167,17 @@ class PatchApplicationService(
         }
     }
 
-    private suspend fun applyPatches(patches: List<RuntimePatch>): PatchApplyReport {
+    private suspend fun applyPatches(patches: List<RuntimePatchDescriptor>): PatchApplyReport {
         val results = patches
-            .sortedBy { it.order }
-            .map { patch -> runtime.apply(patch, resolver.resolve(patch)) }
+            .sortedBy { it.revision }
+            .map { patch -> runtime.apply(patch.execution(), resolver.resolve(patch)) }
         return PatchApplyReport(results)
     }
 
-    private suspend fun removeUndesiredPatches(desiredById: Map<PatchId, RuntimePatch>): List<PatchId> {
+    private suspend fun removeUndesiredPatches(desiredById: Map<PatchId, RuntimePatchDescriptor>): List<PatchId> {
         return runtime.appliedPatches()
             .sortedByDescending { it.order }
-            .filter { appliedPatch -> desiredById[appliedPatch.id] != appliedPatch }
+            .filter { appliedPatch -> desiredById[appliedPatch.id]?.execution() != appliedPatch }
             .mapNotNull { appliedPatch ->
                 if (runtime.remove(appliedPatch.id)) appliedPatch.id else null
             }

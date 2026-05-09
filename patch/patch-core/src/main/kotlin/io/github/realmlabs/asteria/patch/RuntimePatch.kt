@@ -13,34 +13,53 @@ value class PatchId(val value: String) : Serializable {
 }
 
 /**
- * One runtime patch plus its ordering, compatibility, target, and lifecycle state.
+ * Persisted patch metadata used by GM, repositories, and cluster selection.
  *
- * Enabled patches are applied when both [compatibility] and [target] match a node environment. [priority] participates
- * in [PatchOrder]; higher priority values sort before lower values, and lower [sequence] values sort before newer
- * patches inside the same priority.
+ * A descriptor decides where a patch may run and how its artifact is resolved. The node-local execution layer receives
+ * only [RuntimePatch], which is derived from a descriptor after status, compatibility, and target checks pass.
  */
-data class RuntimePatch(
+data class RuntimePatchDescriptor(
     val id: PatchId,
-    val name: String,
     val artifact: PatchArtifact,
     val compatibility: PatchCompatibility,
+    val name: String = id.value,
     val target: PatchTarget = PatchTarget.AllNodes,
-    val priority: Int = 0,
-    val sequence: Long,
     val status: PatchStatus = PatchStatus.Enabled,
+    val revision: Long = 0,
 ) : Serializable {
     init {
         require(name.isNotBlank()) { "patch name must not be blank" }
-        require(sequence > 0) { "patch sequence must be positive" }
+        require(revision >= 0) { "patch revision must not be negative" }
     }
-
-    val order: PatchOrder = PatchOrder(priority, sequence, id)
 
     fun canApplyTo(environment: PatchEnvironment): Boolean {
         return status == PatchStatus.Enabled &&
                 compatibility.matches(environment) &&
                 target.matches(environment)
     }
+
+    fun execution(): RuntimePatch {
+        require(revision > 0) { "patch revision must be assigned before execution" }
+        return RuntimePatch(id, revision)
+    }
+}
+
+/**
+ * Node-local patch execution identity.
+ *
+ * Compatibility, targeting, artifact resolution, and lifecycle status are handled before a patch reaches
+ * [PatchRuntime]. [revision] is the repository-assigned version used to make "newer patch wins" deterministic when
+ * several patches replace the same registry slot.
+ */
+data class RuntimePatch(
+    val id: PatchId,
+    val revision: Long,
+) : Serializable {
+    init {
+        require(revision > 0) { "patch revision must be positive" }
+    }
+
+    val order: PatchOrder = PatchOrder(revision, id)
 }
 
 data class PatchArtifact(
@@ -134,23 +153,22 @@ enum class PatchStatus {
 }
 
 /**
- * Stable ordering key for patch application.
+ * Stable layer key for patch application.
  *
- * Larger [priority] values sort first. [sequence] is expected to come from [RuntimePatchRepository.nextSequence] so
- * patches with equal priority are applied in creation order.
+ * Repositories assign monotonically increasing [revision] values. Registries replay layers by revision, so a newer
+ * patch naturally overrides older patches that target the same slot. Removing the newer patch restores the previous
+ * layer.
  */
 data class PatchOrder(
-    val priority: Int,
-    val sequence: Long,
+    val revision: Long,
     val id: PatchId,
 ) : Comparable<PatchOrder>, Serializable {
     init {
-        require(sequence > 0) { "patch order sequence must be positive" }
+        require(revision > 0) { "patch order revision must be positive" }
     }
 
     override fun compareTo(other: PatchOrder): Int {
-        return compareBy<PatchOrder> { it.priority }
-            .thenBy { it.sequence }
+        return compareBy<PatchOrder> { it.revision }
             .thenBy { it.id.value }
             .compare(this, other)
     }

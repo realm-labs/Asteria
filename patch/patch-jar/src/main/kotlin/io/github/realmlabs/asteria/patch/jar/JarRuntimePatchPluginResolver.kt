@@ -32,7 +32,7 @@ class JarRuntimePatchPluginResolver(
     private val logger = LoggerFactory.getLogger(JarRuntimePatchPluginResolver::class.java)
     private val cache: MutableMap<PatchId, LoadedPatchPlugin> = ConcurrentHashMap()
 
-    override suspend fun resolve(patch: RuntimePatch): RuntimePatchPlugin {
+    override suspend fun resolve(patch: RuntimePatchDescriptor): RuntimePatchPlugin {
         val key = patch.id
         val tags = patch.metricTags()
         metrics.counter("asteria.patch.jar.resolve.total", tags).increment()
@@ -45,12 +45,12 @@ class JarRuntimePatchPluginResolver(
         return load(patch).also { cache[key] = it }.newInstance()
     }
 
-    override suspend fun evict(patch: RuntimePatch) {
+    override suspend fun evict(patch: RuntimePatchDescriptor) {
         cache.remove(patch.id)?.close()
         metrics.counter("asteria.patch.jar.cache.evict.total", patch.metricTags()).increment()
     }
 
-    private suspend fun load(patch: RuntimePatch): LoadedPatchPlugin {
+    private suspend fun load(patch: RuntimePatchDescriptor): LoadedPatchPlugin {
         val tags = patch.metricTags()
         val startedAt = System.nanoTime()
         metrics.counter("asteria.patch.jar.load.total", tags).increment()
@@ -91,7 +91,7 @@ class JarRuntimePatchPluginResolver(
         }
     }
 
-    private fun RuntimePatch.allowed(type: Class<*>): Class<*> {
+    private fun RuntimePatchDescriptor.allowed(type: Class<*>): Class<*> {
         require(loadPolicy.allow(this, type)) {
             "patch ${id.value} plugin class ${type.name} is rejected by load policy"
         }
@@ -103,7 +103,7 @@ class JarRuntimePatchPluginResolver(
     }
 }
 
-private fun RuntimePatch.metricTags(): MetricTags {
+private fun RuntimePatchDescriptor.metricTags(): MetricTags {
     return MetricTags.of("app" to compatibility.appName)
 }
 
@@ -115,7 +115,7 @@ fun interface RuntimePatchPluginLoadPolicy {
      * the plugin is loaded.
      */
     fun allow(
-        patch: RuntimePatch,
+        patch: RuntimePatchDescriptor,
         pluginClass: Class<*>,
     ): Boolean
 

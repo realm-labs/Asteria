@@ -24,12 +24,12 @@ class JarRuntimePatchPluginResolverTest {
         val resolver = JarRuntimePatchPluginResolver(store)
 
         val plugin = resolver.resolve(
-            RuntimePatch(
+            RuntimePatchDescriptor(
                 id = PatchId("test"),
-                name = "test",
                 artifact = artifact,
                 compatibility = PatchCompatibility("game", setOf("1.0.0")),
-                sequence = 1,
+                name = "test",
+                revision = 1,
             ),
         )
 
@@ -46,12 +46,12 @@ class JarRuntimePatchPluginResolverTest {
         )
         val store = CountingPatchArtifactStore(artifact, jar)
         val resolver = JarRuntimePatchPluginResolver(store)
-        val patch = RuntimePatch(
+        val patch = RuntimePatchDescriptor(
             id = PatchId("test"),
-            name = "test",
             artifact = artifact,
             compatibility = PatchCompatibility("game", setOf("1.0.0")),
-            sequence = 1,
+            name = "test",
+            revision = 1,
         )
 
         resolver.resolve(patch)
@@ -103,13 +103,13 @@ class JarRuntimePatchPluginResolverTest {
         return output.toByteArray()
     }
 
-    private fun patch(artifact: PatchArtifact): RuntimePatch {
-        return RuntimePatch(
+    private fun patch(artifact: PatchArtifact): RuntimePatchDescriptor {
+        return RuntimePatchDescriptor(
             id = PatchId("test"),
-            name = "test",
             artifact = artifact,
             compatibility = PatchCompatibility("game", setOf("1.0.0")),
-            sequence = 1,
+            name = "test",
+            revision = 1,
         )
     }
 

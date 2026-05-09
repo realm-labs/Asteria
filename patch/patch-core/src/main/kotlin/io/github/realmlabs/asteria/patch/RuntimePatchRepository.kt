@@ -6,29 +6,30 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Durable store for runtime patch metadata.
  *
- * Implementations should make [nextSequence] atomic and monotonically increasing. [save] is an upsert. [list] must
- * return results sorted by [RuntimePatch.order] so callers apply patches in deterministic order.
+ * Implementations assign [RuntimePatchDescriptor.revision] on first save and again when an existing descriptor is
+ * replaced. Revisions are monotonically increasing and define patch layer precedence: newer descriptors override older
+ * descriptors that replace the same registry slot.
  */
 interface RuntimePatchRepository {
-    suspend fun nextSequence(): Long
+    suspend fun nextRevision(): Long
 
-    suspend fun save(patch: RuntimePatch)
+    suspend fun save(patch: RuntimePatchDescriptor): RuntimePatchDescriptor
 
-    suspend fun find(id: PatchId): RuntimePatch?
+    suspend fun find(id: PatchId): RuntimePatchDescriptor?
 
-    suspend fun list(query: RuntimePatchQuery = RuntimePatchQuery()): List<RuntimePatch>
+    suspend fun list(query: RuntimePatchQuery = RuntimePatchQuery()): List<RuntimePatchDescriptor>
 
     /**
      * Updates status and returns the new patch, or `null` if the patch no longer exists.
      */
-    suspend fun updateStatus(id: PatchId, status: PatchStatus): RuntimePatch?
+    suspend fun updateStatus(id: PatchId, status: PatchStatus): RuntimePatchDescriptor?
 
     /**
      * Marks enabled patches for the same app as expired when they no longer match [environment].
      *
      * This is a best-effort scan/update loop, not a transaction across all matching patches.
      */
-    suspend fun expireIncompatible(environment: PatchEnvironment): List<RuntimePatch> {
+    suspend fun expireIncompatible(environment: PatchEnvironment): List<RuntimePatchDescriptor> {
         return list(
             RuntimePatchQuery(
                 status = PatchStatus.Enabled,
@@ -52,53 +53,66 @@ data class RuntimePatchQuery(
 }
 
 class InMemoryRuntimePatchRepository(
-    initialPatches: Iterable<RuntimePatch> = emptyList(),
+    initialPatches: Iterable<RuntimePatchDescriptor> = emptyList(),
 ) : RuntimePatchRepository {
     private val lock = Mutex()
-    private val patches: MutableMap<PatchId, RuntimePatch> = linkedMapOf()
-    private var sequence: Long = 0
+    private val patches: MutableMap<PatchId, RuntimePatchDescriptor> = linkedMapOf()
+    private var revision: Long = 0
 
     init {
         initialPatches.forEach { patch ->
-            patches[patch.id] = patch
-            sequence = maxOf(sequence, patch.sequence)
+            val stored = if (patch.revision > 0) patch else patch.copy(revision = nextRevisionLocked())
+            patches[stored.id] = stored
+            revision = maxOf(revision, stored.revision)
         }
     }
 
-    override suspend fun nextSequence(): Long {
+    override suspend fun nextRevision(): Long {
         return lock.withLock {
-            sequence += 1
-            sequence
+            revision += 1
+            revision
         }
     }
 
-    override suspend fun save(patch: RuntimePatch) {
-        lock.withLock {
-            patches[patch.id] = patch
-            sequence = maxOf(sequence, patch.sequence)
+    override suspend fun save(patch: RuntimePatchDescriptor): RuntimePatchDescriptor {
+        return lock.withLock {
+            val existing = patches[patch.id]
+            val stored = when {
+                patch.revision <= 0 -> patch.copy(revision = nextRevisionLocked())
+                existing != null && patch != existing -> patch.copy(revision = nextRevisionLocked())
+                else -> patch
+            }
+            patches[stored.id] = stored
+            revision = maxOf(revision, stored.revision)
+            stored
         }
     }
 
-    override suspend fun find(id: PatchId): RuntimePatch? {
+    override suspend fun find(id: PatchId): RuntimePatchDescriptor? {
         return lock.withLock { patches[id] }
     }
 
-    override suspend fun list(query: RuntimePatchQuery): List<RuntimePatch> {
+    override suspend fun list(query: RuntimePatchQuery): List<RuntimePatchDescriptor> {
         return lock.withLock {
             patches.values
                 .asSequence()
                 .filter { patch -> query.status == null || patch.status == query.status }
                 .filter { patch -> query.appName == null || patch.compatibility.appName == query.appName }
                 .filter { patch -> query.version == null || query.version in patch.compatibility.versions }
-                .sortedBy { it.order }
+                .sortedBy { it.revision }
                 .toList()
         }
     }
 
-    override suspend fun updateStatus(id: PatchId, status: PatchStatus): RuntimePatch? {
+    override suspend fun updateStatus(id: PatchId, status: PatchStatus): RuntimePatchDescriptor? {
         return lock.withLock {
             val patch = patches[id] ?: return@withLock null
             patch.copy(status = status).also { patches[id] = it }
         }
+    }
+
+    private fun nextRevisionLocked(): Long {
+        revision += 1
+        return revision
     }
 }

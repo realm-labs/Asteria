@@ -19,9 +19,9 @@ import java.time.Instant
  * unknown fields so already-published patch metadata can survive application upgrades.
  */
 interface ZookeeperPatchCodec {
-    fun encodePatch(patch: RuntimePatch): ByteArray
+    fun encodePatch(patch: RuntimePatchDescriptor): ByteArray
 
-    fun decodePatch(bytes: ByteArray): RuntimePatch
+    fun decodePatch(bytes: ByteArray): RuntimePatchDescriptor
 
     fun encodePatchIndex(index: ZookeeperPatchIndex): ByteArray
 
@@ -45,11 +45,11 @@ interface ZookeeperPatchCodec {
 class JacksonZookeeperPatchCodec(
     private val mapper: ObjectMapper = defaultObjectMapper(),
 ) : ZookeeperPatchCodec {
-    override fun encodePatch(patch: RuntimePatch): ByteArray {
+    override fun encodePatch(patch: RuntimePatchDescriptor): ByteArray {
         return mapper.writeValueAsBytes(patch.toDto())
     }
 
-    override fun decodePatch(bytes: ByteArray): RuntimePatch {
+    override fun decodePatch(bytes: ByteArray): RuntimePatchDescriptor {
         return mapper.readValue(bytes, RuntimePatchDto::class.java).toDomain()
     }
 
@@ -105,9 +105,8 @@ private data class RuntimePatchDto(
     val artifact: PatchArtifactDto,
     val compatibility: PatchCompatibilityDto,
     val target: PatchTargetDto,
-    val priority: Int,
-    val sequence: Long,
     val status: String,
+    val revision: Long,
 )
 
 private data class PatchArtifactDto(
@@ -141,29 +140,27 @@ private data class RuntimePatchNodeResultDto(
     val updatedAt: Long,
 )
 
-private fun RuntimePatch.toDto(): RuntimePatchDto {
+private fun RuntimePatchDescriptor.toDto(): RuntimePatchDto {
     return RuntimePatchDto(
         id = id.value,
         name = name,
         artifact = artifact.toDto(),
         compatibility = PatchCompatibilityDto(compatibility.appName, compatibility.versions),
         target = target.toDto(),
-        priority = priority,
-        sequence = sequence,
         status = status.name,
+        revision = revision,
     )
 }
 
-private fun RuntimePatchDto.toDomain(): RuntimePatch {
-    return RuntimePatch(
+private fun RuntimePatchDto.toDomain(): RuntimePatchDescriptor {
+    return RuntimePatchDescriptor(
         id = PatchId(id),
-        name = name,
         artifact = artifact.toDomain(),
         compatibility = PatchCompatibility(compatibility.appName, compatibility.versions),
+        name = name,
         target = target.toDomain(),
-        priority = priority,
-        sequence = sequence,
         status = PatchStatus.valueOf(status),
+        revision = revision,
     )
 }
 
