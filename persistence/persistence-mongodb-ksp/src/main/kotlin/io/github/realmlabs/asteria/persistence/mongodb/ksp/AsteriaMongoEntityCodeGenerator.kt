@@ -285,6 +285,15 @@ object AsteriaMongoEntityCodeGenerator {
             )
             .superclass(supportType)
             .addSuperclassConstructorParameter("queue")
+            .addProperty(
+                PropertySpec.builder(
+                    "dirtyTargetProvider",
+                    LambdaTypeName.get(returnType = dirtyTargetType),
+                    KModifier.PRIVATE,
+                )
+                    .initializer("dirtyTargetProvider")
+                    .build(),
+            )
             .apply {
                 model.properties.forEach { property ->
                     addProperty(buildNestedTrackedProperty(model.wrapperType, property))

@@ -101,6 +101,7 @@ class AsteriaMongoEntityCodeGeneratorTest {
         assertContains(code, "class TrackedPlayerProfile(")
         assertContains(code, "class TrackedItemStack(")
         assertContains(code, "class TrackedQuestState(")
+        assertContains(code, "private val dirtyTargetProvider: () -> MongoDirtyTarget? = { null },")
         assertContains(code, "public var nickname: String by")
         assertContains(
             code,
