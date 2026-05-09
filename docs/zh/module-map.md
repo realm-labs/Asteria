@@ -60,7 +60,7 @@
 | `gm-core`                                                    | GM feature 元数据、权限、审计上下文                | 有 GM 后台时               |
 | `gm-shutdown`                                                | 业务侧停服 plan、phase、step 编排和 GM 权限元数据 | 需要 GM/运维触发 graceful shutdown 时 |
 | `gm-*` starters                                              | Spring HTTP API 和具体 feature 适配         | 需要直接暴露 HTTP GM 接口时     |
-| `patch-core` / `patch-jar` / `patch-mongodb` / `patch-pekko` | 运行时补丁、插件解析、补丁仓库和集群控制                   | 需要在线热补丁或补丁审计时          |
+| `patch-core` / `patch-jar` / `patch-mongodb` / `patch-zookeeper` / `patch-pekko` | 运行时补丁、插件解析、补丁仓库和集群控制                   | 需要在线热补丁或补丁审计时          |
 | `observability-core` / `observability-opentelemetry`         | metrics/tracing 抽象和 OTel 实现            | 需要接入可观测性时              |
 | `starter-game-server-pekko`                                  | 本地和集群启动 DSL、route module、patch starter | 业务项目希望少写启动胶水时          |
 

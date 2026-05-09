@@ -14,13 +14,15 @@ import org.slf4j.LoggerFactory
  * Version-scoped ZooKeeper artifact store.
  *
  * This store is intended for small patch jars. Larger deployments can keep [ZookeeperRuntimePatchRepository] for
- * desired state and use another [PatchArtifactStore] implementation for bytes.
+ * desired state and use another [PatchArtifactStore] implementation for bytes. The store is intentionally scoped to a
+ * single app/version so jar znodes stay beside the metadata that references them.
  */
 class ZookeeperPatchArtifactStore(
     private val client: AsyncCuratorFramework,
     private val appName: String,
     private val appVersion: String,
     rootPath: String = "/asteria/runtime-patches",
+    private val codec: ZookeeperPatchCodec = JacksonZookeeperPatchCodec(),
     private val maxArtifactBytes: Int = DEFAULT_MAX_ARTIFACT_BYTES,
     private val metrics: Metrics = NoopMetrics,
 ) : WritablePatchArtifactStore {
@@ -42,13 +44,13 @@ class ZookeeperPatchArtifactStore(
             "patch artifact $name is too large for ZooKeeper: ${bytes.size} > $maxArtifactBytes bytes"
         }
         val artifact = PatchArtifact(name = name.safeArtifactName(), checksum = patchArtifactSha256Checksum(bytes), version = version)
-        upsert(paths.artifactMetadataPath(appName, appVersion, artifact), artifact.encodeZnode())
+        upsert(paths.artifactMetadataPath(appName, appVersion, artifact), codec.encodeArtifact(artifact))
         upsert(paths.artifactContentPath(appName, appVersion, artifact), bytes.copyOf())
         artifact
     }
 
     override suspend fun load(artifact: PatchArtifact): ByteArray = measured("load") {
-        val stored = read(paths.artifactMetadataPath(appName, appVersion, artifact))?.decodePatchArtifact()
+        val stored = read(paths.artifactMetadataPath(appName, appVersion, artifact))?.let(codec::decodeArtifact)
         require(stored == null || stored == artifact) {
             "zookeeper patch artifact metadata mismatch for ${artifact.name}"
         }

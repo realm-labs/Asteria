@@ -4,42 +4,50 @@ import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
 import io.github.realmlabs.asteria.patch.*
-import kotlinx.coroutines.future.await
 import org.apache.curator.x.async.AsyncCuratorFramework
-import org.apache.curator.x.async.api.CreateOption
-import org.apache.zookeeper.KeeperException
-import org.apache.zookeeper.data.Stat
 import org.slf4j.LoggerFactory
-import java.nio.charset.StandardCharsets.UTF_8
 
+/**
+ * ZooKeeper-backed [RuntimePatchRepository].
+ *
+ * Patch metadata is stored under app/version paths so each node only scans the version it is running. When a patch is
+ * compatible with several versions, [save] writes one metadata znode per version and updates a small patch-id index for
+ * direct [find] lookups. The metadata payload is encoded by [codec], while path segment escaping is handled by
+ * [ZookeeperPatchPaths].
+ */
 class ZookeeperRuntimePatchRepository(
     private val client: AsyncCuratorFramework,
     rootPath: String = "/asteria/runtime-patches",
+    private val codec: ZookeeperPatchCodec = JacksonZookeeperPatchCodec(),
     private val metrics: Metrics = NoopMetrics,
 ) : RuntimePatchRepository {
     private val paths = ZookeeperPatchPaths(rootPath)
+    private val zk = ZookeeperPatchClient(client)
     private val logger = LoggerFactory.getLogger(ZookeeperRuntimePatchRepository::class.java)
 
     override suspend fun nextSequence(): Long = measured("next_sequence") {
-        incrementCounter(paths.patchSequenceCounterPath())
+        zk.incrementCounter(paths.patchSequenceCounterPath())
     }
 
     override suspend fun save(patch: RuntimePatch) = measured("save") {
-        val oldIndex = read(paths.patchIndexPath(patch.id))?.decodePatchIndex()
+        val oldIndex = zk.read(paths.patchIndexPath(patch.id))?.let(codec::decodePatchIndex)
         oldIndex?.versions
             ?.filter { version -> oldIndex.appName != patch.compatibility.appName || version !in patch.compatibility.versions }
-            ?.forEach { version -> deleteIfExists(paths.patchMetadataPath(oldIndex.appName, version, patch.id)) }
+            ?.forEach { version -> zk.deleteIfExists(paths.patchMetadataPath(oldIndex.appName, version, patch.id)) }
 
         patch.compatibility.versions.forEach { version ->
-            upsert(paths.patchMetadataPath(patch.compatibility.appName, version, patch.id), patch.encodeZnode())
+            zk.upsert(paths.patchMetadataPath(patch.compatibility.appName, version, patch.id), codec.encodePatch(patch))
         }
-        upsert(paths.patchIndexPath(patch.id), encodePatchIndex(patch.compatibility.appName, patch.compatibility.versions))
+        zk.upsert(
+            paths.patchIndexPath(patch.id),
+            codec.encodePatchIndex(ZookeeperPatchIndex(patch.compatibility.appName, patch.compatibility.versions)),
+        )
     }
 
     override suspend fun find(id: PatchId): RuntimePatch? = measured("find") {
-        val index = read(paths.patchIndexPath(id))?.decodePatchIndex() ?: return@measured null
+        val index = zk.read(paths.patchIndexPath(id))?.let(codec::decodePatchIndex) ?: return@measured null
         for (version in index.versions) {
-            read(paths.patchMetadataPath(index.appName, version, id))?.decodeRuntimePatch()?.let { patch ->
+            zk.read(paths.patchMetadataPath(index.appName, version, id))?.let(codec::decodePatch)?.let { patch ->
                 return@measured patch
             }
         }
@@ -48,11 +56,13 @@ class ZookeeperRuntimePatchRepository(
 
     override suspend fun list(query: RuntimePatchQuery): List<RuntimePatch> = measured("list") {
         scanPatches(query)
+            .asSequence()
             .filter { patch -> query.status == null || patch.status == query.status }
             .filter { patch -> query.appName == null || patch.compatibility.appName == query.appName }
             .filter { patch -> query.version == null || query.version in patch.compatibility.versions }
             .distinctBy { it.id }
             .sortedBy { it.order }
+            .toList()
     }
 
     override suspend fun updateStatus(
@@ -64,95 +74,19 @@ class ZookeeperRuntimePatchRepository(
     }
 
     private suspend fun scanPatches(query: RuntimePatchQuery): List<RuntimePatch> {
-        val appSegments = query.appName?.let { listOf(it.segment()) } ?: children(paths.appsPath())
+        val appSegments = query.appName?.let { listOf(it.segment()) } ?: zk.children(paths.appsPath())
         return appSegments.flatMap { appSegment ->
             val appName = ZookeeperPatchPaths.decodeSegment(appSegment)
             if (query.appName != null && appName != query.appName) return@flatMap emptyList()
-            val versionSegments = query.version?.let { listOf(it.segment()) } ?: children(paths.versionsPath(appSegment))
+            val versionSegments = query.version?.let { listOf(it.segment()) } ?: zk.children(paths.versionsPath(appSegment))
             versionSegments.flatMap { versionSegment ->
                 val version = ZookeeperPatchPaths.decodeSegment(versionSegment)
                 if (query.version != null && version != query.version) return@flatMap emptyList()
-                children(paths.patchesPath(appName, version)).mapNotNull { patchSegment ->
+                zk.children(paths.patchesPath(appName, version)).mapNotNull { patchSegment ->
                     val patchId = PatchId(ZookeeperPatchPaths.decodeSegment(patchSegment))
-                    read(paths.patchMetadataPath(appName, version, patchId))?.decodeRuntimePatch()
+                    zk.read(paths.patchMetadataPath(appName, version, patchId))?.let(codec::decodePatch)
                 }
             }
-        }
-    }
-
-    private suspend fun incrementCounter(path: String): Long {
-        while (true) {
-            val current = readWithStat(path)
-            if (current == null) {
-                try {
-                    upsert(path, "1".toByteArray(UTF_8), createOnly = true)
-                    return 1
-                } catch (_: KeeperException.NodeExistsException) {
-                    continue
-                }
-            }
-            val next = current.bytes.toString(UTF_8).toLong() + 1
-            try {
-                client.setData()
-                    .withVersion(current.version)
-                    .forPath(path, next.toString().toByteArray(UTF_8))
-                    .await()
-                return next
-            } catch (_: KeeperException.BadVersionException) {
-                continue
-            } catch (_: KeeperException.NoNodeException) {
-                continue
-            }
-        }
-    }
-
-    private suspend fun upsert(
-        path: String,
-        bytes: ByteArray,
-        createOnly: Boolean = false,
-    ) {
-        try {
-            client.create()
-                .withOptions(setOf(CreateOption.createParentsIfNeeded))
-                .forPath(path, bytes)
-                .await()
-        } catch (error: KeeperException.NodeExistsException) {
-            if (createOnly) throw error
-            client.setData()
-                .forPath(path, bytes)
-                .await()
-        }
-    }
-
-    private suspend fun read(path: String): ByteArray? {
-        return try {
-            client.data.forPath(path).await()
-        } catch (_: KeeperException.NoNodeException) {
-            null
-        }
-    }
-
-    private suspend fun readWithStat(path: String): ZnodeBytes? {
-        return try {
-            val stat = Stat()
-            ZnodeBytes(client.data.storingStatIn(stat).forPath(path).await(), stat.version)
-        } catch (_: KeeperException.NoNodeException) {
-            null
-        }
-    }
-
-    private suspend fun children(path: String): List<String> {
-        return try {
-            client.children.forPath(path).await().sorted()
-        } catch (_: KeeperException.NoNodeException) {
-            emptyList()
-        }
-    }
-
-    private suspend fun deleteIfExists(path: String) {
-        try {
-            client.delete().forPath(path).await()
-        } catch (_: KeeperException.NoNodeException) {
         }
     }
 
@@ -178,9 +112,4 @@ class ZookeeperRuntimePatchRepository(
     private fun String.segment(): String {
         return ZookeeperPatchPaths.encodeSegment(this)
     }
-
-    private data class ZnodeBytes(
-        val bytes: ByteArray,
-        val version: Int,
-    )
 }

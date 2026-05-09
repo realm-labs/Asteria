@@ -1,180 +1,225 @@
 package io.github.realmlabs.asteria.patch.zookeeper
 
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.annotation.JsonInclude.Value
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.patch.*
-import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
-import java.util.Base64
 
-internal fun RuntimePatch.encodeZnode(): ByteArray {
-    return linkedMapOf(
-        "id" to id.value,
-        "name" to name,
-        "artifactName" to artifact.name,
-        "artifactChecksum" to artifact.checksum,
-        "artifactVersion" to artifact.version,
-        "appName" to compatibility.appName,
-        "versions" to compatibility.versions.joinEncoded(),
-        "targetType" to target.typeName(),
-        "targetValues" to target.values().joinEncoded(),
-        "priority" to priority.toString(),
-        "sequence" to sequence.toString(),
-        "status" to status.name,
-    ).encodeFields()
+/**
+ * Encodes ZooKeeper znode data for patch metadata, artifact descriptors, index entries, and node results.
+ *
+ * Implementations define the durable wire format used by [ZookeeperRuntimePatchRepository],
+ * [ZookeeperPatchArtifactStore], and [ZookeeperRuntimePatchNodeResultRepository]. Keep formats stable and tolerant of
+ * unknown fields so already-published patch metadata can survive application upgrades.
+ */
+interface ZookeeperPatchCodec {
+    fun encodePatch(patch: RuntimePatch): ByteArray
+
+    fun decodePatch(bytes: ByteArray): RuntimePatch
+
+    fun encodePatchIndex(index: ZookeeperPatchIndex): ByteArray
+
+    fun decodePatchIndex(bytes: ByteArray): ZookeeperPatchIndex
+
+    fun encodeArtifact(artifact: PatchArtifact): ByteArray
+
+    fun decodeArtifact(bytes: ByteArray): PatchArtifact
+
+    fun encodeNodeResult(result: RuntimePatchNodeResult): ByteArray
+
+    fun decodeNodeResult(bytes: ByteArray): RuntimePatchNodeResult
 }
 
-internal fun ByteArray.decodeRuntimePatch(): RuntimePatch {
-    val fields = decodeFields()
-    val targetType = fields.required("targetType")
-    val targetValues = fields.required("targetValues").splitEncoded()
-    return RuntimePatch(
-        id = PatchId(fields.required("id")),
-        name = fields.required("name"),
-        artifact = PatchArtifact(
-            name = fields.required("artifactName"),
-            checksum = fields.required("artifactChecksum"),
-            version = fields["artifactVersion"]?.takeIf { it.isNotBlank() },
-        ),
-        compatibility = PatchCompatibility(
-            appName = fields.required("appName"),
-            versions = fields.required("versions").splitEncoded().toSet(),
-        ),
-        target = when (targetType) {
-            "all-nodes" -> PatchTarget.AllNodes
-            "roles" -> PatchTarget.Roles(targetValues.mapTo(linkedSetOf(), ::RoleKey))
-            "nodes" -> PatchTarget.Nodes(targetValues.toSet())
-            else -> error("unknown zookeeper patch target type $targetType")
-        },
-        priority = fields.required("priority").toInt(),
-        sequence = fields.required("sequence").toLong(),
-        status = PatchStatus.valueOf(fields.required("status")),
-    )
+/**
+ * JSON codec for ZooKeeper patch data.
+ *
+ * This codec maps domain objects through explicit DTOs instead of relying on Jackson polymorphic serialization. The
+ * resulting JSON is readable from zkCli and keeps sealed values such as [PatchTarget] in a stable `type`-tagged shape.
+ */
+class JacksonZookeeperPatchCodec(
+    private val mapper: ObjectMapper = defaultObjectMapper(),
+) : ZookeeperPatchCodec {
+    override fun encodePatch(patch: RuntimePatch): ByteArray {
+        return mapper.writeValueAsBytes(patch.toDto())
+    }
+
+    override fun decodePatch(bytes: ByteArray): RuntimePatch {
+        return mapper.readValue(bytes, RuntimePatchDto::class.java).toDomain()
+    }
+
+    override fun encodePatchIndex(index: ZookeeperPatchIndex): ByteArray {
+        return mapper.writeValueAsBytes(index)
+    }
+
+    override fun decodePatchIndex(bytes: ByteArray): ZookeeperPatchIndex {
+        return mapper.readValue(bytes, ZookeeperPatchIndex::class.java)
+    }
+
+    override fun encodeArtifact(artifact: PatchArtifact): ByteArray {
+        return mapper.writeValueAsBytes(artifact.toDto())
+    }
+
+    override fun decodeArtifact(bytes: ByteArray): PatchArtifact {
+        return mapper.readValue(bytes, PatchArtifactDto::class.java).toDomain()
+    }
+
+    override fun encodeNodeResult(result: RuntimePatchNodeResult): ByteArray {
+        return mapper.writeValueAsBytes(result.toDto())
+    }
+
+    override fun decodeNodeResult(bytes: ByteArray): RuntimePatchNodeResult {
+        return mapper.readValue(bytes, RuntimePatchNodeResultDto::class.java).toDomain()
+    }
+
+    companion object {
+        fun defaultObjectMapper(): ObjectMapper {
+            return jacksonObjectMapper()
+                .registerModule(JavaTimeModule())
+                .setDefaultPropertyInclusion(Value.construct(JsonInclude.Include.NON_NULL, JsonInclude.Include.NON_NULL))
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+        }
+    }
 }
 
-internal fun RuntimePatchNodeResult.encodeZnode(): ByteArray {
-    return linkedMapOf(
-        "patchId" to patchId.value,
-        "nodeId" to nodeId,
-        "address" to address,
-        "appName" to appName,
-        "version" to version,
-        "roles" to roles.map { it.value }.joinEncoded(),
-        "status" to status.name,
-        "attempt" to attempt.toString(),
-        "operationCount" to operationCount?.toString(),
-        "message" to message,
-        "updatedAt" to updatedAt.toEpochMilli().toString(),
-    ).encodeFields()
-}
-
-internal fun ByteArray.decodeRuntimePatchNodeResult(): RuntimePatchNodeResult {
-    val fields = decodeFields()
-    return RuntimePatchNodeResult(
-        patchId = PatchId(fields.required("patchId")),
-        nodeId = fields["nodeId"]?.takeIf { it.isNotBlank() },
-        address = fields.required("address"),
-        appName = fields.required("appName"),
-        version = fields.required("version"),
-        roles = fields.required("roles").splitEncoded().mapTo(linkedSetOf(), ::RoleKey),
-        status = RuntimePatchNodeStatus.valueOf(fields.required("status")),
-        attempt = fields.required("attempt").toInt(),
-        operationCount = fields["operationCount"]?.takeIf { it.isNotBlank() }?.toInt(),
-        message = fields["message"]?.takeIf { it.isNotBlank() },
-        updatedAt = Instant.ofEpochMilli(fields.required("updatedAt").toLong()),
-    )
-}
-
-internal fun PatchArtifact.encodeZnode(): ByteArray {
-    return linkedMapOf(
-        "name" to name,
-        "checksum" to checksum,
-        "version" to version,
-    ).encodeFields()
-}
-
-internal fun ByteArray.decodePatchArtifact(): PatchArtifact {
-    val fields = decodeFields()
-    return PatchArtifact(
-        name = fields.required("name"),
-        checksum = fields.required("checksum"),
-        version = fields["version"]?.takeIf { it.isNotBlank() },
-    )
-}
-
-internal fun encodePatchIndex(
-    appName: String,
-    versions: Set<String>,
-): ByteArray {
-    return linkedMapOf(
-        "appName" to appName,
-        "versions" to versions.joinEncoded(),
-    ).encodeFields()
-}
-
-internal fun ByteArray.decodePatchIndex(): PatchIndex {
-    val fields = decodeFields()
-    return PatchIndex(
-        appName = fields.required("appName"),
-        versions = fields.required("versions").splitEncoded().toSet(),
-    )
-}
-
-internal data class PatchIndex(
+/**
+ * Lightweight index that maps a patch id to the app/version paths containing its metadata.
+ *
+ * The repository writes this under `index/patches/{patchId}` so [RuntimePatchRepository.find] can locate metadata
+ * without scanning every app and version.
+ */
+data class ZookeeperPatchIndex(
     val appName: String,
     val versions: Set<String>,
 )
 
-private fun PatchTarget.typeName(): String {
+private data class RuntimePatchDto(
+    val id: String,
+    val name: String,
+    val artifact: PatchArtifactDto,
+    val compatibility: PatchCompatibilityDto,
+    val target: PatchTargetDto,
+    val priority: Int,
+    val sequence: Long,
+    val status: String,
+)
+
+private data class PatchArtifactDto(
+    val name: String,
+    val checksum: String,
+    val version: String? = null,
+)
+
+private data class PatchCompatibilityDto(
+    val appName: String,
+    val versions: Set<String>,
+)
+
+private data class PatchTargetDto(
+    val type: String,
+    val roles: Set<String> = emptySet(),
+    val addresses: Set<String> = emptySet(),
+)
+
+private data class RuntimePatchNodeResultDto(
+    val patchId: String,
+    val nodeId: String? = null,
+    val address: String,
+    val appName: String,
+    val version: String,
+    val roles: Set<String> = emptySet(),
+    val status: String,
+    val attempt: Int,
+    val operationCount: Int? = null,
+    val message: String? = null,
+    val updatedAt: Long,
+)
+
+private fun RuntimePatch.toDto(): RuntimePatchDto {
+    return RuntimePatchDto(
+        id = id.value,
+        name = name,
+        artifact = artifact.toDto(),
+        compatibility = PatchCompatibilityDto(compatibility.appName, compatibility.versions),
+        target = target.toDto(),
+        priority = priority,
+        sequence = sequence,
+        status = status.name,
+    )
+}
+
+private fun RuntimePatchDto.toDomain(): RuntimePatch {
+    return RuntimePatch(
+        id = PatchId(id),
+        name = name,
+        artifact = artifact.toDomain(),
+        compatibility = PatchCompatibility(compatibility.appName, compatibility.versions),
+        target = target.toDomain(),
+        priority = priority,
+        sequence = sequence,
+        status = PatchStatus.valueOf(status),
+    )
+}
+
+private fun PatchArtifact.toDto(): PatchArtifactDto {
+    return PatchArtifactDto(name, checksum, version)
+}
+
+private fun PatchArtifactDto.toDomain(): PatchArtifact {
+    return PatchArtifact(name, checksum, version)
+}
+
+private fun PatchTarget.toDto(): PatchTargetDto {
     return when (this) {
-        PatchTarget.AllNodes -> "all-nodes"
-        is PatchTarget.Roles -> "roles"
-        is PatchTarget.Nodes -> "nodes"
+        PatchTarget.AllNodes -> PatchTargetDto(type = "all-nodes")
+        is PatchTarget.Roles -> PatchTargetDto(type = "roles", roles = roles.mapTo(linkedSetOf()) { it.value })
+        is PatchTarget.Nodes -> PatchTargetDto(type = "nodes", addresses = addresses)
     }
 }
 
-private fun PatchTarget.values(): List<String> {
-    return when (this) {
-        PatchTarget.AllNodes -> emptyList()
-        is PatchTarget.Roles -> roles.map { it.value }
-        is PatchTarget.Nodes -> addresses.toList()
+private fun PatchTargetDto.toDomain(): PatchTarget {
+    return when (type) {
+        "all-nodes" -> PatchTarget.AllNodes
+        "roles" -> PatchTarget.Roles(roles.mapTo(linkedSetOf(), ::RoleKey))
+        "nodes" -> PatchTarget.Nodes(addresses)
+        else -> error("unknown zookeeper patch target type $type")
     }
 }
 
-private fun Map<String, String?>.encodeFields(): ByteArray {
-    return entries.joinToString("\n") { (key, value) ->
-        "$key=${(value ?: "").encodeField()}"
-    }.toByteArray(UTF_8)
+private fun RuntimePatchNodeResult.toDto(): RuntimePatchNodeResultDto {
+    return RuntimePatchNodeResultDto(
+        patchId = patchId.value,
+        nodeId = nodeId,
+        address = address,
+        appName = appName,
+        version = version,
+        roles = roles.mapTo(linkedSetOf()) { it.value },
+        status = status.name,
+        attempt = attempt,
+        operationCount = operationCount,
+        message = message,
+        updatedAt = updatedAt.toEpochMilli(),
+    )
 }
 
-private fun ByteArray.decodeFields(): Map<String, String> {
-    return toString(UTF_8)
-        .lineSequence()
-        .filter { it.isNotBlank() }
-        .associate { line ->
-            val separator = line.indexOf('=')
-            require(separator > 0) { "invalid zookeeper patch field line" }
-            line.substring(0, separator) to line.substring(separator + 1).decodeField()
-        }
-}
-
-private fun Map<String, String>.required(key: String): String {
-    return requireNotNull(this[key]) { "missing zookeeper patch field $key" }
-}
-
-private fun Iterable<String>.joinEncoded(): String {
-    return joinToString(",") { it.encodeField() }
-}
-
-private fun String.splitEncoded(): List<String> {
-    if (isBlank()) return emptyList()
-    return split(",").map { it.decodeField() }
-}
-
-private fun String.encodeField(): String {
-    return Base64.getUrlEncoder().withoutPadding().encodeToString(toByteArray(UTF_8))
-}
-
-private fun String.decodeField(): String {
-    if (isBlank()) return ""
-    return String(Base64.getUrlDecoder().decode(this), UTF_8)
+private fun RuntimePatchNodeResultDto.toDomain(): RuntimePatchNodeResult {
+    return RuntimePatchNodeResult(
+        patchId = PatchId(patchId),
+        nodeId = nodeId,
+        address = address,
+        appName = appName,
+        version = version,
+        roles = roles.mapTo(linkedSetOf(), ::RoleKey),
+        status = RuntimePatchNodeStatus.valueOf(status),
+        attempt = attempt,
+        operationCount = operationCount,
+        message = message,
+        updatedAt = Instant.ofEpochMilli(updatedAt),
+    )
 }

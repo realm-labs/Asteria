@@ -60,7 +60,7 @@
 | `gm-core`                                                    | GM feature metadata, permissions, audit context                     | The service has GM tools                         |
 | `gm-shutdown`                                                | Business-side shutdown plans, phases, steps, and GM permissions     | GM or operations workflows trigger graceful stop |
 | `gm-*` starters                                              | Spring HTTP APIs and concrete feature adapters                      | GM operations are exposed over HTTP              |
-| `patch-core` / `patch-jar` / `patch-mongodb` / `patch-pekko` | Runtime patches, plugin resolution, repositories, cluster control   | Online runtime patches or patch audit are needed |
+| `patch-core` / `patch-jar` / `patch-mongodb` / `patch-zookeeper` / `patch-pekko` | Runtime patches, plugin resolution, repositories, cluster control   | Online runtime patches or patch audit are needed |
 | `observability-core` / `observability-opentelemetry`         | Metrics/tracing abstractions and OTel implementation                | The service reports observability data           |
 | `starter-game-server-pekko`                                  | Local and cluster startup DSL, route module, patch starter          | Business projects want less startup glue         |
 

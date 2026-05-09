@@ -8,6 +8,7 @@ import org.apache.curator.framework.CuratorFrameworkFactory
 import org.apache.curator.retry.ExponentialBackoffRetry
 import org.apache.curator.test.TestingServer
 import org.apache.curator.x.async.AsyncCuratorFramework
+import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 import kotlin.test.*
 
@@ -26,8 +27,10 @@ class ZookeeperRuntimePatchStoreTest {
             assertEquals(patch, repository.find(patch.id))
             assertEquals(listOf(patch), repository.list(RuntimePatchQuery(appName = "game", version = "1.0.0")))
             assertEquals(listOf(patch), repository.list(RuntimePatchQuery(appName = "game", version = "1.0.1")))
-            assertNotNull(client.checkExists().forPath(paths.patchMetadataPath("game", "1.0.0", patch.id)))
+            val metadataPath = paths.patchMetadataPath("game", "1.0.0", patch.id)
+            assertNotNull(client.checkExists().forPath(metadataPath))
             assertNotNull(client.checkExists().forPath(paths.patchMetadataPath("game", "1.0.1", patch.id)))
+            assertContains(String(client.data.forPath(metadataPath), UTF_8), "\"id\":\"fix/player:bag\"")
 
             repository.updateStatus(patch.id, PatchStatus.Disabled)
 
