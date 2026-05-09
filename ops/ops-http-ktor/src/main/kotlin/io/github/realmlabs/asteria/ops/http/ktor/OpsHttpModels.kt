@@ -1,13 +1,14 @@
 package io.github.realmlabs.asteria.ops.http.ktor
 
-import io.github.realmlabs.asteria.core.EntityKind
-import io.github.realmlabs.asteria.core.RoleKey
-import io.github.realmlabs.asteria.core.SingletonName
-import io.github.realmlabs.asteria.script.*
+import io.github.realmlabs.asteria.script.ScriptArtifact
+import io.github.realmlabs.asteria.script.ScriptExecutionCommand
+import io.github.realmlabs.asteria.script.ScriptExecutionMetadata
+import io.github.realmlabs.asteria.script.ScriptResourceRef
+import io.github.realmlabs.asteria.script.control.ScriptTargetRequest
+import io.github.realmlabs.asteria.script.control.toScriptTarget
 import io.github.realmlabs.asteria.script.job.ScriptJobExecutionAttributes
 import io.github.realmlabs.asteria.script.job.ScriptJobRetryFailedItemsRequest
-import java.util.Base64
-import java.util.UUID
+import java.util.*
 
 data class OpsErrorResponse(
     val error: String,
@@ -15,7 +16,7 @@ data class OpsErrorResponse(
 
 data class OpsScriptExecutionRequest(
     val executionId: String? = null,
-    val target: OpsScriptTargetRequest,
+    val target: ScriptTargetRequest,
     val artifact: OpsScriptArtifactRequest,
     val metadata: OpsScriptMetadataRequest = OpsScriptMetadataRequest(),
     val options: OpsScriptExecutionOptionsRequest = OpsScriptExecutionOptionsRequest(),
@@ -55,28 +56,6 @@ data class OpsScriptExecutionOptionsRequest(
     fun toMetadataAttributes(): Map<String, String> {
         return buildMap {
             maxConcurrentItems?.let { put(ScriptJobExecutionAttributes.MaxConcurrentItems, it.toString()) }
-        }
-    }
-}
-
-data class OpsScriptTargetRequest(
-    val type: String,
-    val role: String? = null,
-    val addresses: List<String> = emptyList(),
-    val paths: List<String> = emptyList(),
-    val kind: String? = null,
-    val ids: List<String> = emptyList(),
-    val name: String? = null,
-) {
-    fun toScriptTarget(): ScriptTarget {
-        return when (type) {
-            "all-nodes" -> ScriptTarget.AllNodes
-            "role" -> ScriptTarget.Role(RoleKey(requireValue(role, "role")))
-            "nodes" -> ScriptTarget.Node(requireValues(addresses, "addresses"))
-            "actor-paths" -> ScriptTarget.ActorPath(requireValues(paths, "paths"))
-            "entity" -> ScriptTarget.Entity(EntityKind(requireValue(kind, "kind")), requireValues(ids, "ids"))
-            "singleton" -> ScriptTarget.Singleton(SingletonName(requireValue(name, "name")))
-            else -> error("unsupported script target type $type")
         }
     }
 }
@@ -195,14 +174,4 @@ fun NodeLocalOpsPrincipal.toMetadataAttributes(): Map<String, String> {
         ticket?.let { put("ops.ticket", it) }
         attributes.forEach { (key, value) -> put("ops.$key", value) }
     }
-}
-
-private fun requireValue(value: String?, name: String): String {
-    return value?.takeIf { it.isNotBlank() } ?: error("script target $name is required")
-}
-
-private fun requireValues(values: List<String>, name: String): List<String> {
-    require(values.isNotEmpty()) { "script target $name must not be empty" }
-    require(values.all { it.isNotBlank() }) { "script target $name must not contain blank values" }
-    return values
 }

@@ -38,6 +38,7 @@ include(
     "broadcast:broadcast-protobuf",
     "broadcast:broadcast-pekko",
     "script:script-core",
+    "script:script-control-api",
     "script:script-job",
     "script:script-job-spring-boot-starter",
     "script:script-job-mongodb",

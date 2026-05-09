@@ -187,7 +187,7 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
                     false,
                     "Idempotency and audit id for this execution. Generated when absent.",
                 ),
-                OpsHttpFieldDescription("target", "OpsScriptTargetRequest", true, "Script routing target."),
+                OpsHttpFieldDescription("target", "ScriptTargetRequest", true, "Script routing target."),
                 OpsHttpFieldDescription("artifact", "OpsScriptArtifactRequest", true, "Script artifact payload."),
                 OpsHttpFieldDescription("metadata", "OpsScriptMetadataRequest", false, "Additional metadata and resources."),
                 OpsHttpFieldDescription("options", "OpsScriptExecutionOptionsRequest", false, "Execution options."),
@@ -197,7 +197,12 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
         "multipart target+artifact" to OpsHttpSchemaDescription(
             description = "Multipart form alternative for /ops/scripts/execute and /ops/scripts/jobs. Prefer this for file uploads.",
             fields = listOf(
-                OpsHttpFieldDescription("target", "json string", true, "OpsScriptTargetRequest encoded as one form field."),
+                OpsHttpFieldDescription(
+                    "target",
+                    "json string",
+                    true,
+                    "ScriptTargetRequest encoded as one form field."
+                ),
                 OpsHttpFieldDescription("artifact", "file", true, "Groovy or jar script file. Engine is inferred from .groovy or .jar."),
                 OpsHttpFieldDescription("engine", "string", false, "Required only when artifact filename is not .groovy or .jar."),
                 OpsHttpFieldDescription("name", "string", false, "Script name. Defaults to uploaded filename."),
@@ -207,7 +212,7 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
                 OpsHttpFieldDescription("timeoutMillis", "long", false, "Per-execution timeout in milliseconds.", "3000"),
             ),
         ),
-        "OpsScriptTargetRequest" to OpsHttpSchemaDescription(
+        "ScriptTargetRequest" to OpsHttpSchemaDescription(
             description = "Runtime-neutral script target.",
             fields = listOf(
                 OpsHttpFieldDescription(

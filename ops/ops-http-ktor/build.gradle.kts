@@ -5,6 +5,7 @@ plugins {
 dependencies {
     api(project(":foundation:foundation-core"))
     implementation(project(":patch:patch-core"))
+    api(project(":script:script-control-api"))
     implementation(project(":script:script-core"))
     implementation(project(":script:script-job"))
     implementation(libs.jackson.datatype.jsr310)

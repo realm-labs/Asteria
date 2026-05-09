@@ -1,6 +1,7 @@
 package io.github.realmlabs.asteria.gm.script.spring
 
 import io.github.realmlabs.asteria.script.ScriptTarget
+import io.github.realmlabs.asteria.script.control.ScriptTargetRequest
 import io.github.realmlabs.asteria.script.job.ScriptJobExecutionAttributes
 import java.util.*
 import kotlin.test.Test
@@ -14,7 +15,7 @@ class GmScriptHttpModelsTest {
         val body = "println(\"hello\")".encodeToByteArray()
         val request = GmScriptSubmitRequest(
             executionId = "exec-1",
-            target = GmScriptTargetRequest(type = "entity", kind = "player", ids = listOf("1001")),
+            target = ScriptTargetRequest(type = "entity", kind = "player", ids = listOf("1001")),
             artifact = GmScriptArtifactRequest(
                 name = "repair-player",
                 engine = "groovy",
@@ -44,7 +45,7 @@ class GmScriptHttpModelsTest {
     fun `converts multi entity target to script target with multiple ids`() {
         val request = GmScriptSubmitRequest(
             executionId = "exec-2",
-            target = GmScriptTargetRequest(type = "entity", kind = "player", ids = listOf("1001", "1002")),
+            target = ScriptTargetRequest(type = "entity", kind = "player", ids = listOf("1001", "1002")),
             artifact = GmScriptArtifactRequest(
                 name = "compensate-player",
                 engine = "groovy",
@@ -63,7 +64,7 @@ class GmScriptHttpModelsTest {
     fun `converts GM execution options to script metadata`() {
         val request = GmScriptSubmitRequest(
             executionId = "exec-3",
-            target = GmScriptTargetRequest(type = "entity", kind = "player", ids = listOf("1001")),
+            target = ScriptTargetRequest(type = "entity", kind = "player", ids = listOf("1001")),
             artifact = GmScriptArtifactRequest(
                 name = "compensate-player",
                 engine = "groovy",

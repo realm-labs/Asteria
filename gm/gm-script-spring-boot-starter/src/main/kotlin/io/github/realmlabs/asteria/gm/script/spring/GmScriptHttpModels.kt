@@ -1,9 +1,11 @@
 package io.github.realmlabs.asteria.gm.script.spring
 
-import io.github.realmlabs.asteria.core.EntityKind
-import io.github.realmlabs.asteria.core.RoleKey
-import io.github.realmlabs.asteria.core.SingletonName
-import io.github.realmlabs.asteria.script.*
+import io.github.realmlabs.asteria.script.ScriptArtifact
+import io.github.realmlabs.asteria.script.ScriptExecutionCommand
+import io.github.realmlabs.asteria.script.ScriptExecutionMetadata
+import io.github.realmlabs.asteria.script.ScriptResourceRef
+import io.github.realmlabs.asteria.script.control.ScriptTargetRequest
+import io.github.realmlabs.asteria.script.control.toScriptTarget
 import io.github.realmlabs.asteria.script.job.ScriptJobExecutionAttributes
 import io.github.realmlabs.asteria.script.job.ScriptJobRetryFailedItemsRequest
 import java.util.*
@@ -16,7 +18,7 @@ import java.util.*
  */
 data class GmScriptSubmitRequest(
     val executionId: String,
-    val target: GmScriptTargetRequest,
+    val target: ScriptTargetRequest,
     val artifact: GmScriptArtifactRequest,
     val metadata: GmScriptMetadataRequest = GmScriptMetadataRequest(),
     val options: GmScriptExecutionOptionsRequest = GmScriptExecutionOptionsRequest(),
@@ -55,35 +57,6 @@ data class GmScriptExecutionOptionsRequest(
     fun toMetadataAttributes(): Map<String, String> {
         return buildMap {
             maxConcurrentItems?.let { put(ScriptJobExecutionAttributes.MaxConcurrentItems, it.toString()) }
-        }
-    }
-}
-
-/**
- * Runtime-neutral script target accepted by the GM HTTP API.
- */
-data class GmScriptTargetRequest(
-    val type: String,
-    val role: String? = null,
-    val addresses: List<String> = emptyList(),
-    val paths: List<String> = emptyList(),
-    val kind: String? = null,
-    val ids: List<String> = emptyList(),
-    val name: String? = null,
-) {
-    fun toScriptTarget(): ScriptTarget {
-        return when (type) {
-            "all-nodes" -> ScriptTarget.AllNodes
-            "role" -> ScriptTarget.Role(RoleKey(requireValue(role, "role")))
-            "nodes" -> ScriptTarget.Node(requireValues(addresses, "addresses"))
-            "actor-paths" -> ScriptTarget.ActorPath(requireValues(paths, "paths"))
-            "entity" -> ScriptTarget.Entity(
-                kind = EntityKind(requireValue(kind, "kind")),
-                ids = requireValues(ids, "ids"),
-            )
-
-            "singleton" -> ScriptTarget.Singleton(SingletonName(requireValue(name, "name")))
-            else -> error("unsupported GM script target type $type")
         }
     }
 }
@@ -211,14 +184,4 @@ data class GmScriptCancelRequest(
     init {
         reason?.let { require(it.isNotBlank()) { "GM script cancel reason must not be blank" } }
     }
-}
-
-private fun requireValue(value: String?, name: String): String {
-    return value?.takeIf { it.isNotBlank() } ?: error("GM script target $name is required")
-}
-
-private fun requireValues(values: List<String>, name: String): List<String> {
-    require(values.isNotEmpty()) { "GM script target $name must not be empty" }
-    require(values.all { it.isNotBlank() }) { "GM script target $name must not contain blank values" }
-    return values
 }

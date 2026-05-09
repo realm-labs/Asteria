@@ -5,16 +5,14 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import io.github.realmlabs.asteria.script.ScriptArtifact
 import io.github.realmlabs.asteria.script.ScriptExecutionCommand
 import io.github.realmlabs.asteria.script.ScriptExecutionMetadata
-import io.github.realmlabs.asteria.script.job.ScriptJobExecutionAttributes
-import io.ktor.http.ContentType
-import io.ktor.http.content.PartData
-import io.ktor.http.content.forEachPart
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.contentType
-import io.ktor.server.request.receive
-import io.ktor.server.request.receiveMultipart
-import io.ktor.utils.io.toByteArray
-import java.util.UUID
+import io.github.realmlabs.asteria.script.control.ScriptTargetRequest
+import io.github.realmlabs.asteria.script.control.toScriptTarget
+import io.ktor.http.*
+import io.ktor.http.content.*
+import io.ktor.server.application.*
+import io.ktor.server.request.*
+import io.ktor.utils.io.*
+import java.util.*
 
 data class ReceivedOpsScriptCommand(
     val command: ScriptExecutionCommand,
@@ -48,7 +46,7 @@ private suspend fun ApplicationCall.receiveMultipartOpsScriptCommand(
     maxScriptBytes: Int,
 ): ReceivedOpsScriptCommand {
     var executionId: String? = null
-    var target: OpsScriptTargetRequest? = null
+    var target: ScriptTargetRequest? = null
     var artifactName: String? = null
     var engine: String? = null
     var artifactBytes: ByteArray? = null
