@@ -29,6 +29,7 @@ include(
     "patch:patch-core",
     "patch:patch-jar",
     "patch:patch-mongodb",
+    "patch:patch-zookeeper",
     "patch:patch-pekko",
     "rpc:rpc-protobuf",
     "rpc:rpc-protobuf-pekko",
