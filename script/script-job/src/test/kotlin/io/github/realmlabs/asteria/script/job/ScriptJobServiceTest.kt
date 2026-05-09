@@ -406,6 +406,14 @@ class ScriptJobServiceTest {
         try {
             service.submit(command("job-1", listOf("node-1"), requester = "gm-1"))
             awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Completed)
+            val events = awaitAuditEvents(
+                auditSink,
+                listOf(
+                    ScriptJobAuditEventType.JobSubmitted,
+                    ScriptJobAuditEventType.ItemStarted,
+                    ScriptJobAuditEventType.ItemCompleted,
+                ),
+            )
 
             assertEquals(
                 listOf(
@@ -413,10 +421,10 @@ class ScriptJobServiceTest {
                     ScriptJobAuditEventType.ItemStarted,
                     ScriptJobAuditEventType.ItemCompleted,
                 ),
-                auditSink.events.map { it.type },
+                events.map { it.type },
             )
-            assertTrue(auditSink.events.last().attributes["successCount"] == "1")
-            assertEquals("gm-1", auditSink.events.last().operatorId)
+            assertEquals("1", events.last().attributes["successCount"])
+            assertEquals("gm-1", events.last().operatorId)
         } finally {
             scope.cancel()
         }
@@ -541,7 +549,7 @@ class ScriptJobServiceTest {
 
         try {
             service.submit(command("job-1", listOf("node-1")))
-            withTimeout(1_000) {
+            withTimeout(1_000.milliseconds) {
                 runtime.started.await()
                 runtime.cancelled.await()
             }
@@ -762,7 +770,7 @@ class ScriptJobServiceTest {
             if (job?.status == status) {
                 return job
             }
-            delay(10)
+            delay(10.milliseconds)
         }
         return assertNotNull(repository.find(id))
     }
@@ -778,9 +786,23 @@ class ScriptJobServiceTest {
             if (item?.status == status) {
                 return item
             }
-            delay(10)
+            delay(10.milliseconds)
         }
         return assertNotNull(repository.findItem(jobId, itemId))
+    }
+
+    private suspend fun awaitAuditEvents(
+        auditSink: RecordingScriptJobAuditSink,
+        types: List<ScriptJobAuditEventType>,
+    ): List<ScriptJobAuditEvent> {
+        repeat(100) {
+            val events = auditSink.snapshot()
+            if (events.map { it.type } == types) {
+                return events
+            }
+            delay(10.milliseconds)
+        }
+        return auditSink.snapshot()
     }
 
     private fun command(
@@ -913,7 +935,7 @@ private class CancellableScriptRuntime : ScriptRuntime {
 
     override suspend fun executeAll(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionBatchResult {
         started.complete(Unit)
-        return try {
+        try {
             awaitCancellation()
         } catch (error: CancellationException) {
             cancelled.complete(Unit)
@@ -958,5 +980,11 @@ private class RecordingScriptJobAuditSink : ScriptJobAuditSink {
 
     override suspend fun record(event: ScriptJobAuditEvent) {
         events += event
+    }
+
+    fun snapshot(): List<ScriptJobAuditEvent> {
+        return synchronized(events) {
+            events.toList()
+        }
     }
 }
