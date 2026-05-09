@@ -33,9 +33,8 @@ class GmPatchController(
         @RequestParam targetType: String = "all-nodes",
         @RequestParam roles: List<String> = emptyList(),
         @RequestParam addresses: List<String> = emptyList(),
-        @RequestParam priority: Int = 0,
         @RequestParam status: PatchStatus = PatchStatus.Draft,
-    ): RuntimePatch {
+    ): RuntimePatchDescriptor {
         return endpoints.execute(
             request = request,
             permission = GmPatchPermissions.Create,
@@ -62,7 +61,6 @@ class GmPatchController(
                     targetType = targetType,
                     roles = roles,
                     addresses = addresses,
-                    priority = priority,
                     status = status,
                 ).toRequest(),
                 bytes,
@@ -76,7 +74,7 @@ class GmPatchController(
         @RequestParam status: PatchStatus? = null,
         @RequestParam appName: String? = null,
         @RequestParam version: String? = null,
-    ): List<RuntimePatch> {
+    ): List<RuntimePatchDescriptor> {
         return endpoints.execute(
             request = request,
             permission = GmPatchPermissions.Read,
@@ -95,7 +93,7 @@ class GmPatchController(
     suspend fun find(
         request: HttpServletRequest,
         @PathVariable patchId: String,
-    ): ResponseEntity<RuntimePatch> {
+    ): ResponseEntity<RuntimePatchDescriptor> {
         return endpoints.execute(
             request = request,
             permission = GmPatchPermissions.Read,
@@ -160,7 +158,7 @@ class GmPatchController(
     @PostMapping("/expire-incompatible")
     suspend fun expireIncompatible(
         request: HttpServletRequest,
-    ): List<RuntimePatch> {
+    ): List<RuntimePatchDescriptor> {
         return endpoints.execute(
             request = request,
             permission = GmPatchPermissions.Expire,

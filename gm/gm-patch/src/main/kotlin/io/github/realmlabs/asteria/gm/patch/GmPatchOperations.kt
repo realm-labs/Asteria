@@ -7,13 +7,13 @@ interface GmPatchOperations {
     suspend fun create(
         request: GmPatchCreateRequest,
         artifactBytes: ByteArray,
-    ): RuntimePatch
+    ): RuntimePatchDescriptor
 
-    suspend fun list(query: RuntimePatchQuery = RuntimePatchQuery()): List<RuntimePatch>
+    suspend fun list(query: RuntimePatchQuery = RuntimePatchQuery()): List<RuntimePatchDescriptor>
 
-    suspend fun find(id: PatchId): RuntimePatch?
+    suspend fun find(id: PatchId): RuntimePatchDescriptor?
 
-    suspend fun save(patch: RuntimePatch)
+    suspend fun save(patch: RuntimePatchDescriptor): RuntimePatchDescriptor
 
     suspend fun apply(id: PatchId): PatchClusterApplyResult
 
@@ -21,7 +21,7 @@ interface GmPatchOperations {
 
     suspend fun nodeResults(query: RuntimePatchNodeResultQuery = RuntimePatchNodeResultQuery()): List<RuntimePatchNodeResult>
 
-    suspend fun expireIncompatible(): List<RuntimePatch>
+    suspend fun expireIncompatible(): List<RuntimePatchDescriptor>
 
     suspend fun disable(id: PatchId): Boolean
 }
@@ -36,37 +36,34 @@ class DefaultGmPatchOperations(
     override suspend fun create(
         request: GmPatchCreateRequest,
         artifactBytes: ByteArray,
-    ): RuntimePatch {
+    ): RuntimePatchDescriptor {
         val artifactStore = artifacts ?: error("writable patch artifact store is not configured")
         val artifact = artifactStore.save(
             name = request.artifactName,
             bytes = artifactBytes,
             version = request.artifactVersion,
         )
-        val patch = RuntimePatch(
+        val patch = RuntimePatchDescriptor(
             id = request.id,
             name = request.name,
             artifact = artifact,
             compatibility = PatchCompatibility(request.appName, request.versions),
             target = request.target,
-            priority = request.priority,
-            sequence = repository.nextSequence(),
             status = request.status,
         )
-        repository.save(patch)
-        return patch
+        return repository.save(patch)
     }
 
-    override suspend fun list(query: RuntimePatchQuery): List<RuntimePatch> {
+    override suspend fun list(query: RuntimePatchQuery): List<RuntimePatchDescriptor> {
         return repository.list(query)
     }
 
-    override suspend fun find(id: PatchId): RuntimePatch? {
+    override suspend fun find(id: PatchId): RuntimePatchDescriptor? {
         return repository.find(id)
     }
 
-    override suspend fun save(patch: RuntimePatch) {
-        repository.save(patch)
+    override suspend fun save(patch: RuntimePatchDescriptor): RuntimePatchDescriptor {
+        return repository.save(patch)
     }
 
     override suspend fun apply(id: PatchId): PatchClusterApplyResult {
@@ -86,7 +83,7 @@ class DefaultGmPatchOperations(
         return clusterApplications?.results(query) ?: emptyList()
     }
 
-    override suspend fun expireIncompatible(): List<RuntimePatch> {
+    override suspend fun expireIncompatible(): List<RuntimePatchDescriptor> {
         return applications.expireIncompatiblePatches()
     }
 
@@ -155,7 +152,6 @@ data class GmPatchCreateRequest(
     val appName: String,
     val versions: Set<String>,
     val target: PatchTarget = PatchTarget.AllNodes,
-    val priority: Int = 0,
     val status: PatchStatus = PatchStatus.Draft,
 ) {
     init {
