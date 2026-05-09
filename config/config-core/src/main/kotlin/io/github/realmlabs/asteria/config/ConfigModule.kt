@@ -30,6 +30,7 @@ class ConfigModule private constructor(
             loader = loader,
             validators = options.validators,
             componentBuilders = options.componentBuilders,
+            validationParallelism = options.validationParallelism,
             tracer = context.tracerOrNoop(),
             metrics = context.metricsOrNoop(),
         )
@@ -78,6 +79,7 @@ data class ConfigModuleOptions(
     val loadOnStart: Boolean,
     val hotReload: ConfigHotReloadOptions?,
     val reloadHistorySize: Int,
+    val validationParallelism: Int,
 )
 
 /**
@@ -95,6 +97,11 @@ class ConfigModuleBuilder {
      * Number of recent reload records kept in memory for diagnostics.
      */
     var reloadHistorySize: Int = 50
+
+    /**
+     * Maximum number of validators allowed to run at the same time.
+     */
+    var validationParallelism: Int = 1
 
     private var loader: ConfigLoader? = null
     private var hotReload: ConfigHotReloadOptions? = null
@@ -114,6 +121,13 @@ class ConfigModuleBuilder {
      */
     fun validator(validator: ConfigValidator) {
         validators += validator
+    }
+
+    /**
+     * Adds reusable validators in registration order.
+     */
+    fun validators(validators: Iterable<ConfigValidator>) {
+        this.validators += validators
     }
 
     /**
@@ -178,6 +192,7 @@ class ConfigModuleBuilder {
             loadOnStart = loadOnStart,
             hotReload = hotReload,
             reloadHistorySize = reloadHistorySize,
+            validationParallelism = validationParallelism,
         )
     }
 }

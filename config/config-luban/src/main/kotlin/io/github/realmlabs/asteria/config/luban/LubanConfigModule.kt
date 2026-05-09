@@ -45,7 +45,11 @@ class LubanConfigModule private constructor(
         }
         context.services.register(
             ConfigService::class,
-            ConfigService(loader, options.validators),
+            ConfigService(
+                loader = loader,
+                validators = options.validators,
+                validationParallelism = options.validationParallelism,
+            ),
         )
     }
 
@@ -75,6 +79,7 @@ data class LubanConfigModuleOptions(
     val revisionFactory: (LubanLoadReport) -> ConfigRevision,
     val validators: List<ConfigValidator>,
     val loadOnStart: Boolean,
+    val validationParallelism: Int,
 )
 
 enum class LubanConfigFormat {
@@ -90,6 +95,7 @@ class LubanConfigModuleBuilder {
     var preload: Boolean = true
     var preloadConcurrency: Int = 4
     var loadOnStart: Boolean = true
+    var validationParallelism: Int = 1
 
     private var tablesType: KClass<Any>? = null
     private var dataDir: Path? = null
@@ -164,6 +170,10 @@ class LubanConfigModuleBuilder {
         validators += validator
     }
 
+    fun validators(validators: Iterable<ConfigValidator>) {
+        this.validators += validators
+    }
+
     fun validator(validate: suspend ConfigValidationScope.(ConfigSnapshot) -> Unit) {
         validators += configValidator(validate)
     }
@@ -188,6 +198,7 @@ class LubanConfigModuleBuilder {
             revisionFactory = revisionFactory,
             validators = validators.toList(),
             loadOnStart = loadOnStart,
+            validationParallelism = validationParallelism,
         )
     }
 }

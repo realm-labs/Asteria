@@ -2,23 +2,12 @@ package io.github.realmlabs.asteria.config.ksp
 
 import com.google.devtools.ksp.getVisibility
 import com.google.devtools.ksp.processing.*
-import com.google.devtools.ksp.symbol.ClassKind
-import com.google.devtools.ksp.symbol.KSAnnotated
-import com.google.devtools.ksp.symbol.KSAnnotation
-import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.symbol.KSFile
-import com.google.devtools.ksp.symbol.KSType
-import com.google.devtools.ksp.symbol.Modifier
+import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
-import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
-import io.github.realmlabs.asteria.config.annotations.AsteriaConfigCatalog
-import io.github.realmlabs.asteria.config.annotations.AsteriaConfigChangeCatalog
-import io.github.realmlabs.asteria.config.annotations.AsteriaConfigChangeHandler
-import io.github.realmlabs.asteria.config.annotations.AsteriaConfigTable
-import io.github.realmlabs.asteria.config.annotations.AsteriaConfigTableShape
+import io.github.realmlabs.asteria.config.annotations.*
 
 class AsteriaConfigSymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
@@ -43,11 +32,20 @@ private class AsteriaConfigSymbolProcessor(
         val handlerSymbols = resolver.getSymbolsWithAnnotation(AsteriaConfigChangeHandler::class.qualifiedName!!)
             .filterIsInstance<KSClassDeclaration>()
             .toList()
-        val invalid = (tableSymbols + handlerSymbols).filterNot { it.validate() }
+        val validatorSymbols = resolver.getSymbolsWithAnnotation(AsteriaConfigValidator::class.qualifiedName!!)
+            .filterIsInstance<KSClassDeclaration>()
+            .toList()
+        val invalid = (tableSymbols + handlerSymbols + validatorSymbols).filterNot { it.validate() }
         if (invalid.isNotEmpty()) {
             return invalid
         }
-        if (tableSymbols.isEmpty() && handlerSymbols.isEmpty() && !hasConfigChangeCatalog(resolver)) {
+        if (
+            tableSymbols.isEmpty() &&
+            handlerSymbols.isEmpty() &&
+            validatorSymbols.isEmpty() &&
+            !hasConfigChangeCatalog(resolver) &&
+            !hasConfigValidatorCatalog(resolver)
+        ) {
             generated = true
             return emptyList()
         }
@@ -69,14 +67,44 @@ private class AsteriaConfigSymbolProcessor(
         if (handlerSymbols.isNotEmpty() || hasConfigChangeCatalog(resolver)) {
             changeSnapshot = generateConfigChangeHandlers(resolver, handlerSymbols)
         }
+        val validatorSnapshot = if (validatorSymbols.isNotEmpty() || hasConfigValidatorCatalog(resolver)) {
+            generateConfigValidators(resolver, validatorSymbols)
+        } else {
+            null
+        }
         generateCodegenSnapshot(
             tableCodegenConfig = tableCodegenConfig,
             tables = tableModels,
             tableSourceFiles = tableSourceFiles,
             changeSnapshot = changeSnapshot,
+            validatorSnapshot = validatorSnapshot,
         )
         generated = true
         return emptyList()
+    }
+
+    private fun generateConfigValidators(
+        resolver: Resolver,
+        validatorSymbols: List<KSClassDeclaration>,
+    ): ConfigValidatorCodegenSnapshot {
+        val processorConfig = readConfigValidatorCodegenConfig(resolver)
+        val validators = validatorSymbols.mapNotNull { validator ->
+            readConfigValidatorModel(
+                resolver = resolver,
+                declaration = validator,
+            )
+        }
+        val sourceFiles = (validatorSymbols.mapNotNull { it.containingFile } + processorConfig.sourceFiles)
+            .distinctBy { it.filePath }
+            .toTypedArray()
+        AsteriaConfigValidatorCodeGenerator.buildFiles(processorConfig.codegen, validators).forEach { generated ->
+            generated.file.writeTo(codeGenerator, Dependencies(aggregating = true, *sourceFiles))
+        }
+        return ConfigValidatorCodegenSnapshot(
+            codegen = processorConfig.codegen,
+            validators = validators,
+            sourceFiles = sourceFiles.toList(),
+        )
     }
 
     private fun generateConfigChangeHandlers(
@@ -109,8 +137,10 @@ private class AsteriaConfigSymbolProcessor(
         tables: List<ConfigTableModel>,
         tableSourceFiles: List<KSFile>,
         changeSnapshot: ConfigChangeCodegenSnapshot?,
+        validatorSnapshot: ConfigValidatorCodegenSnapshot?,
     ) {
-        val sourceFiles = (tableSourceFiles + changeSnapshot?.sourceFiles.orEmpty())
+        val sourceFiles =
+            (tableSourceFiles + changeSnapshot?.sourceFiles.orEmpty() + validatorSnapshot?.sourceFiles.orEmpty())
             .distinctBy { it.filePath }
             .toTypedArray()
         val output = codeGenerator.createNewFile(
@@ -178,6 +208,27 @@ private class AsteriaConfigSymbolProcessor(
                     }
                 writer.appendLine("  ]")
             }
+            writer.appendLine(",")
+            if (validatorSnapshot == null) {
+                writer.appendLine("  \"validatorCodegen\": null,")
+                writer.appendLine("  \"validators\": []")
+            } else {
+                writer.appendLine("  \"validatorCodegen\": {")
+                writer.appendLine("    \"packageName\": ${jsonString(validatorSnapshot.codegen.packageName)},")
+                writer.appendLine("    \"className\": ${jsonString(validatorSnapshot.codegen.className)}")
+                writer.appendLine("  },")
+                writer.appendLine("  \"validators\": [")
+                validatorSnapshot.validators
+                    .sortedBy { it.validatorType.canonicalName }
+                    .forEachIndexed { index, validator ->
+                        writer.append("    ${jsonString(validator.validatorType.canonicalName)}")
+                        if (index != validatorSnapshot.validators.lastIndex) {
+                            writer.append(',')
+                        }
+                        writer.appendLine()
+                    }
+                writer.appendLine("  ]")
+            }
             writer.appendLine("}")
         }
     }
@@ -200,6 +251,26 @@ private class AsteriaConfigSymbolProcessor(
             accessorClassName = catalog?.stringArg("accessorClassName")?.takeIf { it.isNotBlank() }
                 ?: options["asteria.config.accessor"]
                 ?: "GameConfigs",
+        )
+    }
+
+    private fun readConfigValidatorCodegenConfig(resolver: Resolver): ConfigValidatorProcessorConfig {
+        val catalogs = configValidatorCatalogs(resolver)
+        if (catalogs.size > 1) {
+            logger.error("only one @AsteriaConfigValidatorCatalog is allowed", catalogs.drop(1).first())
+        }
+        val catalog = catalogs.firstOrNull()?.findAnnotation(AsteriaConfigValidatorCatalog::class.qualifiedName!!)
+        return ConfigValidatorProcessorConfig(
+            codegen = ConfigValidatorCodegenConfig(
+                packageName = catalog?.stringArg("packageName")?.takeIf { it.isNotBlank() }
+                    ?: options["asteria.config.validators.package"]
+                    ?: options["asteria.config.package"]
+                    ?: "io.github.realmlabs.asteria.generated.config",
+                className = catalog?.stringArg("className")?.takeIf { it.isNotBlank() }
+                    ?: options["asteria.config.validators.class"]
+                    ?: "GeneratedConfigValidators",
+            ),
+            sourceFiles = catalogs.mapNotNull { it.containingFile },
         )
     }
 
@@ -240,6 +311,45 @@ private class AsteriaConfigSymbolProcessor(
             ),
             receiverType = receiverType,
             sourceFiles = catalogs.mapNotNull { it.containingFile },
+        )
+    }
+
+    private fun readConfigValidatorModel(
+        resolver: Resolver,
+        declaration: KSClassDeclaration,
+    ): ConfigValidatorModel? {
+        if (declaration.classKind != ClassKind.CLASS && declaration.classKind != ClassKind.OBJECT) {
+            logger.error("@AsteriaConfigValidator only supports classes and objects", declaration)
+            return null
+        }
+        if (Modifier.ABSTRACT in declaration.modifiers) {
+            logger.error("config validator must be concrete", declaration)
+            return null
+        }
+        if (declaration.getVisibility().name != "PUBLIC") {
+            logger.error("config validator must be public", declaration)
+            return null
+        }
+        if (declaration.classKind == ClassKind.CLASS) {
+            val zeroArgConstructor = declaration.primaryConstructor?.parameters?.isEmpty() ?: true
+            if (!zeroArgConstructor) {
+                logger.error("config validator class must have a zero-argument primary constructor", declaration)
+                return null
+            }
+        }
+        val validatorInterface = resolver.getClassDeclarationByName(
+            resolver.getKSNameFromString("io.github.realmlabs.asteria.config.ConfigValidator"),
+        ) ?: run {
+            logger.error("cannot resolve ConfigValidator")
+            return null
+        }
+        if (!declaration.hasSuperType(validatorInterface.qualifiedName?.asString().orEmpty())) {
+            logger.error("@AsteriaConfigValidator declaration must implement ConfigValidator", declaration)
+            return null
+        }
+        return ConfigValidatorModel(
+            validatorType = declaration.toClassName(),
+            objectDeclaration = declaration.classKind == ClassKind.OBJECT,
         )
     }
 
@@ -365,8 +475,18 @@ private class AsteriaConfigSymbolProcessor(
         return configChangeCatalogs(resolver).isNotEmpty()
     }
 
+    private fun hasConfigValidatorCatalog(resolver: Resolver): Boolean {
+        return configValidatorCatalogs(resolver).isNotEmpty()
+    }
+
     private fun configChangeCatalogs(resolver: Resolver): List<KSClassDeclaration> {
         return resolver.getSymbolsWithAnnotation(AsteriaConfigChangeCatalog::class.qualifiedName!!)
+            .filterIsInstance<KSClassDeclaration>()
+            .toList()
+    }
+
+    private fun configValidatorCatalogs(resolver: Resolver): List<KSClassDeclaration> {
+        return resolver.getSymbolsWithAnnotation(AsteriaConfigValidatorCatalog::class.qualifiedName!!)
             .filterIsInstance<KSClassDeclaration>()
             .toList()
     }
@@ -440,5 +560,16 @@ private data class ConfigChangeProcessorConfig(
 private data class ConfigChangeCodegenSnapshot(
     val codegen: ConfigChangeCodegenConfig,
     val handlers: List<ConfigChangeHandlerModel>,
+    val sourceFiles: List<KSFile>,
+)
+
+private data class ConfigValidatorProcessorConfig(
+    val codegen: ConfigValidatorCodegenConfig,
+    val sourceFiles: List<KSFile>,
+)
+
+private data class ConfigValidatorCodegenSnapshot(
+    val codegen: ConfigValidatorCodegenConfig,
+    val validators: List<ConfigValidatorModel>,
     val sourceFiles: List<KSFile>,
 )

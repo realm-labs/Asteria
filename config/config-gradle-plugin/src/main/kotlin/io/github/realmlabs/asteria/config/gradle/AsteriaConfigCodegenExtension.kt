@@ -60,12 +60,24 @@ abstract class AsteriaConfigCodegenExtension @Inject constructor(objects: Object
         objects,
     )
 
+    /**
+     * Optional config validator aggregation.
+     */
+    val validators: AsteriaConfigValidatorCodegenExtension = objects.newInstance(
+        AsteriaConfigValidatorCodegenExtension::class.java,
+        objects,
+    )
+
     fun luban(action: Action<in AsteriaLubanConfigMarkerExtension>) {
         action.execute(luban)
     }
 
     fun configChange(action: Action<in AsteriaConfigChangeCodegenExtension>) {
         action.execute(configChange)
+    }
+
+    fun validators(action: Action<in AsteriaConfigValidatorCodegenExtension>) {
+        action.execute(validators)
     }
 }
 
@@ -114,4 +126,18 @@ abstract class AsteriaConfigChangeCodegenExtension @Inject constructor(objects: 
      */
     val receiverType: Property<String> = objects.property(String::class.java)
         .convention("")
+}
+
+abstract class AsteriaConfigValidatorCodegenExtension @Inject constructor(objects: ObjectFactory) {
+    /**
+     * Package of the generated validator list. Blank means using `asteriaConfigCodegen.packageName`.
+     */
+    val packageName: Property<String> = objects.property(String::class.java)
+        .convention("")
+
+    /**
+     * Name of the generated object that exposes `ALL`.
+     */
+    val className: Property<String> = objects.property(String::class.java)
+        .convention("GeneratedConfigValidators")
 }

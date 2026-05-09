@@ -245,6 +245,37 @@ class ConfigServiceTest {
     }
 
     @Test
+    fun `parallel validation keeps error order stable`() = runBlocking {
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val service = ConfigService(
+            loader = TestConfigLoader(),
+            validators = listOf(
+                configValidator {
+                    firstStarted.complete(Unit)
+                    releaseFirst.await()
+                    fail("first")
+                },
+                configValidator {
+                    firstStarted.await()
+                    fail("second")
+                    releaseFirst.complete(Unit)
+                },
+            ),
+            validationParallelism = 2,
+        )
+
+        val error = assertFailsWith<ConfigValidationException> {
+            withTimeout(Duration.parse("2s")) {
+                service.reload()
+            }
+        }
+
+        assertEquals(listOf("first", "second"), error.errors.map { it.message })
+        assertNull(service.currentOrNull())
+    }
+
+    @Test
     fun `hot reload reloads after trigger signal`() = runBlocking {
         val signals = MutableSharedFlow<ConfigReloadSignal>(replay = 1)
         var version = 0

@@ -134,6 +134,32 @@ it should reload or reread full state.
 validate, publish, and notify listeners. Listeners run synchronously after publish; listener failures do not roll back
 the new snapshot, but they make the reload call fail and enter failure monitoring.
 
+Config validation can be written as `ConfigValidator` implementations and aggregated by KSP with
+`@AsteriaConfigValidator`:
+
+```kotlin
+@AsteriaConfigValidator
+object ItemConfigValidator : ConfigValidator {
+  override suspend fun validate(snapshot: ConfigSnapshot): ConfigValidationResult {
+    return configValidator { current ->
+      val items = current.requireTable(GameConfigTables.Items)
+      items.all().forEach { item ->
+        check(item.price >= 0, "price must not be negative", items.name, item.id)
+      }
+    }.validate(snapshot)
+  }
+}
+
+install(LubanConfigModule {
+  validators(GeneratedConfigValidators.ALL)
+  validationParallelism = 8
+})
+```
+
+`validationParallelism` defaults to `1`, preserving serial validation. Values greater than `1` run validators in
+parallel, while errors are still aggregated in `GeneratedConfigValidators.ALL` order for stable diagnostics. Validators
+should stay deterministic and side-effect free, and should not depend on shared mutable state.
+
 Config-dependent actor updates can be modeled as change handlers:
 
 ```kotlin

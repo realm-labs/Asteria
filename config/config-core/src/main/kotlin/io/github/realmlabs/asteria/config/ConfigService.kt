@@ -1,8 +1,13 @@
 package io.github.realmlabs.asteria.config
 
 import io.github.realmlabs.asteria.observability.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import org.slf4j.LoggerFactory
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -88,9 +93,14 @@ class ConfigService(
     private val loader: ConfigLoader,
     private val validators: List<ConfigValidator> = emptyList(),
     private val componentBuilders: List<ConfigComponentBuilder<*>> = emptyList(),
+    private val validationParallelism: Int = 1,
     private val tracer: Tracer = NoopTracer,
     private val metrics: Metrics = NoopMetrics,
 ) {
+    init {
+        require(validationParallelism > 0) { "config validation parallelism must be positive" }
+    }
+
     private val logger = LoggerFactory.getLogger(ConfigService::class.java)
     private val listeners: CopyOnWriteArrayList<ConfigReloadListener> = CopyOnWriteArrayList()
     private val reloadLock: Mutex = Mutex()
@@ -201,8 +211,25 @@ class ConfigService(
     }
 
     private suspend fun validate(snapshot: ConfigSnapshot) {
-        val errors = validators.flatMap { it.validate(snapshot).errors }
+        val errors = if (validationParallelism == 1 || validators.size <= 1) {
+            validators.flatMap { it.validate(snapshot).errors }
+        } else {
+            validateParallel(snapshot)
+        }
         ConfigValidationResult(errors).throwIfFailed()
+    }
+
+    private suspend fun validateParallel(snapshot: ConfigSnapshot): List<ConfigValidationError> = coroutineScope {
+        val semaphore = Semaphore(validationParallelism)
+        validators.mapIndexed { index, validator ->
+            async {
+                semaphore.withPermit {
+                    index to validator.validate(snapshot).errors
+                }
+            }
+        }.awaitAll()
+            .sortedBy { it.first }
+            .flatMap { it.second }
     }
 }
 
