@@ -35,7 +35,7 @@ class PatchModule private constructor(
             service.expireIncompatiblePatches()
         }
         if (options.applyOnStart) {
-            service.applyEnabledPatches()
+            service.reconcileEnabledPatches()
         }
     }
 

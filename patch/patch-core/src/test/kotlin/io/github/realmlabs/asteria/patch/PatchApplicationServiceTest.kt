@@ -106,6 +106,60 @@ class PatchApplicationServiceTest {
     }
 
     @Test
+    fun reconcileRemovesRuntimePatchThatIsNoLongerDesired() = runBlocking {
+        val registry = PatchableRegistry(mapOf("handler" to "base"))
+        val patch = patch("disable", sequence = 1)
+        val repository = InMemoryRuntimePatchRepository(listOf(patch))
+        val runtime = runtime()
+        val service = PatchApplicationService(
+            runtime = runtime,
+            repository = repository,
+            resolver = StaticRuntimePatchPluginResolver(
+                mapOf(patch.id to plugin { replace(registry, "handler", "patched") }),
+            ),
+        )
+
+        service.apply(patch.id)
+        repository.updateStatus(patch.id, PatchStatus.Disabled)
+
+        val report = service.reconcileEnabledPatches()
+
+        assertEquals(0, report.appliedCount)
+        assertEquals(listOf(patch.id), report.removedPatchIds)
+        assertEquals("base", registry.require("handler"))
+        assertEquals(emptyList(), runtime.appliedPatches())
+    }
+
+    @Test
+    fun reconcileReappliesPatchWhenStoredMetadataChanges() = runBlocking {
+        val registry = PatchableRegistry(mapOf("handler" to "base"))
+        val patch = patch("reload", sequence = 1)
+        val repository = InMemoryRuntimePatchRepository(listOf(patch))
+        val runtime = runtime()
+        val service = PatchApplicationService(
+            runtime = runtime,
+            repository = repository,
+            resolver = object : RuntimePatchPluginResolver {
+                override suspend fun resolve(patch: RuntimePatch): RuntimePatchPlugin {
+                    return plugin { replace(registry, "handler", patch.artifact.checksum) }
+                }
+            },
+        )
+
+        service.reconcileEnabledPatches()
+        assertEquals("sha256:reload", registry.require("handler"))
+
+        val changed = patch.copy(artifact = PatchArtifact("reload.jar", "sha256:reload-v2"))
+        repository.save(changed)
+        val report = service.reconcileEnabledPatches()
+
+        assertEquals(1, report.appliedCount)
+        assertEquals(listOf(patch.id), report.removedPatchIds)
+        assertEquals("sha256:reload-v2", registry.require("handler"))
+        assertEquals(listOf(changed), runtime.appliedPatches())
+    }
+
+    @Test
     fun serviceExpiresEnabledPatchesThatDoNotMatchCurrentVersion() = runBlocking {
         val oldPatch = patch("old", sequence = 1, versions = setOf("0.9.0"))
         val currentPatch = patch("current", sequence = 2)

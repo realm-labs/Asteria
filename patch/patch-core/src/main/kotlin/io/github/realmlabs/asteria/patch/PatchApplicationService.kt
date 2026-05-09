@@ -99,6 +99,42 @@ class PatchApplicationService(
     }
 
     /**
+     * Reconciles this node's in-memory patch layers with durable repository desired state.
+     *
+     * The repository remains the source of truth: enabled patches that match this node are applied, while currently
+     * applied patches that are no longer desired are removed. If a stored patch with the same id changes metadata, such
+     * as artifact checksum, target, priority, or sequence, the old in-memory layer is removed and the desired patch is
+     * applied again.
+     */
+    suspend fun reconcileEnabledPatches(): PatchReconcileReport {
+        return tracer.span("patch.reconcile_enabled", environment.traceAttributes()) {
+            val desired = repository.list(
+                RuntimePatchQuery(
+                    status = PatchStatus.Enabled,
+                    appName = runtime.environment.appName,
+                    version = runtime.environment.version,
+                ),
+            ).filter { it.canApplyTo(runtime.environment) }
+                .sortedBy { it.order }
+            metrics.counter("asteria.patch.reconcile.desired.total", environment.metricTags())
+                .increment(desired.size.toLong())
+
+            val desiredById = desired.associateBy { it.id }
+            val removed = removeUndesiredPatches(desiredById)
+            val activeIds = runtime.appliedPatches().mapTo(mutableSetOf()) { it.id }
+            val applied = desired
+                .filter { patch -> patch.id !in activeIds }
+                .map { patch -> runtime.apply(patch, resolver.resolve(patch)) }
+            val report = PatchReconcileReport(applied, removed)
+            metrics.counter("asteria.patch.reconcile.applied.total", environment.metricTags())
+                .increment(report.appliedCount.toLong())
+            metrics.counter("asteria.patch.reconcile.removed.total", environment.metricTags())
+                .increment(report.removedCount.toLong())
+            report
+        }
+    }
+
+    /**
      * Loads and applies one patch by id.
      */
     suspend fun apply(id: PatchId): PatchApplyResult {
@@ -139,6 +175,15 @@ class PatchApplicationService(
             .map { patch -> runtime.apply(patch, resolver.resolve(patch)) }
         return PatchApplyReport(results)
     }
+
+    private suspend fun removeUndesiredPatches(desiredById: Map<PatchId, RuntimePatch>): List<PatchId> {
+        return runtime.appliedPatches()
+            .sortedByDescending { it.order }
+            .filter { appliedPatch -> desiredById[appliedPatch.id] != appliedPatch }
+            .mapNotNull { appliedPatch ->
+                if (runtime.remove(appliedPatch.id)) appliedPatch.id else null
+            }
+    }
 }
 
 private fun PatchEnvironment.metricTags(): MetricTags {
@@ -166,4 +211,22 @@ data class PatchApplyReport(
      * Number of results that represent a real successful application.
      */
     val appliedCount: Int get() = results.count { it is PatchApplyResult.Applied }
+}
+
+/**
+ * Summary report for a desired-state reconciliation run.
+ */
+data class PatchReconcileReport(
+    val appliedResults: List<PatchApplyResult>,
+    val removedPatchIds: List<PatchId>,
+) {
+    /**
+     * Number of newly applied patches.
+     */
+    val appliedCount: Int get() = appliedResults.count { it is PatchApplyResult.Applied }
+
+    /**
+     * Number of runtime patch layers removed because they no longer matched durable desired state.
+     */
+    val removedCount: Int get() = removedPatchIds.size
 }
