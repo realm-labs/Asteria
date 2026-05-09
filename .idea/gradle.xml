@@ -75,6 +75,8 @@
             <option value="$PROJECT_DIR$/observability" />
             <option value="$PROJECT_DIR$/observability/observability-core" />
             <option value="$PROJECT_DIR$/observability/observability-opentelemetry" />
+            <option value="$PROJECT_DIR$/ops" />
+            <option value="$PROJECT_DIR$/ops/ops-http-ktor" />
             <option value="$PROJECT_DIR$/patch" />
             <option value="$PROJECT_DIR$/patch/patch-core" />
             <option value="$PROJECT_DIR$/patch/patch-jar" />

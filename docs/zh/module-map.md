@@ -52,20 +52,23 @@
 
 ## 运维能力
 
-| 模块                                                           | 职责                                     | 何时使用                   |
-|--------------------------------------------------------------|----------------------------------------|------------------------|
-| `script-core`                                                | 脚本引擎、上下文、目标、执行结果                       | 需要运行 GM 脚本或运维脚本时       |
-| `script-pekko`                                               | 将脚本目标映射到 Pekko 节点、角色、实体、单例             | 脚本需要打到 actor runtime 时 |
-| `script-job` / `script-job-mongodb`                          | 异步脚本任务、结果持久化、限流和租约                     | GM 脚本可能长耗时或多目标时        |
-| `gm-core`                                                    | GM feature 元数据、权限、审计上下文                | 有 GM 后台时               |
-| `gm-shutdown`                                                | 业务侧停服 plan、phase、step 编排和 GM 权限元数据 | 需要 GM/运维触发 graceful shutdown 时 |
-| `gm-*` starters                                              | Spring HTTP API 和具体 feature 适配         | 需要直接暴露 HTTP GM 接口时     |
-| `patch-core` / `patch-jar` / `patch-mongodb` / `patch-zookeeper` / `patch-pekko` | 运行时补丁、插件解析、补丁仓库和集群控制                   | 需要在线热补丁或补丁审计时          |
-| `observability-core` / `observability-opentelemetry`         | metrics/tracing 抽象和 OTel 实现            | 需要接入可观测性时              |
-| `starter-game-server-pekko`                                  | 本地和集群启动 DSL、route module、patch starter | 业务项目希望少写启动胶水时          |
+| 模块                                                                               | 职责                                      | 何时使用                           |
+|----------------------------------------------------------------------------------|-----------------------------------------|--------------------------------|
+| `script-core`                                                                    | 脚本引擎、上下文、目标、执行结果                        | 需要运行 GM 脚本或运维脚本时               |
+| `script-pekko`                                                                   | 将脚本目标映射到 Pekko 节点、角色、实体、单例              | 脚本需要打到 actor runtime 时         |
+| `script-job` / `script-job-mongodb`                                              | 异步脚本任务、结果持久化、限流和租约                      | GM 脚本可能长耗时或多目标时                |
+| `gm-core`                                                                        | GM feature 元数据、权限、审计上下文                 | 有 GM 后台时                       |
+| `gm-shutdown`                                                                    | 业务侧停服 plan、phase、step 编排和 GM 权限元数据      | 需要 GM/运维触发 graceful shutdown 时 |
+| `gm-*` starters                                                                  | Spring HTTP API 和具体 feature 适配          | 需要直接暴露 HTTP GM 接口时             |
+| `ops-http-ktor`                                                                  | 节点本地 Ktor HTTP 运维入口，支持 SSH/curl 脚本和补丁控制 | 没有 GM 节点但需要本机运维控制面时            |
+| `patch-core` / `patch-jar` / `patch-mongodb` / `patch-zookeeper` / `patch-pekko` | 运行时补丁、插件解析、补丁仓库和集群控制                    | 需要在线热补丁或补丁审计时                  |
+| `observability-core` / `observability-opentelemetry`                             | metrics/tracing 抽象和 OTel 实现             | 需要接入可观测性时                      |
+| `starter-game-server-pekko`                                                      | 本地和集群启动 DSL、route module、patch starter  | 业务项目希望少写启动胶水时                  |
 
 ## 组合建议
 
 最小单进程服务只需要 `foundation-core` 加业务模块。Pekko 集群服务通常组合 `foundation-core`、`foundation-actor`、
 `cluster-pekko`、`config-core` 和某个配置中心后端。对外网关服务再加 `gateway-core`、`gateway-netty`、`protocol-protobuf`
-和协议生成插件。需要 GM 脚本时再加 `script-core`、`script-pekko`、`script-job`、对应 repository 和 `gm-script`。
+和协议生成插件。需要 GM 脚本时再加 `script-core`、`script-pekko`、`script-job`、对应 repository 和 `gm-script`。如果没有 GM
+节点
+但允许运维 SSH 到业务机器，可以加 `ops-http-ktor`，默认通过 loopback HTTP 和 bearer token 提供本机控制入口。

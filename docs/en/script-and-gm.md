@@ -152,3 +152,52 @@ does not decide login, approval, MFA, or ticket workflow.
 The default noop principal resolver does not authenticate users, so GM HTTP endpoints will reject requests. Applications
 should provide at least a `GmPrincipalResolver`, and usually a `GmAuditSink` plus a policy evaluator that matches the
 project permission model.
+
+## Node-Local Ops HTTP
+
+`ops-http-ktor` provides a GM-independent node-local HTTP endpoint for SSH/curl operations. Operators can SSH to any
+game
+node and execute scripts or trigger patch controls through loopback HTTP. The endpoint defaults to a local bind address
+and is intended as a lightweight operations control plane when no GM node is deployed.
+
+```kotlin
+nodeLocalOpsHttp {
+    host = "127.0.0.1"
+    port = 17321
+    tokenFile = Path.of("/var/lib/asteria/ops-token")
+}
+```
+
+Without the starter, install `NodeLocalOpsHttpModule` directly. The module reads a bearer token on startup;
+`requireToken` defaults to `true`, and startup fails unless `token` or `tokenFile` is configured. In production, the
+token file should be readable only by trusted operations users or the service account.
+
+Inspect the endpoint description first after logging into a node:
+
+```bash
+curl http://127.0.0.1:17321/ops
+```
+
+```bash
+curl -X POST http://127.0.0.1:17321/ops/scripts/execute \
+  -H "Authorization: Bearer $(cat /var/lib/asteria/ops-token)" \
+  -H "X-Asteria-Operator: mikai" \
+  -H "X-Asteria-Reason: repair-player" \
+  -F 'target={"type":"entity","kind":"player","ids":["1001"]}' \
+  -F 'artifact=@./fix-player.groovy'
+```
+
+Available endpoints include:
+
+- `GET /ops`: returns auth headers, limits, endpoint list, and request examples.
+- `POST /ops/scripts/execute`: execute a script and return a batch result.
+- `POST /ops/scripts/jobs`: submit an asynchronous script job.
+- `GET /ops/scripts/jobs`, `GET /ops/scripts/jobs/{jobId}`, `GET /ops/scripts/jobs/{jobId}/items`: inspect jobs.
+- `POST /ops/scripts/jobs/{jobId}/cancel`, `POST /ops/scripts/jobs/{jobId}/items/{itemId}/retry`: cancel or retry work.
+- `POST /ops/patches/{patchId}/apply`, `POST /ops/patches/{patchId}/disable`, `POST /ops/patches/reconcile`: apply,
+  disable, or reconcile runtime patches.
+
+This endpoint only handles local HTTP authentication and request conversion. The installed `ScriptPolicy` still decides
+whether a script is allowed to run. High-risk deployments should require `X-Asteria-Reason`, ticket or approval
+metadata,
+and a `NodeLocalOpsAuditSink` that records operations to an independent audit stream.

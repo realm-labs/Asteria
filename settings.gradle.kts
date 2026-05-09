@@ -64,6 +64,7 @@ include(
     "gm:gm-cluster-pekko",
     "gm:gm-cluster-pekko-management",
     "gm:gm-cluster-pekko-management-spring-boot-starter",
+    "ops:ops-http-ktor",
     "gateway:gateway-core",
     "gateway:gateway-pekko",
     "gateway:gateway-netty",
