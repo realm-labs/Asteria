@@ -33,8 +33,12 @@ asteriaMessageCodegen {
 }
 ```
 
-给 handler class 添加 `@AsteriaMessageHandler` 后，KSP 会按上面的生成包和模块 ID 统一生成 catalog 与 dispatcher。
-handler 需要定义 `handle(context, message)` 方法。
+给 handler class 添加 `@AsteriaMessageHandler` 后，KSP 会按上面的生成包和模块 ID 统一生成 catalog、handles、registry
+与 dispatcher。dispatcher 基于同名 registry 构造，例如 `GeneratedGameNodeDispatchers.PROTOBUF` 会使用
+`GeneratedGameNodeDispatchers.PROTOBUF_REGISTRY`，而 registry 基于 `GeneratedGameNodeDispatchers.PROTOBUF_HANDLES`
+构造。业务需要运行时 patch handler 时，可以把生成的 registry 传给 `replaceHandler(registry, ...)`；如果需要自定义
+`MessageHandleRegistry`，也可以复用生成的 handles 后自行构造 `MessageDispatcher`。handler 需要定义
+`handle(context, message)` 方法。
 
 ## Protobuf 协议生成
 

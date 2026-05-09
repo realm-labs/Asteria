@@ -35,8 +35,12 @@ asteriaMessageCodegen {
 }
 ```
 
-After a handler class is annotated with `@AsteriaMessageHandler`, KSP generates the catalog and dispatchers under the
-configured package and module id. A handler must define a `handle(context, message)` method.
+After a handler class is annotated with `@AsteriaMessageHandler`, KSP generates the catalog, handles, registries, and
+dispatchers under the configured package and module id. Each dispatcher is built from its generated registry; for
+example, `GeneratedGameNodeDispatchers.PROTOBUF` uses `GeneratedGameNodeDispatchers.PROTOBUF_REGISTRY`, and that registry
+is built from `GeneratedGameNodeDispatchers.PROTOBUF_HANDLES`. Runtime patches can pass the registry to
+`replaceHandler(registry, ...)`. Code that needs a custom `MessageHandleRegistry` can reuse the generated handles and
+construct its own `MessageDispatcher`. A handler must define a `handle(context, message)` method.
 
 ## Protobuf Protocol Generation
 

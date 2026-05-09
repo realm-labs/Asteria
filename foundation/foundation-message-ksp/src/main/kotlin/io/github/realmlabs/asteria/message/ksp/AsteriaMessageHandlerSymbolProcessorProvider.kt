@@ -234,6 +234,8 @@ private class AsteriaMessageHandlerSymbolProcessor(
             return
         }
         val dispatcherType = ClassName("io.github.realmlabs.asteria.message", "MessageDispatcher")
+        val registryType = ClassName("io.github.realmlabs.asteria.message", "PatchableMessageHandlerRegistry")
+        val messageHandleType = ClassName("io.github.realmlabs.asteria.message", "MessageHandle")
         val generatedMessageType = ClassName("com.google.protobuf", "GeneratedMessage")
         val dispatchers = bindings.map { it.dispatcher }.distinct().sorted()
         dispatchers.forEach { dispatcherKey ->
@@ -248,10 +250,32 @@ private class AsteriaMessageHandlerSymbolProcessor(
                     val messageSuperType = resolveMessageSuperType(dispatcherKey, dispatcherBindings, generatedMessageType)
                     addProperty(
                         PropertySpec.builder(
+                            dispatcherKey.toHandlesPropertyName(),
+                            List::class.asClassName().parameterizedBy(
+                                messageHandleType.parameterizedBy(contextType, messageSuperType),
+                            ),
+                        )
+                            .initializer(buildHandlesExpression(target, dispatcherBindings))
+                            .build(),
+                    )
+                    addProperty(
+                        PropertySpec.builder(
+                            dispatcherKey.toRegistryPropertyName(),
+                            registryType.parameterizedBy(contextType, messageSuperType),
+                        )
+                            .initializer(
+                                "%T(%N)",
+                                registryType.parameterizedBy(contextType, messageSuperType),
+                                dispatcherKey.toHandlesPropertyName(),
+                            )
+                            .build(),
+                    )
+                    addProperty(
+                        PropertySpec.builder(
                             dispatcherKey.toDispatcherPropertyName(),
                             dispatcherType.parameterizedBy(contextType, messageSuperType),
                         )
-                            .initializer(buildDispatcherExpression(target, dispatcherBindings, messageSuperType))
+                            .initializer("%T(%N)", dispatcherType, dispatcherKey.toRegistryPropertyName())
                             .build(),
                     )
                 }
@@ -436,24 +460,16 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }
     }
 
-    private fun buildDispatcherExpression(
+    private fun buildHandlesExpression(
         target: MessageCodegenTarget,
         bindings: List<HandlerBinding>,
-        messageSuperType: ClassName,
     ): CodeBlock {
         val typeNamePart = target.generatedTypeNamePart
-        val registryType = ClassName("io.github.realmlabs.asteria.message", "PatchableMessageHandlerRegistry")
-        val dispatcherType = ClassName("io.github.realmlabs.asteria.message", "MessageDispatcher")
         val handlesObject = ClassName(
             target.generatedPackage,
             "Generated${typeNamePart}${bindings.first().dispatcher.toDispatcherTypeNamePart()}MessageHandles",
         )
-        return CodeBlock.of(
-            "%T(%T(%T.all()))",
-            dispatcherType,
-            registryType.parameterizedBy(bindings.first().contextTypeName, messageSuperType),
-            handlesObject,
-        )
+        return CodeBlock.of("%T.all()", handlesObject)
     }
 
     private fun buildHandlesAggregatorCode(
@@ -569,6 +585,28 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }.joinToString("")
         val normalized = if (sanitized.firstOrNull()?.isDigit() == true) "_$sanitized" else sanitized
         return normalized.ifBlank { "DEFAULT" }
+    }
+
+    private fun String.toRegistryPropertyName(): String {
+        val dispatcherName = toDispatcherPropertyName()
+        val screamingSnake = dispatcherName.any { it.isLetter() } &&
+            dispatcherName.all { !it.isLetter() || it.isUpperCase() }
+        return if (screamingSnake) {
+            "${dispatcherName}_REGISTRY"
+        } else {
+            "${dispatcherName}Registry"
+        }
+    }
+
+    private fun String.toHandlesPropertyName(): String {
+        val dispatcherName = toDispatcherPropertyName()
+        val screamingSnake = dispatcherName.any { it.isLetter() } &&
+            dispatcherName.all { !it.isLetter() || it.isUpperCase() }
+        return if (screamingSnake) {
+            "${dispatcherName}_HANDLES"
+        } else {
+            "${dispatcherName}Handles"
+        }
     }
 
     private fun jsonString(value: String): String {
