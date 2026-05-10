@@ -76,17 +76,6 @@ class AsteriaConfigCodegenPlugin : Plugin<Project> {
             )
             ksp.arg("asteria.config.change.class", extension.configChange.className)
             ksp.arg("asteria.config.change.receiverType", extension.configChange.receiverType)
-            ksp.arg(
-                "asteria.config.validators.package",
-                extension.validators.packageName.flatMap { validatorsPackage ->
-                    if (validatorsPackage.isBlank()) {
-                        extension.packageName
-                    } else {
-                        project.providers.provider { validatorsPackage }
-                    }
-                },
-            )
-            ksp.arg("asteria.config.validators.class", extension.validators.className)
         }
     }
 

@@ -127,10 +127,18 @@ install(ConfigModule {
 components、validate、publish、通知 listeners。listener 在发布后同步执行；listener 抛错不会回滚新快照，但会让本次 reload
 调用失败并进入失败监控。
 
-配置校验可以通过 `ConfigValidator` 编写，也可以用 `@AsteriaConfigValidator` 交给 KSP 聚合：
+配置校验可以通过 `ConfigValidator` 编写。需要聚合大量 validator 时，用通用 contribution KSP 生成列表；业务模块需要依赖
+`foundation-contribution`，并把 `foundation-contribution-ksp` 加到 `ksp` 配置：
 
 ```kotlin
-@AsteriaConfigValidator
+@AsteriaContributionCatalog(
+  contract = ConfigValidator::class,
+  packageName = "com.example.generated.config",
+  className = "GeneratedConfigValidators",
+)
+object ConfigValidatorCatalog
+
+@AsteriaContribution(contract = ConfigValidator::class)
 object ItemConfigValidator : ConfigValidator {
   override suspend fun validate(snapshot: ConfigSnapshot): ConfigValidationResult {
     return configValidator { current ->
@@ -149,7 +157,7 @@ install(LubanConfigModule {
 ```
 
 `validationParallelism` 默认为 `1`，保持串行校验。设置为大于 `1` 后，多个 validator 会并行执行；框架仍按
-`GeneratedConfigValidators.ALL` 的顺序聚合错误，保证诊断输出稳定。validator 应保持确定性、无副作用，不要依赖共享可变状态。
+生成列表顺序聚合错误，保证诊断输出稳定。validator 应保持确定性、无副作用，不要依赖共享可变状态。
 
 业务 actor 根据配置依赖做增量处理时，用配置变更 handler：
 

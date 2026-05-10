@@ -134,11 +134,19 @@ it should reload or reread full state.
 validate, publish, and notify listeners. Listeners run synchronously after publish; listener failures do not roll back
 the new snapshot, but they make the reload call fail and enter failure monitoring.
 
-Config validation can be written as `ConfigValidator` implementations and aggregated by KSP with
-`@AsteriaConfigValidator`:
+Config validation can be written as `ConfigValidator` implementations. Use the generic contribution KSP when many
+validators should be aggregated into a generated list. Business modules need `foundation-contribution` and should add
+`foundation-contribution-ksp` to the `ksp` configuration:
 
 ```kotlin
-@AsteriaConfigValidator
+@AsteriaContributionCatalog(
+  contract = ConfigValidator::class,
+  packageName = "com.example.generated.config",
+  className = "GeneratedConfigValidators",
+)
+object ConfigValidatorCatalog
+
+@AsteriaContribution(contract = ConfigValidator::class)
 object ItemConfigValidator : ConfigValidator {
   override suspend fun validate(snapshot: ConfigSnapshot): ConfigValidationResult {
     return configValidator { current ->
@@ -157,8 +165,8 @@ install(LubanConfigModule {
 ```
 
 `validationParallelism` defaults to `1`, preserving serial validation. Values greater than `1` run validators in
-parallel, while errors are still aggregated in `GeneratedConfigValidators.ALL` order for stable diagnostics. Validators
-should stay deterministic and side-effect free, and should not depend on shared mutable state.
+parallel, while errors are still aggregated in generated-list order for stable diagnostics. Validators should stay
+deterministic and side-effect free, and should not depend on shared mutable state.
 
 Config-dependent actor updates can be modeled as change handlers:
 
