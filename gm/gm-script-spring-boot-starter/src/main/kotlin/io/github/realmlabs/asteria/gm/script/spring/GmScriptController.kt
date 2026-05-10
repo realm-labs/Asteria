@@ -23,6 +23,7 @@ class GmScriptController(
     private val validator: GmScriptTargetValidator,
     private val endpoints: GmEndpointSupport,
     private val metadataProvider: GmScriptMetadataProvider,
+    private val routeRegistry: GmScriptRouteRegistryView,
 ) {
     @GetMapping("/metadata")
     suspend fun metadata(
@@ -55,6 +56,7 @@ class GmScriptController(
             ),
         ) { operation ->
             val command = request.toCommand(operation.principal.id)
+            validateRoute(command)
             validateTarget(command, operation.principal.id)
             scripts.submit(
                 command = command,
@@ -274,7 +276,9 @@ class GmScriptController(
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "script job item $itemId not found")
             val job = scripts.find(id)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "script job $jobId not found")
-            validateTarget(job.command.copy(target = item.target), operation.principal.id)
+            val command = job.command.copy(target = item.target)
+            validateRoute(command)
+            validateTarget(command, operation.principal.id)
             scripts.retryItem(
                 jobId = id,
                 itemId = ScriptJobItemId(itemId),
@@ -320,6 +324,13 @@ class GmScriptController(
                 HttpStatus.BAD_REQUEST,
                 validation.reasons.joinToString("; "),
             )
+        }
+    }
+
+    private fun validateRoute(command: ScriptExecutionCommand) {
+        val reasons = routeRegistry.validate(command.target)
+        if (reasons.isNotEmpty()) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, reasons.joinToString("; "))
         }
     }
 }

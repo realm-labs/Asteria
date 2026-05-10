@@ -205,6 +205,22 @@ controllers.
 `highRisk` is metadata only. It does not automatically add approval, MFA, or ticket workflows. Production systems should
 implement those policies in `GmPrincipalResolver`, `GmPolicyEvaluator`, or business controllers.
 
+## GM Script Target Capabilities
+
+The GM node uses its installed `ScriptRuntime` as the script entry point. To route an `entity` or `singleton` script,
+the
+GM node must start the corresponding shard region/proxy or singleton/proxy; those refs are registered in
+`EntityShardRegistry` and `SingletonActorRegistry`.
+
+`GET /gm/api/scripts/metadata` returns available engines, target types, and the `entityKinds` and `singletons` currently
+registered on the GM node. The frontend can use those values directly as selectable actor types. Actor paths are
+explicit paths supplied by the caller and are not registered in metadata.
+
+Script submission and single-item retry first check whether the requested entity kind or singleton is routable from the
+current GM node. After that check passes, the command is submitted to `ScriptRuntime` for actual cluster routing.
+Business rules such as player existence, active world checks, or guild validation should be implemented by application
+`GmScriptTargetValidator`s.
+
 ## Shutdown Orchestration
 
 `gm-shutdown` provides a runtime-neutral framework for business-side graceful shutdown. A plan runs phases in order, and
@@ -285,6 +301,23 @@ calls `ScriptRuntime.executeAll`, and the asynchronous entry calls `ScriptJobSer
 recorded through `NodeLocalOpsAuditSink`. Local HTTP audit only proves this endpoint received the request. Script-level
 allow/deny and execution audit are still owned by `ScriptPolicy`, `ScriptAuditSink`, and `ScriptJobAuditSink`.
 
+OPS HTTP can report the script routing capabilities available from the current node:
+
+```bash
+curl http://127.0.0.1:17321/ops/scripts/targets \
+  -H "Authorization: Bearer $(cat /var/lib/asteria/ops-token)" \
+  -H "X-Asteria-Operator: mikai"
+```
+
+The returned `entityKinds` come from the node's `EntityShardRegistry`, and `singletons` come from
+`SingletonActorRegistry`. A player node usually reports the player entity kind it can route through a shard region or
+proxy. A global node usually reports the singleton/proxy names it can route. Actor paths are explicit paths and are not
+registered or restricted by this endpoint.
+
+`POST /ops/scripts/execute` and `POST /ops/scripts/jobs` check the requested target against these capabilities before
+submitting the command. If this node cannot route the requested entity kind or singleton, the HTTP request is rejected;
+after the check passes, `ScriptRuntime` performs the actual cluster routing.
+
 Inspect the endpoint description first after logging into a node:
 
 ```bash
@@ -310,6 +343,7 @@ Available endpoints include:
 
 - `GET /ops`: returns auth headers, limits, endpoint list, and request examples.
 - `GET /ops/health`: health check for the local endpoint.
+- `GET /ops/scripts/targets`: returns entity kinds and singletons routable from this node's script runtime.
 - `POST /ops/scripts/execute`: execute a script and return a batch result.
 - `POST /ops/scripts/jobs`: submit an asynchronous script job.
 - `GET /ops/scripts/jobs`, `GET /ops/scripts/jobs/{jobId}`, `GET /ops/scripts/jobs/{jobId}/summary`,

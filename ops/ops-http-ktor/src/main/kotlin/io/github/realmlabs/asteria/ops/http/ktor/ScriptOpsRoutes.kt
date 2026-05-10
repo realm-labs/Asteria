@@ -1,13 +1,15 @@
 package io.github.realmlabs.asteria.ops.http.ktor
 
+import io.github.realmlabs.asteria.cluster.pekko.EntityShardRegistry
+import io.github.realmlabs.asteria.cluster.pekko.SingletonActorRegistry
 import io.github.realmlabs.asteria.core.ServiceRegistry
 import io.github.realmlabs.asteria.script.ScriptRuntime
+import io.github.realmlabs.asteria.script.ScriptTarget
 import io.github.realmlabs.asteria.script.job.*
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receive
-import io.ktor.server.response.respond
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -17,6 +19,17 @@ fun Route.scriptOpsRoutes(
     tokenValidator: NodeLocalOpsTokenValidator,
 ) {
     route("/ops/scripts") {
+        get("/targets") {
+            val result = call.executeOpsAction(
+                action = "ops.script.targets",
+                options = options,
+                tokenValidator = tokenValidator,
+            ) {
+                services.currentScriptTargetCapabilities()
+            }
+            call.respond(result)
+        }
+
         post("/execute") {
             val result = call.executeOpsAction(
                 action = "ops.script.execute",
@@ -25,6 +38,7 @@ fun Route.scriptOpsRoutes(
                 mutation = true,
             ) { principal ->
                 val request = call.receiveOpsScriptCommand(principal, options.maxScriptBytes)
+                services.requireScriptTargetRoutable(request.command.target)
                 services.get<ScriptRuntime>().executeAll(
                     command = request.command,
                     timeout = request.timeoutMillis.milliseconds,
@@ -41,6 +55,7 @@ fun Route.scriptOpsRoutes(
                 mutation = true,
             ) { principal ->
                 val request = call.receiveOpsScriptCommand(principal, options.maxScriptBytes)
+                services.requireScriptTargetRoutable(request.command.target)
                 services.get<ScriptJobService>().submit(
                     command = request.command,
                     timeout = request.timeoutMillis.milliseconds,
@@ -223,6 +238,47 @@ fun Route.scriptOpsRoutes(
 
 private fun ApplicationCall.pathParameter(name: String): String {
     return requireNotNull(parameters[name]) { "path parameter $name is required" }
+}
+
+private fun ServiceRegistry.requireScriptTargetRoutable(target: ScriptTarget) {
+    when (target) {
+        ScriptTarget.AllNodes,
+        is ScriptTarget.ActorPath,
+        is ScriptTarget.Node,
+        is ScriptTarget.Role,
+            -> Unit
+
+        is ScriptTarget.Entity -> {
+            val registry = find<EntityShardRegistry>()
+            require(registry?.find(target.kind) != null) {
+                "script entity kind ${target.kind.value} is not routable from this node"
+            }
+        }
+
+        is ScriptTarget.Singleton -> {
+            val registry = find<SingletonActorRegistry>()
+            require(registry?.find(target.name) != null) {
+                "script singleton ${target.name.value} is not routable from this node"
+            }
+        }
+    }
+}
+
+private fun ServiceRegistry.currentScriptTargetCapabilities(): OpsScriptTargetCapabilitiesResponse {
+    return OpsScriptTargetCapabilitiesResponse(
+        entityKinds = find<EntityShardRegistry>()
+            ?.all()
+            ?.keys
+            ?.map { it.value }
+            ?.sorted()
+            .orEmpty(),
+        singletons = find<SingletonActorRegistry>()
+            ?.all()
+            ?.keys
+            ?.map { it.value }
+            ?.sorted()
+            .orEmpty(),
+    )
 }
 
 private suspend inline fun <reified T : Any> ApplicationCall.receiveOrDefault(default: () -> T): T {

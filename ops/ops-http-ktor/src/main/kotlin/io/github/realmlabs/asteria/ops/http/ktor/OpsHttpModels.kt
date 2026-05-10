@@ -46,6 +46,12 @@ data class OpsScriptExecutionRequest(
     }
 }
 
+data class OpsScriptTargetCapabilitiesResponse(
+    val supportedTargetTypes: List<String> = listOf("all-nodes", "role", "nodes", "actor-paths", "entity", "singleton"),
+    val entityKinds: List<String> = emptyList(),
+    val singletons: List<String> = emptyList(),
+)
+
 data class OpsScriptExecutionOptionsRequest(
     val maxConcurrentItems: Int? = null,
 ) {

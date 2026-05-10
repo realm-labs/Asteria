@@ -1,5 +1,7 @@
 package io.github.realmlabs.asteria.gm.script.spring
 
+import io.github.realmlabs.asteria.cluster.pekko.EntityShardRegistry
+import io.github.realmlabs.asteria.cluster.pekko.SingletonActorRegistry
 import io.github.realmlabs.asteria.gm.script.*
 import io.github.realmlabs.asteria.gm.spring.GmEndpointSupport
 import io.github.realmlabs.asteria.gm.spring.GmSpringAutoConfiguration
@@ -26,10 +28,20 @@ import org.springframework.context.annotation.Bean
 class GmScriptSpringAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    fun gmScriptTargetValidator(
-        catalog: ObjectProvider<GmScriptTargetCatalog>,
-    ): GmScriptTargetValidator {
-        return BasicGmScriptTargetValidator(catalog = catalog.ifAvailable)
+    fun gmScriptTargetValidator(): GmScriptTargetValidator {
+        return BasicGmScriptTargetValidator()
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    fun gmScriptRouteRegistryView(
+        entityShards: ObjectProvider<EntityShardRegistry>,
+        singletonActors: ObjectProvider<SingletonActorRegistry>,
+    ): GmScriptRouteRegistryView {
+        return GmScriptRouteRegistryView(
+            entityShards = entityShards.ifAvailable,
+            singletonActors = singletonActors.ifAvailable,
+        )
     }
 
     @Bean
@@ -43,12 +55,12 @@ class GmScriptSpringAutoConfiguration {
     @ConditionalOnMissingBean
     fun gmScriptMetadataProvider(
         engines: ObjectProvider<ScriptEngineRegistry>,
-        catalog: ObjectProvider<GmScriptTargetCatalog>,
+        routeRegistry: GmScriptRouteRegistryView,
         templates: ObjectProvider<GmScriptTemplateCatalog>,
     ): GmScriptMetadataProvider {
         return GmScriptMetadataProvider(
             engineRegistry = engines.ifAvailable,
-            targetCatalog = catalog.ifAvailable,
+            routeRegistry = routeRegistry,
             templateCatalog = templates.ifAvailable,
         )
     }
@@ -61,7 +73,8 @@ class GmScriptSpringAutoConfiguration {
         validator: GmScriptTargetValidator,
         endpointSupport: GmEndpointSupport,
         metadataProvider: GmScriptMetadataProvider,
+        routeRegistry: GmScriptRouteRegistryView,
     ): GmScriptController {
-        return GmScriptController(scripts, validator, endpointSupport, metadataProvider)
+        return GmScriptController(scripts, validator, endpointSupport, metadataProvider, routeRegistry)
     }
 }

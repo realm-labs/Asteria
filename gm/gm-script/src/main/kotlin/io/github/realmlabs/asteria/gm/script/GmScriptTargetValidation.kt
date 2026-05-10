@@ -1,9 +1,5 @@
 package io.github.realmlabs.asteria.gm.script
 
-import io.github.realmlabs.asteria.core.AsteriaApplication
-import io.github.realmlabs.asteria.core.EntityKind
-import io.github.realmlabs.asteria.core.RoleKey
-import io.github.realmlabs.asteria.core.SingletonName
 import io.github.realmlabs.asteria.script.ScriptExecutionCommand
 import io.github.realmlabs.asteria.script.ScriptTarget
 
@@ -65,75 +61,13 @@ class CompositeGmScriptTargetValidator(
 }
 
 /**
- * Cached catalog used by validators to answer existence checks.
- *
- * Returning `null` means the catalog does not know that dimension, so the validator should skip that check. Business
- * modules can implement this against Redis, an in-memory index, or another fast lookup source.
- */
-interface GmScriptTargetCatalog {
-    suspend fun listRoles(): List<String> = emptyList()
-
-    suspend fun listEntityKinds(): List<String> = emptyList()
-
-    suspend fun listSingletons(): List<String> = emptyList()
-
-    suspend fun listNodeAddresses(): List<String> = emptyList()
-
-    suspend fun roleExists(role: RoleKey): Boolean? = null
-
-    suspend fun entityKindExists(kind: EntityKind): Boolean? = null
-
-    suspend fun entityIdExists(kind: EntityKind, id: String): Boolean? = null
-
-    suspend fun singletonExists(name: SingletonName): Boolean? = null
-
-    suspend fun nodeAddressExists(address: String): Boolean? = null
-}
-
-/**
- * Catalog backed by Asteria application specs.
- */
-class ApplicationSpecGmScriptTargetCatalog(
-    private val application: AsteriaApplication,
-) : GmScriptTargetCatalog {
-    override suspend fun roleExists(role: RoleKey): Boolean {
-        return role in application.declaredRoles
-    }
-
-    override suspend fun listRoles(): List<String> {
-        return application.declaredRoles.map { it.value }.sorted()
-    }
-
-    override suspend fun entityKindExists(kind: EntityKind): Boolean {
-        return application.entities.any { it.kind == kind }
-    }
-
-    override suspend fun listEntityKinds(): List<String> {
-        return application.entities.map { it.kind.value }.sorted()
-    }
-
-    override suspend fun singletonExists(name: SingletonName): Boolean {
-        return application.singletons.any { it.name == name }
-    }
-
-    override suspend fun listSingletons(): List<String> {
-        return application.singletons.map { it.name.value }.sorted()
-    }
-}
-
-/**
  * Basic target validator that rejects malformed or risky targets before runtime dispatch.
  */
-class BasicGmScriptTargetValidator(
-    private val catalog: GmScriptTargetCatalog? = null,
-) : GmScriptTargetValidator {
+class BasicGmScriptTargetValidator : GmScriptTargetValidator {
     override suspend fun validate(request: GmScriptTargetValidationRequest): GmScriptTargetValidationResult {
         val reasons = mutableListOf<String>()
         val target = request.command.target
         reasons += target.validateShape()
-        if (catalog != null) {
-            reasons += target.validateCatalog(catalog)
-        }
         return if (reasons.isEmpty()) {
             GmScriptTargetValidationResult.Allowed
         } else {
@@ -152,45 +86,6 @@ class BasicGmScriptTargetValidator(
             is ScriptTarget.Entity -> ids.duplicateReasons("entity ids")
             is ScriptTarget.Node -> addresses.duplicateReasons("node addresses")
         }
-    }
-
-    private suspend fun ScriptTarget.validateCatalog(catalog: GmScriptTargetCatalog): List<String> {
-        val reasons = mutableListOf<String>()
-        when (this) {
-            ScriptTarget.AllNodes,
-                -> Unit
-
-            is ScriptTarget.ActorPath -> Unit
-            is ScriptTarget.Entity -> {
-                if (catalog.entityKindExists(kind) == false) {
-                    reasons += "entity kind ${kind.value} does not exist"
-                }
-                ids.forEach { id ->
-                    if (catalog.entityIdExists(kind, id) == false) {
-                        reasons += "entity ${kind.value}:$id does not exist"
-                    }
-                }
-            }
-
-            is ScriptTarget.Node -> addresses.forEach { address ->
-                if (catalog.nodeAddressExists(address) == false) {
-                    reasons += "node address $address does not exist"
-                }
-            }
-
-            is ScriptTarget.Role -> {
-                if (catalog.roleExists(role) == false) {
-                    reasons += "role ${role.value} does not exist"
-                }
-            }
-
-            is ScriptTarget.Singleton -> {
-                if (catalog.singletonExists(name) == false) {
-                    reasons += "singleton ${name.value} does not exist"
-                }
-            }
-        }
-        return reasons
     }
 
     private fun List<String>.duplicateReasons(name: String): List<String> {

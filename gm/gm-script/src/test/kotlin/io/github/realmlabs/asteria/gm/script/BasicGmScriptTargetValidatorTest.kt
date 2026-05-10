@@ -1,7 +1,6 @@
 package io.github.realmlabs.asteria.gm.script
 
 import io.github.realmlabs.asteria.core.EntityKind
-import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.script.ScriptArtifact
 import io.github.realmlabs.asteria.script.ScriptExecutionCommand
 import io.github.realmlabs.asteria.script.ScriptTarget
@@ -23,18 +22,6 @@ class BasicGmScriptTargetValidatorTest {
         assertEquals(listOf("duplicate entity ids: 1001"), rejected.reasons)
     }
 
-    @Test
-    fun `rejects catalog misses`() = runBlocking {
-        val result = BasicGmScriptTargetValidator(catalog = TestCatalog).validate(
-            request(
-                ScriptTarget.Role(RoleKey("missing-role")),
-            ),
-        )
-
-        val rejected = assertIs<GmScriptTargetValidationResult.Rejected>(result)
-        assertEquals(listOf("role missing-role does not exist"), rejected.reasons)
-    }
-
     private fun request(target: ScriptTarget): GmScriptTargetValidationRequest {
         return GmScriptTargetValidationRequest(
             ScriptExecutionCommand(
@@ -43,11 +30,5 @@ class BasicGmScriptTargetValidatorTest {
                 artifact = ScriptArtifact("test", "test", ByteArray(0)),
             ),
         )
-    }
-
-    private object TestCatalog : GmScriptTargetCatalog {
-        override suspend fun roleExists(role: RoleKey): Boolean {
-            return role.value == "known-role"
-        }
     }
 }

@@ -187,6 +187,20 @@ feature、permission、menu、route 列表。具体业务 API 仍由各 starter 
 `highRisk` 只是元数据标记，不会自动触发审批、MFA 或工单流。生产系统要在 `GmPrincipalResolver`、`GmPolicyEvaluator` 或业务
 controller 中补上这些策略。
 
+## GM 脚本目标能力
+
+GM 节点使用当前节点安装的 `ScriptRuntime` 作为脚本入口。GM 要能路由某类 `entity` 或 `singleton` 脚本，启动时需要配置对应的
+shard region/proxy 或 singleton/proxy；它们会注册到 `EntityShardRegistry` 和 `SingletonActorRegistry`。
+
+`GET /gm/api/scripts/metadata` 返回可用 engine、target type，以及当前 GM 节点 registry 中的 `entityKinds` 和 `singletons`
+。前端可以直接根据
+这些值展示可选的 actor 类型。actor path 是调用者显式传入的路径，不在 metadata 中额外登记。
+
+提交脚本和重试单个 item 时，GM HTTP 会先检查 entity kind 或 singleton 是否能从当前 GM 节点路由；通过检查后，命令才会交给
+`ScriptRuntime` 做实际集群路由。玩家是否存在、world 是否启动、guild 是否有效等业务规则仍由业务自己的
+`GmScriptTargetValidator`
+实现。
+
 ## 停服编排
 
 `gm-shutdown` 提供业务侧 graceful shutdown 的通用编排框架：plan 按 phase 顺序执行，每个 phase 内按 step 顺序执行。框架只记录
@@ -263,6 +277,22 @@ multipart form
 `ScriptAuditSink` 和
 `ScriptJobAuditSink` 决定。
 
+OPS HTTP 可以查询当前节点的脚本路由能力：
+
+```bash
+curl http://127.0.0.1:17321/ops/scripts/targets \
+  -H "Authorization: Bearer $(cat /var/lib/asteria/ops-token)" \
+  -H "X-Asteria-Operator: mikai"
+```
+
+返回的 `entityKinds` 来自当前节点注册的 `EntityShardRegistry`，`singletons` 来自 `SingletonActorRegistry`。也就是说，一个
+player
+节点通常会显示它能路由 `player` entity；一个 global 节点通常会显示它能路由对应的 singleton/proxy。actor path 是显式路径，
+不在这个接口里额外登记或限制。
+
+`POST /ops/scripts/execute` 和 `POST /ops/scripts/jobs` 会先检查 entity kind 或 singleton 是否能从当前节点路由；通过检查后，
+命令才会交给 `ScriptRuntime` 做实际集群路由。
+
 上机器后可以先查看接口自描述：
 
 ```bash
@@ -287,6 +317,7 @@ groovy/jar、是否要求签名/审批/权限仍由业务安装的 `ScriptPolicy
 
 - `GET /ops`：返回认证头、限制、接口列表和请求示例。
 - `GET /ops/health`：本地入口健康检查。
+- `GET /ops/scripts/targets`：返回当前节点脚本运行时可路由的 entity kind 和 singleton。
 - `POST /ops/scripts/execute`：同步执行脚本并返回批量结果。
 - `POST /ops/scripts/jobs`：提交异步脚本任务。
 - `GET /ops/scripts/jobs`、`GET /ops/scripts/jobs/{jobId}`、`GET /ops/scripts/jobs/{jobId}/summary`、

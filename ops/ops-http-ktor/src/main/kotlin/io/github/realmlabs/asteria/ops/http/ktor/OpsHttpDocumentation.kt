@@ -80,6 +80,11 @@ fun nodeLocalOpsDescription(options: NodeLocalOpsHttpOptions): OpsHttpDescriptio
             OpsHttpEndpointDescription("GET", "/ops", "Returns this endpoint description."),
             OpsHttpEndpointDescription("GET", "/ops/health", "Returns basic service health."),
             OpsHttpEndpointDescription(
+                "GET",
+                "/ops/scripts/targets",
+                "Returns the script targets this node's script runtime can route.",
+            ),
+            OpsHttpEndpointDescription(
                 "POST",
                 "/ops/scripts/execute",
                 "Executes a script and returns a batch result. Accepts JSON or multipart/form-data.",
@@ -141,6 +146,13 @@ fun nodeLocalOpsDescription(options: NodeLocalOpsHttpOptions): OpsHttpDescriptio
                 "body" to mapOf(
                     "target" to mapOf("type" to "entity", "kind" to "player", "ids" to listOf("1001")),
                     "artifact" to mapOf("engine" to "groovy", "bodyText" to "context.actor.repairPlayer('1001')"),
+                ),
+            ),
+            "listScriptTargets" to mapOf(
+                "command" to listOf(
+                    "curl http://127.0.0.1:17321/ops/scripts/targets",
+                    "-H 'Authorization: Bearer <token>'",
+                    "-H 'X-Asteria-Operator: mikai'",
                 ),
             ),
             "executeGroovyFile" to mapOf(
@@ -228,6 +240,31 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
                 OpsHttpFieldDescription("kind", "string", false, "Required when type is entity."),
                 OpsHttpFieldDescription("ids", "string[]", false, "Required when type is entity."),
                 OpsHttpFieldDescription("name", "string", false, "Required when type is singleton."),
+            ),
+        ),
+        "OpsScriptTargetCapabilitiesResponse" to OpsHttpSchemaDescription(
+            description = "Current node script routing capabilities returned by /ops/scripts/targets.",
+            fields = listOf(
+                OpsHttpFieldDescription(
+                    "supportedTargetTypes",
+                    "string[]",
+                    true,
+                    "Target types supported by the installed script runtime.",
+                ),
+                OpsHttpFieldDescription(
+                    "entityKinds",
+                    "string[]",
+                    false,
+                    "Entity kinds this node can route through a shard region or proxy.",
+                    "[]",
+                ),
+                OpsHttpFieldDescription(
+                    "singletons",
+                    "string[]",
+                    false,
+                    "Singleton names this node can route through a singleton actor or proxy.",
+                    "[]",
+                ),
             ),
         ),
         "OpsScriptArtifactRequest" to OpsHttpSchemaDescription(
