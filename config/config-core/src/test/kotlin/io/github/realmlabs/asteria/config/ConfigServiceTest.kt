@@ -31,6 +31,30 @@ class ConfigServiceTest {
     }
 
     @Test
+    fun `reload rejects component dependency on missing table`() = runBlocking {
+        val service = ConfigService(
+            loader = { DefaultConfigSnapshot(ConfigRevision("v1")) },
+            componentBuilders = listOf(
+                configComponentBuilder(
+                    name = "missing-table-component",
+                    dependencies = setOf(ConfigTableName("missing")),
+                ) {
+                    GeneratedTables("unused")
+                },
+            ),
+        )
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.reload()
+        }
+
+        assertEquals(
+            "config component missing-table-component depends on missing tables: missing",
+            error.message,
+        )
+    }
+
+    @Test
     fun `map config table exposes read only map api`() {
         val table = mapConfigTable(
             ref = TestConfigTables.Items,

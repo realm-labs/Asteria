@@ -189,10 +189,22 @@ class ConfigService(
         if (componentBuilders.isEmpty()) {
             return snapshot
         }
+        validateComponentDependencies(snapshot)
         val components = componentBuilders.map { builder ->
             BuiltConfigComponent(builder.type, builder.build(snapshot))
         }
         return RuntimeComponentConfigSnapshot(snapshot, components)
+    }
+
+    private fun validateComponentDependencies(snapshot: ConfigSnapshot) {
+        for (builder in componentBuilders) {
+            val missing = builder.dependencies
+                .filter { snapshot.table(it) == null }
+                .map { it.value }
+            require(missing.isEmpty()) {
+                "config component ${builder.name} depends on missing tables: ${missing.joinToString()}"
+            }
+        }
     }
 
     /**

@@ -28,7 +28,18 @@ data class ConfigPublicationComponentManifest(
     val name: String,
     val type: String,
     val dependencies: List<String>,
-)
+) {
+    init {
+        require(name.isNotBlank()) { "config publication component name must not be blank" }
+        require(type.isNotBlank()) { "config publication component type must not be blank" }
+        require(dependencies.all { it.isNotBlank() }) {
+            "config publication component dependency must not be blank"
+        }
+        require(dependencies.distinct().size == dependencies.size) {
+            "config publication component dependencies must not contain duplicates"
+        }
+    }
+}
 
 /**
  * Pointer stored at the layout's current path after all artifacts and the manifest have been uploaded.
