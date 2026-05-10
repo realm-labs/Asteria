@@ -120,6 +120,10 @@ entity；
 `Singleton` 通过 `SingletonActorRegistry` 发送。`executeAll` 会创建临时 collector，在 timeout
 前收集返回结果；目标不存在或响应太慢时可能得到部分结果或空结果。
 
+安装了 `ClusterViewService` 时，`executeAll` 还会填写 `ScriptExecutionBatchResult.expectedTargets` 和
+`missingTargets`。`AllNodes` 和 `Role` 会根据集群视图展开，包括配置中存在但当前不可达的节点；`Node`、`ActorPath`、`Entity`
+和 `Singleton` 直接根据命令目标展开。只要存在 missing target，即使已经返回的结果都是成功，整个 batch 也会判定为失败。
+
 业务 actor 需要实现脚本执行入口，通常是在 actor 内组合 `ActorScriptSupport`，并把 `ActorScriptSupport.receive()` 合并进允许执行脚本的 receive 状态。
 
 `ScriptModule` 的 `allowNodeScripts` 和 `allowActorScripts` 默认都是 `false`。没有显式开启时，对应目标会被默认策略拒绝。目标

@@ -1,10 +1,19 @@
 package io.github.realmlabs.asteria.script.pekko
 
+import io.github.realmlabs.asteria.cluster.config.ClusterViewNode
+import io.github.realmlabs.asteria.cluster.config.ClusterViewNodeStatus
+import io.github.realmlabs.asteria.cluster.config.ClusterViewService
+import io.github.realmlabs.asteria.cluster.config.ClusterViewSnapshot
 import io.github.realmlabs.asteria.cluster.pekko.LocalPekkoClusterStartup
 import io.github.realmlabs.asteria.cluster.pekko.PekkoRuntimeModule
+import io.github.realmlabs.asteria.core.AsteriaModule
+import io.github.realmlabs.asteria.core.ModuleContext
+import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.core.gameApplication
 import io.github.realmlabs.asteria.script.*
 import kotlinx.coroutines.runBlocking
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.cluster.Cluster
 import kotlin.io.path.createTempDirectory
 import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
@@ -75,6 +84,72 @@ class ScriptModuleTest {
             assertEquals(
                 listOf(ScriptExecutionResult(command.executionId, success = true, target = "echo")),
                 batch.results
+            )
+        } finally {
+            app.stop()
+        }
+    }
+
+    @Test
+    fun batchResultReportsMissingClusterViewTargets() = runBlocking {
+        val clusterView = MutableClusterViewService()
+        val app = gameApplication {
+            name = "asteria-script-missing-target-test-${System.nanoTime()}"
+            role("script-test")
+            install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
+            install(ClusterViewTestModule(clusterView))
+            install(
+                ScriptModule {
+                    allowNodeScripts = true
+                    engine(DefaultResultScriptEngine)
+                },
+            )
+        }
+
+        try {
+            app.launch()
+            val system = app.services.get<ActorSystem>()
+            val selfAddress = Cluster.get(system).selfAddress().toString()
+            val missingAddress = "pekko://missing@127.0.0.1:2552"
+            clusterView.nodes = listOf(
+                ClusterViewNode(
+                    nodeId = "self",
+                    address = selfAddress,
+                    appName = app.name,
+                    version = null,
+                    roles = setOf(RoleKey("script-test")),
+                    status = ClusterViewNodeStatus.Reachable,
+                ),
+                ClusterViewNode(
+                    nodeId = "missing",
+                    address = missingAddress,
+                    appName = app.name,
+                    version = null,
+                    roles = setOf(RoleKey("script-test")),
+                    status = ClusterViewNodeStatus.Expected,
+                ),
+            )
+            val scriptRuntime = app.services.find<ScriptRuntime>()
+            assertNotNull(scriptRuntime)
+
+            val command = ScriptExecutionCommand(
+                executionId = "test-script",
+                target = ScriptTarget.AllNodes,
+                artifact = ScriptArtifact("default", DefaultResultScriptEngine.name, ByteArray(0)),
+            )
+            val batch = scriptRuntime.executeAll(command, 200.milliseconds)
+
+            assertFalse(batch.success)
+            assertEquals(
+                listOf(
+                    ScriptExecutionTarget(ScriptExecutionTargetType.Node, selfAddress),
+                    ScriptExecutionTarget(ScriptExecutionTargetType.Node, missingAddress),
+                ),
+                batch.expectedTargets,
+            )
+            assertEquals(
+                listOf(ScriptExecutionTarget(ScriptExecutionTargetType.Node, missingAddress)),
+                batch.missingTargets,
             )
         } finally {
             app.stop()
@@ -195,6 +270,14 @@ private object EchoScriptEngine : ScriptEngine {
     }
 }
 
+private object DefaultResultScriptEngine : ScriptEngine {
+    override val name: String = "default-result"
+
+    override fun compile(artifact: ScriptArtifact): CompiledScript {
+        return CompiledScript { null }
+    }
+}
+
 private class CountingScriptEngine : ScriptEngine {
     override val name: String = "counting"
     var executions: Int = 0
@@ -205,6 +288,24 @@ private class CountingScriptEngine : ScriptEngine {
             executions += 1
             ScriptExecutionResult("idempotent-script", success = true, target = name)
         }
+    }
+}
+
+private class MutableClusterViewService : ClusterViewService {
+    var nodes: List<ClusterViewNode> = emptyList()
+
+    override suspend fun snapshot(): ClusterViewSnapshot {
+        return ClusterViewSnapshot(nodes)
+    }
+}
+
+private class ClusterViewTestModule(
+    private val view: ClusterViewService,
+) : AsteriaModule {
+    override val name: String = "cluster-view-test"
+
+    override suspend fun install(context: ModuleContext) {
+        context.services.register(ClusterViewService::class, view)
     }
 }
 

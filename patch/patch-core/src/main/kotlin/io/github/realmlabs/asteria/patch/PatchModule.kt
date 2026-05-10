@@ -4,11 +4,19 @@ import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
 import io.github.realmlabs.asteria.observability.metricsOrNoop
 import io.github.realmlabs.asteria.observability.tracerOrNoop
+import kotlinx.coroutines.*
+import org.slf4j.LoggerFactory
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 
 class PatchModule private constructor(
     private val options: PatchModuleOptions,
 ) : AsteriaModule {
     override val name: String = "patch"
+
+    private val logger = LoggerFactory.getLogger(PatchModule::class.java)
+    private var scope: CoroutineScope? = null
+    private var reconcileJob: Job? = null
 
     override suspend fun install(context: ModuleContext) {
         val runtime = PatchRuntime(context.runtime, context.tracerOrNoop(), context.metricsOrNoop())
@@ -44,6 +52,37 @@ class PatchModule private constructor(
         if (options.applyOnStart) {
             service.reconcileEnabledPatches()
         }
+        startPeriodicReconcile(service)
+    }
+
+    override suspend fun stop(context: ModuleContext) {
+        reconcileJob?.cancelAndJoin()
+        reconcileJob = null
+        scope?.cancel()
+        scope = null
+    }
+
+    private fun startPeriodicReconcile(service: PatchApplicationService) {
+        val interval = options.reconcileInterval ?: return
+        scope = CoroutineScope(Dispatchers.Default + SupervisorJob()).also { scope ->
+            reconcileJob = scope.launch {
+                while (isActive) {
+                    delay(interval)
+                    try {
+                        val report = service.reconcileEnabledPatches()
+                        logger.debug(
+                            "periodic patch reconcile completed applied={} removed={}",
+                            report.appliedCount,
+                            report.removedCount,
+                        )
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        logger.warn("periodic patch reconcile failed; retrying after {}", interval, error)
+                    }
+                }
+            }
+        }
     }
 
     companion object {
@@ -58,6 +97,7 @@ class PatchModule private constructor(
                     nodeClient = null,
                     applyOnStart = true,
                     expireIncompatibleOnStart = true,
+                    reconcileInterval = DEFAULT_RECONCILE_INTERVAL,
                 ),
             )
         }
@@ -77,6 +117,7 @@ data class PatchModuleOptions(
     val nodeClient: PatchNodeClient?,
     val applyOnStart: Boolean,
     val expireIncompatibleOnStart: Boolean,
+    val reconcileInterval: Duration?,
 )
 
 class PatchModuleBuilder {
@@ -88,6 +129,7 @@ class PatchModuleBuilder {
     private var nodeClient: PatchNodeClient? = null
     var applyOnStart: Boolean = true
     var expireIncompatibleOnStart: Boolean = true
+    var reconcileInterval: Duration? = DEFAULT_RECONCILE_INTERVAL
 
     fun repository(repository: RuntimePatchRepository) {
         this.repository = repository
@@ -110,6 +152,9 @@ class PatchModuleBuilder {
     }
 
     internal fun build(): PatchModuleOptions {
+        reconcileInterval?.let {
+            require(it > Duration.ZERO) { "patch reconcile interval must be positive" }
+        }
         return PatchModuleOptions(
             environment = requireNotNull(environment) { "patch environment must be configured" },
             repository = repository,
@@ -119,6 +164,9 @@ class PatchModuleBuilder {
             nodeClient = nodeClient,
             applyOnStart = applyOnStart,
             expireIncompatibleOnStart = expireIncompatibleOnStart,
+            reconcileInterval = reconcileInterval,
         )
     }
 }
+
+private val DEFAULT_RECONCILE_INTERVAL: Duration = 1.minutes

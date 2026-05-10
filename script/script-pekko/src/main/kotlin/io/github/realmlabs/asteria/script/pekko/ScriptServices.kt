@@ -1,6 +1,8 @@
 package io.github.realmlabs.asteria.script.pekko
 
 import io.github.realmlabs.asteria.actor.ask
+import io.github.realmlabs.asteria.cluster.config.ClusterViewNodeStatus
+import io.github.realmlabs.asteria.cluster.config.ClusterViewService
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.TraceAttributes
@@ -24,6 +26,7 @@ class PekkoScriptRuntime(
     private val system: ActorSystem,
     private val tracer: Tracer,
     private val metrics: Metrics,
+    private val clusterView: ClusterViewService? = null,
 ) : ScriptRuntime {
     override suspend fun execute(command: ScriptExecutionCommand, timeout: Duration): ScriptExecutionResult {
         require(command.target.resultCountHint() == 1) { "multi-target script execution requires executeAll" }
@@ -49,7 +52,13 @@ class PekkoScriptRuntime(
             metrics.counter("asteria.script.execution.batch.total", command.metricTags()).increment()
             metrics.timer("asteria.script.execution.batch.duration", command.metricTags()).record {
                 val results = system.collectScriptResults(actor, command, timeout).await()
-                ScriptExecutionBatchResult(command.executionId, results)
+                val expectedTargets = command.expectedTargets()
+                ScriptExecutionBatchResult(
+                    executionId = command.executionId,
+                    results = results,
+                    expectedTargets = expectedTargets,
+                    missingTargets = expectedTargets.filterNot { expected -> results.any { it.matches(expected) } },
+                )
             }
         }
     }
@@ -72,6 +81,48 @@ class PekkoScriptRuntime(
             "target" to target.javaClass.simpleName,
             "engine" to artifact.engine,
         )
+    }
+
+    private suspend fun ScriptExecutionCommand.expectedTargets(): List<ScriptExecutionTarget> {
+        return when (val target = target) {
+            ScriptTarget.AllNodes -> clusterViewNodes()
+            is ScriptTarget.ActorPath -> target.paths.map {
+                ScriptExecutionTarget(ScriptExecutionTargetType.ActorPath, it)
+            }
+
+            is ScriptTarget.Entity -> target.ids.map {
+                ScriptExecutionTarget(ScriptExecutionTargetType.Entity, "${target.kind.value}:$it")
+            }
+
+            is ScriptTarget.Node -> target.addresses.map {
+                ScriptExecutionTarget(ScriptExecutionTargetType.Node, it)
+            }
+
+            is ScriptTarget.Role -> clusterViewNodes(role = target.role.value)
+            is ScriptTarget.Singleton -> listOf(
+                ScriptExecutionTarget(ScriptExecutionTargetType.Singleton, target.name.value),
+            )
+        }.distinct()
+    }
+
+    private suspend fun clusterViewNodes(role: String? = null): List<ScriptExecutionTarget> {
+        val view = clusterView ?: return emptyList()
+        return view.snapshot().nodes.asSequence()
+            .filter { it.status != ClusterViewNodeStatus.Removed }
+            .filter { role == null || it.roles.any { nodeRole -> nodeRole.value == role } }
+            .mapNotNull { node -> node.address }
+            .map { ScriptExecutionTarget(ScriptExecutionTargetType.Node, it) }
+            .distinct()
+            .toList()
+    }
+
+    private fun ScriptExecutionResult.matches(expected: ScriptExecutionTarget): Boolean {
+        return when (expected.type) {
+            ScriptExecutionTargetType.Node -> nodeAddress == expected.value || target == expected.value
+            ScriptExecutionTargetType.ActorPath -> actorPath == expected.value || target == expected.value
+            ScriptExecutionTargetType.Entity -> target == expected.value || target == expected.value.substringAfter(':')
+            ScriptExecutionTargetType.Singleton -> target == expected.value
+        }
     }
 }
 

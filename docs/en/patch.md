@@ -33,6 +33,7 @@ install(PatchModule {
     resolver(JarRuntimePatchPluginResolver(artifactStore))
     applyOnStart = true
     expireIncompatibleOnStart = true
+  reconcileInterval = 1.minutes
 })
 ```
 
@@ -70,6 +71,11 @@ current `PatchEnvironment` are selected, converted into `RuntimePatch(id, revisi
 restart, GM does not
 need to push patches again; if the repository and artifact store are durable, the node reloads enabled metadata and
 restores patch layers from the stored jars.
+`PatchModule` also runs node-local desired-state reconciliation periodically according to `reconcileInterval`; the
+default is one minute, and `null` disables it. Periodic reconciliation compensates for nodes that were absent from the
+active member view during apply, transient network failures, and nodes that recover after the initial apply attempt.
+When the runtime provides `ClusterViewService`, Pekko patch control uses that view as the target node source. Configured
+nodes that are currently not reachable are recorded as `Unreachable` instead of being silently skipped.
 
 Patch precedence is defined by the repository-assigned `revision`. Business code does not need to provide an ordering
 field. `RuntimePatchRepository.save` assigns a revision for new descriptors and assigns a new revision again when an

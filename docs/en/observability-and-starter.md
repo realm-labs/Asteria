@@ -71,7 +71,8 @@ not handle network protocol decoding, authentication, authorization, or actor bu
 ## Patch Starter
 
 `runtimePatches { ... }` is a convenience DSL for `PatchModule`. Production deployments should still explicitly
-configure repositories, artifact stores, and cluster-control implementations.
+configure repositories, artifact stores, and cluster-control implementations. The starter enables node-local periodic
+patch reconciliation by default; set `reconcileInterval = null` to disable the background desired-state check.
 
 ## Utils Game
 

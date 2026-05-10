@@ -30,6 +30,7 @@ install(PatchModule {
     resolver(JarRuntimePatchPluginResolver(artifactStore))
     applyOnStart = true
     expireIncompatibleOnStart = true
+    reconcileInterval = 1.minutes
 })
 ```
 
@@ -64,6 +65,10 @@ desired-state reconcile：repository 中 `Enabled` 且匹配当前 `PatchEnviron
 `id/revision` 的 `RuntimePatch` 交给节点本地 `PatchRuntime` 执行。`PatchRuntime` 只处理已经筛选过的 patch
 execution。节点重启后不依赖
 GM 推送，只要 repository 和 artifact store 是持久化的，就能从 enabled metadata 重新加载 jar 并恢复 patch layer。
+`PatchModule` 还会按 `reconcileInterval` 周期性执行本节点 desired-state reconcile；默认 1 分钟，设置为 `null`
+可以关闭。周期 reconcile 用于补偿 apply 时不在 active member 视图里的节点、短暂网络故障和节点恢复后的状态对齐。
+如果运行时提供 `ClusterViewService`，Pekko patch 控制会优先用集群视图作为目标节点来源；配置中存在但当前不可达的节点会记录为
+`Unreachable`，不会被静默跳过。
 
 补丁覆盖顺序由 repository 分配的 `revision` 决定。业务创建 descriptor 时不需要填写顺序字段；保存新 descriptor 或替换已有
 descriptor 时，repository 会分配新的递增 revision。多个 patch 替换同一个 handler 或 service 时，revision 更新的 patch 覆盖旧

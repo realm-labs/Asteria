@@ -1,5 +1,6 @@
 package io.github.realmlabs.asteria.script.pekko
 
+import io.github.realmlabs.asteria.cluster.config.ClusterViewService
 import io.github.realmlabs.asteria.core.AsteriaDsl
 import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
@@ -49,6 +50,7 @@ class ScriptModule private constructor(
             system = system,
             tracer = context.services.find<Tracer>() ?: NoopTracer,
             metrics = context.services.find<Metrics>() ?: NoopMetrics,
+            clusterView = context.services.find<ClusterViewService>(),
         )
         context.services.register(PekkoScriptRuntime::class, runtime)
         context.services.register(ScriptRuntime::class, runtime)

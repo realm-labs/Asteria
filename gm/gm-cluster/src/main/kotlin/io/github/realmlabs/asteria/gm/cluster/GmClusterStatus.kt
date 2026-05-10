@@ -1,6 +1,8 @@
 package io.github.realmlabs.asteria.gm.cluster
 
 import io.github.realmlabs.asteria.cluster.config.ClusterTopologyProvider
+import io.github.realmlabs.asteria.cluster.config.ClusterViewNode
+import io.github.realmlabs.asteria.cluster.config.ClusterViewService
 
 /**
  * Runtime-facing cluster status exposed to GM tools.
@@ -45,6 +47,32 @@ data class GmClusterNode(
  */
 fun interface GmClusterStatusService {
     suspend fun current(): GmClusterStatus
+}
+
+class ClusterViewGmClusterStatusService(
+    private val view: ClusterViewService,
+) : GmClusterStatusService {
+    override suspend fun current(): GmClusterStatus {
+        return GmClusterStatus(
+            nodes = view.snapshot().nodes.map { it.toGmClusterNode() },
+        )
+    }
+}
+
+private fun ClusterViewNode.toGmClusterNode(): GmClusterNode {
+    return GmClusterNode(
+        nodeId = nodeId,
+        address = address ?: nodeId ?: "unknown",
+        status = status.name,
+        roles = roles.mapTo(linkedSetOf()) { it.value },
+        attributes = attributes + mapOf(
+            "appName" to appName,
+            "configured" to configured.toString(),
+        ) + listOfNotNull(
+            version?.let { "version" to it },
+            lastSeenAt?.let { "lastSeenAt" to it.toString() },
+        ),
+    )
 }
 
 /**

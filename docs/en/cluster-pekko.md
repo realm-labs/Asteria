@@ -108,6 +108,19 @@ install(PekkoEntityWakerModule {
 The source returns the full current target set, not a delta. After config reload, the coordinator reconciles the source
 and queues only new or still-unfinished targets.
 
+## Cluster View
+
+`cluster-config` provides `ClusterViewService`, which describes the nodes expected by configuration or service
+discovery together with their current runtime status. When `ClusterTopology` is available, the Pekko runtime registers
+`PekkoClusterViewService` and merges configured topology with the current Pekko member view:
+
+- Configured nodes that are visible as current members are marked `Reachable`.
+- Configured nodes that are not visible as current members still appear in the snapshot and are marked `Expected`.
+- Current members that are not in configuration also appear with `configured=false`.
+
+This view is the shared input for GM cluster status, script target planning, and patch target planning. Pekko active
+members only describe what the runtime currently sees; they do not replace the global expected node list.
+
 ## GM Control
 
 The entity waker exposes control APIs for GM and operations tools:

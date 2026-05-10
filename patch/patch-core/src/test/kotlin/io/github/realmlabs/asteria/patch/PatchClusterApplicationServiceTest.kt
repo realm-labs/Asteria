@@ -51,6 +51,38 @@ class PatchClusterApplicationServiceTest {
     }
 
     @Test
+    fun clusterApplicationRecordsUnreachableExpectedNodesWithoutCallingClient() = runBlocking {
+        val patch = patch(
+            id = "player-fix",
+            target = PatchTarget.Roles(setOf(RoleKey("player"))),
+        )
+        var calls = 0
+        val service = PatchClusterApplicationService(
+            repository = InMemoryRuntimePatchRepository(listOf(patch)),
+            nodes = PatchNodeProvider {
+                listOf(
+                    node(
+                        nodeId = "player-1",
+                        address = "pekko://game@127.0.0.1:2551",
+                        role = "player",
+                        status = PatchNodeStatus.Unreachable,
+                    ),
+                )
+            },
+            client = nodeClient { _, patchId ->
+                calls += 1
+                PatchApplyResult.Applied(patchId, operationCount = 1)
+            },
+        )
+
+        val applied = service.apply(patch.id)
+
+        assertEquals(false, applied.succeeded)
+        assertEquals(0, calls)
+        assertEquals(RuntimePatchNodeStatus.Unreachable, applied.results.single().status)
+    }
+
+    @Test
     fun clusterDisableRecordsRemovedNodes() = runBlocking {
         val patch = patch("disable")
         val service = PatchClusterApplicationService(
@@ -83,6 +115,7 @@ class PatchClusterApplicationServiceTest {
         nodeId: String,
         address: String,
         role: String,
+        status: PatchNodeStatus = PatchNodeStatus.Reachable,
     ): PatchNode {
         return PatchNode(
             nodeId = nodeId,
@@ -90,6 +123,7 @@ class PatchClusterApplicationServiceTest {
             appName = "game",
             version = "1.0.0",
             roles = setOf(RoleKey(role)),
+            status = status,
         )
     }
 

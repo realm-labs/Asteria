@@ -131,6 +131,11 @@ selection messages one by one; `Entity` routes through `EntityShardRegistry`; `S
 `SingletonActorRegistry`. `executeAll` installs a temporary collector and returns results received before the timeout,
 so missing targets or slow replies may produce partial or empty batches.
 
+When `ClusterViewService` is installed, `executeAll` also fills `ScriptExecutionBatchResult.expectedTargets` and
+`missingTargets`. `AllNodes` and `Role` are expanded from the cluster view, including configured nodes that are not
+currently reachable; `Node`, `ActorPath`, `Entity`, and `Singleton` are expanded from the command target itself. A batch
+with missing targets is failed even if all returned results are successful.
+
 Business actors must expose a script execution entry point, usually by composing `ActorScriptSupport` and merging
 `ActorScriptSupport.receive()` into the receive states that should accept scripts.
 

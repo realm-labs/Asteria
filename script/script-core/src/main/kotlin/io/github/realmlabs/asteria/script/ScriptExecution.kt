@@ -58,12 +58,33 @@ data class ScriptExecutionResult(
     val actorPath: String? = null,
 )
 
+/**
+ * One target that a batch execution expected to acknowledge.
+ */
+data class ScriptExecutionTarget(
+    val type: ScriptExecutionTargetType,
+    val value: String,
+) {
+    init {
+        require(value.isNotBlank()) { "script execution target value must not be blank" }
+    }
+}
+
+enum class ScriptExecutionTargetType {
+    Node,
+    ActorPath,
+    Entity,
+    Singleton,
+}
+
 data class ScriptExecutionBatchResult(
     val executionId: String,
     val results: List<ScriptExecutionResult>,
+    val expectedTargets: List<ScriptExecutionTarget> = emptyList(),
+    val missingTargets: List<ScriptExecutionTarget> = emptyList(),
 ) {
     /**
      * Empty batches are not considered successful; they usually mean no target acknowledged the execution.
      */
-    val success: Boolean get() = results.isNotEmpty() && results.all { it.success }
+    val success: Boolean get() = results.isNotEmpty() && results.all { it.success } && missingTargets.isEmpty()
 }

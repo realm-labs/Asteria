@@ -6,6 +6,7 @@ import io.github.realmlabs.asteria.patch.jar.JarRuntimePatchPluginResolver
 import io.github.realmlabs.asteria.patch.pekko.PekkoPatchControlModule
 import java.nio.file.Path
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -23,6 +24,7 @@ fun AsteriaApplicationBuilder.runtimePatches(
     cacheDirectory: Path? = null,
     applyOnStart: Boolean = true,
     expireIncompatibleOnStart: Boolean = true,
+    reconcileInterval: Duration? = 1.minutes,
     controlTimeout: Duration = 10.seconds,
 ) {
     install(
@@ -33,6 +35,7 @@ fun AsteriaApplicationBuilder.runtimePatches(
             resolver(JarRuntimePatchPluginResolver(artifactStore, cacheDirectory = cacheDirectory))
             this.applyOnStart = applyOnStart
             this.expireIncompatibleOnStart = expireIncompatibleOnStart
+            this.reconcileInterval = reconcileInterval
         },
     )
     install(PekkoPatchControlModule(controlTimeout))

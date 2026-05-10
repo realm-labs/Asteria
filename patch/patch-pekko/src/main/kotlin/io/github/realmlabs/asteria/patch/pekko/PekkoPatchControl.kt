@@ -1,5 +1,8 @@
 package io.github.realmlabs.asteria.patch.pekko
 
+import io.github.realmlabs.asteria.cluster.config.ClusterViewNode
+import io.github.realmlabs.asteria.cluster.config.ClusterViewNodeStatus
+import io.github.realmlabs.asteria.cluster.config.ClusterViewService
 import io.github.realmlabs.asteria.cluster.config.RuntimeNodeConfig
 import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
@@ -30,7 +33,10 @@ class PekkoPatchControlModule(
 
     override suspend fun start(context: ModuleContext) {
         val system = context.services.get<ActorSystem>()
-        val nodeProvider = PekkoPatchNodeProvider(system, timeout)
+        val service = context.services.find<PatchApplicationService>()
+        val nodeProvider = context.services.find<ClusterViewService>()
+            ?.let { ClusterViewPatchNodeProvider(it, service?.environment) }
+            ?: PekkoPatchNodeProvider(system, timeout)
         val nodeClient = PekkoPatchNodeClient(system, timeout)
 
         context.services.register(PatchNodeProvider::class, nodeProvider)
@@ -48,7 +54,7 @@ class PekkoPatchControlModule(
             )
         }
 
-        val service = context.services.find<PatchApplicationService>() ?: return
+        service ?: return
         val node = context.services.find<RuntimeNodeConfig>()
         localActor = system.actorOf(
             PekkoPatchControlActor.props(service, node),
@@ -60,6 +66,39 @@ class PekkoPatchControlModule(
         val actor = localActor ?: return
         context.services.get<ActorSystem>().stop(actor)
         localActor = null
+    }
+}
+
+class ClusterViewPatchNodeProvider(
+    private val view: ClusterViewService,
+    private val fallbackEnvironment: PatchEnvironment? = null,
+) : PatchNodeProvider {
+    override suspend fun nodes(): List<PatchNode> {
+        return view.snapshot().nodes
+            .filter { it.status != ClusterViewNodeStatus.Removed }
+            .mapNotNull { node -> node.toPatchNode() }
+            .sortedBy { it.address }
+    }
+
+    private fun ClusterViewNode.toPatchNode(): PatchNode? {
+        val address = address ?: nodeId?.let { "node:$it" } ?: return null
+        return PatchNode(
+            nodeId = nodeId,
+            address = address,
+            appName = appName,
+            version = version ?: fallbackEnvironment?.version ?: return null,
+            roles = roles,
+            status = status.toPatchNodeStatus(),
+        )
+    }
+
+    private fun ClusterViewNodeStatus.toPatchNodeStatus(): PatchNodeStatus {
+        return when (this) {
+            ClusterViewNodeStatus.Reachable -> PatchNodeStatus.Reachable
+            ClusterViewNodeStatus.Expected -> PatchNodeStatus.Expected
+            ClusterViewNodeStatus.Unreachable -> PatchNodeStatus.Unreachable
+            ClusterViewNodeStatus.Removed -> PatchNodeStatus.Removed
+        }
     }
 }
 

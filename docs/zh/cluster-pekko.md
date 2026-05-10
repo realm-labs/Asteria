@@ -101,6 +101,18 @@ install(PekkoEntityWakerModule {
 
 source 要返回当前完整目标集，不是 delta。配置热更后 coordinator 会 reconcile，新增目标会进入唤醒队列，已完成目标不会重复排队。
 
+## 集群视图
+
+`cluster-config` 提供 `ClusterViewService`，用于描述“配置或服务发现中应该存在的节点”以及这些节点当前的运行状态。Pekko
+运行时会在存在 `ClusterTopology` 时注册 `PekkoClusterViewService`，它把配置拓扑和当前 Pekko member 视图合并：
+
+- 配置中存在且当前 member 可见的节点标记为 `Reachable`。
+- 配置中存在但当前 member 不可见的节点仍会出现在快照中，标记为 `Expected`。
+- 当前 member 可见但不在配置中的节点也会出现在快照中，`configured=false`。
+
+这个视图是 GM 集群状态、脚本目标规划、补丁目标规划等能力的共同输入。Pekko active members 只表示当前运行时可见成员，不能替代
+全局期望节点列表。
+
 ## GM 控制
 
 实体 waker 暴露控制服务，供 GM 或运维工具查询和控制：

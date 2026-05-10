@@ -1,10 +1,8 @@
 package io.github.realmlabs.asteria.gm.cluster.spring
 
 import io.github.realmlabs.asteria.cluster.config.ClusterTopologyProvider
-import io.github.realmlabs.asteria.gm.cluster.GmClusterControlService
-import io.github.realmlabs.asteria.gm.cluster.GmClusterRawStatusService
-import io.github.realmlabs.asteria.gm.cluster.GmClusterStatusService
-import io.github.realmlabs.asteria.gm.cluster.TopologyGmClusterStatusService
+import io.github.realmlabs.asteria.cluster.config.ClusterViewService
+import io.github.realmlabs.asteria.gm.cluster.*
 import io.github.realmlabs.asteria.gm.spring.GmEndpointSupport
 import io.github.realmlabs.asteria.gm.spring.GmSpringAutoConfiguration
 import org.springframework.beans.factory.ObjectProvider
@@ -25,6 +23,13 @@ import org.springframework.context.annotation.Bean
     matchIfMissing = true,
 )
 class GmClusterSpringAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(ClusterViewService::class)
+    fun clusterViewGmClusterStatusService(clusterView: ClusterViewService): GmClusterStatusService {
+        return ClusterViewGmClusterStatusService(clusterView)
+    }
+
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnBean(ClusterTopologyProvider::class)

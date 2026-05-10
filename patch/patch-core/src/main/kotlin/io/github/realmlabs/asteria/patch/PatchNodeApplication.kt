@@ -15,6 +15,7 @@ data class PatchNode(
     val appName: String,
     val version: String,
     val roles: Set<RoleKey> = emptySet(),
+    val status: PatchNodeStatus = PatchNodeStatus.Reachable,
 ) : Serializable {
     init {
         nodeId?.let { require(it.isNotBlank()) { "patch node id must not be blank" } }
@@ -31,6 +32,13 @@ data class PatchNode(
             roles = roles,
         )
     }
+}
+
+enum class PatchNodeStatus {
+    Expected,
+    Reachable,
+    Unreachable,
+    Removed,
 }
 
 fun interface PatchNodeProvider {
@@ -166,6 +174,7 @@ enum class RuntimePatchNodeStatus {
     Removed,
     Ignored,
     Failed,
+    Unreachable,
 }
 
 data class PatchClusterApplyResult(
@@ -173,7 +182,20 @@ data class PatchClusterApplyResult(
     val requestedAt: Instant,
     val results: List<RuntimePatchNodeResult>,
 ) : Serializable {
-    val succeeded: Boolean = results.isNotEmpty() && results.all { it.status != RuntimePatchNodeStatus.Failed }
+    val succeeded: Boolean = results.isNotEmpty() && results.all { it.status.isSuccessful() }
+}
+
+private fun RuntimePatchNodeStatus.isSuccessful(): Boolean {
+    return when (this) {
+        RuntimePatchNodeStatus.Applied,
+        RuntimePatchNodeStatus.Removed,
+        RuntimePatchNodeStatus.Ignored,
+            -> true
+
+        RuntimePatchNodeStatus.Failed,
+        RuntimePatchNodeStatus.Unreachable,
+            -> false
+    }
 }
 
 class PatchClusterApplicationService(
@@ -223,6 +245,11 @@ class PatchClusterApplicationService(
         node: PatchNode,
     ): RuntimePatchNodeResult {
         val attempt = results.nextAttempt(patchId, node.address)
+        if (node.status != PatchNodeStatus.Reachable) {
+            val result = node.unreachableResult(patchId, attempt)
+            results.save(result)
+            return result
+        }
         val result = runCatching {
             client.apply(node, patchId)
         }.fold(
@@ -250,6 +277,11 @@ class PatchClusterApplicationService(
         node: PatchNode,
     ): RuntimePatchNodeResult {
         val attempt = results.nextAttempt(patchId, node.address)
+        if (node.status != PatchNodeStatus.Reachable) {
+            val result = node.unreachableResult(patchId, attempt)
+            results.save(result)
+            return result
+        }
         val result = runCatching {
             client.disable(node, patchId)
         }.fold(
@@ -283,6 +315,23 @@ class PatchClusterApplicationService(
         results.save(result)
         return result
     }
+}
+
+private fun PatchNode.unreachableResult(
+    patchId: PatchId,
+    attempt: Int,
+): RuntimePatchNodeResult {
+    return RuntimePatchNodeResult(
+        patchId = patchId,
+        nodeId = nodeId,
+        address = address,
+        appName = appName,
+        version = version,
+        roles = roles,
+        status = RuntimePatchNodeStatus.Unreachable,
+        attempt = attempt,
+        message = "node status is $status",
+    )
 }
 
 private fun PatchApplyResult.toNodeResult(

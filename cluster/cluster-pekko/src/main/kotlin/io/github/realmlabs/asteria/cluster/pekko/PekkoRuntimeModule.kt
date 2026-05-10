@@ -1,6 +1,7 @@
 package io.github.realmlabs.asteria.cluster.pekko
 
 import io.github.realmlabs.asteria.cluster.config.ClusterTopology
+import io.github.realmlabs.asteria.cluster.config.ClusterViewService
 import io.github.realmlabs.asteria.cluster.config.RuntimeNodeConfig
 import io.github.realmlabs.asteria.core.*
 import kotlinx.coroutines.future.await
@@ -32,7 +33,10 @@ class PekkoRuntimeModule(
             context.services.register(PekkoRuntime::class, pekkoRuntime)
             context.services.register(ActorSystem::class, system)
             plan.node?.let { context.services.register(RuntimeNodeConfig::class, it) }
-            plan.topology?.let { context.services.register(ClusterTopology::class, it) }
+            plan.topology?.let {
+                context.services.register(ClusterTopology::class, it)
+                context.services.register(ClusterViewService::class, PekkoClusterViewService(system, it, context.name))
+            }
             context.services.register(EntityShardRegistry::class, EntityShardRegistry())
             context.services.register(SingletonActorRegistry::class, SingletonActorRegistry())
         } catch (failure: Throwable) {
