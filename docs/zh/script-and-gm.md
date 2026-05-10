@@ -42,11 +42,19 @@ catalog 和 audit sink。
 
 ## Groovy 和 jar artifact
 
-`ScriptArtifact` 的 `engine` 必须匹配已注册的脚本引擎。Groovy 引擎把 artifact body 当作 Groovy class 源码编译；jar 引擎把
-body 当作
+`ScriptArtifact` 的 `engine` 必须匹配已注册的脚本引擎。Groovy 引擎把 artifact body 当作 UTF-8 Groovy 源码编译，可以是顶层脚本，
+也可以是实现 `BlockingScriptFunction`、`CompiledScript`、`NodeScript` 或 `ActorScript` 的脚本类。jar 引擎把 body 当作
 JAR 字节读取，JAR manifest 必须包含 `Script-Class`，指向可被 `toCompiledScript` 适配的类。两个引擎都会按 checksum（有则优先）或
-body
-内容生成缓存 key。
+body 内容生成缓存 key。
+
+直接发送 Groovy 文本时，顶层脚本会拿到以下 binding：`context`、`runtime`、`services`、`request`、`artifact`、`metadata`、
+`resources`、`tables` 和 `cancellation`。node 上下文额外提供 `target` 和 `nodeAddress`；actor 上下文额外提供 `actor`、
+`target` 和 `actorPath`。脚本返回 `ScriptExecutionResult` 时使用该结果；返回 `null` 或其它值时，runner 会生成默认成功结果。
+
+```groovy
+// fix-player.groovy
+actor.repairPlayer("1001")
+```
 
 上传 groovy 或 jar 只是在入口层把文件转换成 `ScriptArtifact`，不会绕过策略。文件大小还会受入口配置和
 `ScriptPolicy.maxArtifactBytes`

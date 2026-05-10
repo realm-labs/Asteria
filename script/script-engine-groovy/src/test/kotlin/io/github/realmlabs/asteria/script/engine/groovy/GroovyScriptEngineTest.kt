@@ -7,6 +7,62 @@ import kotlin.test.assertEquals
 
 class GroovyScriptEngineTest {
     @Test
+    fun compilesTopLevelGroovyScriptWithBindings() = runBlocking {
+        val body = """
+            import io.github.realmlabs.asteria.script.ScriptExecutionResult
+
+            assert context != null
+            assert runtime.name == 'test'
+            assert services == runtime.services
+            assert request == null
+            assert artifact.engine == 'groovy'
+            assert metadata.attributes.isEmpty()
+
+            return new ScriptExecutionResult('inline-groovy-test', true, runtime.name, null, null, null)
+        """.trimIndent()
+
+        val compiled = GroovyScriptEngine().compile(
+            ScriptArtifact("inline-groovy", "groovy", body.toByteArray()),
+        )
+
+        assertEquals(
+            ScriptExecutionResult("inline-groovy-test", true, "test"),
+            compiled.execute(TestScriptContext),
+        )
+    }
+
+    @Test
+    fun compilesTopLevelNodeGroovyScriptWithNodeBindings() = runBlocking {
+        val body = """
+            import io.github.realmlabs.asteria.script.ScriptExecutionResult
+
+            assert target != null
+            assert nodeAddress == 'pekko://test@127.0.0.1:25520'
+
+            return new ScriptExecutionResult(request.executionId, true, target.toString(), null, nodeAddress, null)
+        """.trimIndent()
+        val artifact = ScriptArtifact("inline-node-groovy", "groovy", body.toByteArray())
+        val request = ScriptExecutionRequest(
+            executionId = "inline-node-groovy-test",
+            target = ScriptTarget.AllNodes,
+            artifact = artifact,
+            scope = ScriptExecutionScope.Node,
+            nodeAddress = "pekko://test@127.0.0.1:25520",
+        )
+        val compiled = GroovyScriptEngine().compile(artifact)
+
+        assertEquals(
+            ScriptExecutionResult(
+                executionId = "inline-node-groovy-test",
+                success = true,
+                target = ScriptTarget.AllNodes.toString(),
+                nodeAddress = "pekko://test@127.0.0.1:25520",
+            ),
+            compiled.execute(NodeScriptContext(TestScriptContext.runtime, request)),
+        )
+    }
+
+    @Test
     fun compilesBlockingScriptFunction() = runBlocking {
         val body = """
             import io.github.realmlabs.asteria.script.BlockingScriptFunction

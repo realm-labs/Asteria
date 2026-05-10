@@ -49,9 +49,21 @@ runtime-specific.
 
 ## Groovy and jar Artifacts
 
-`ScriptArtifact.engine` must match a registered script engine. The Groovy engine treats artifact body bytes as Groovy
-class source. The jar engine treats body bytes as a JAR; its manifest must contain `Script-Class`, naming a class that
-can be adapted by `toCompiledScript`. Both engines cache by checksum when provided, otherwise by body content.
+`ScriptArtifact.engine` must match a registered script engine. The Groovy engine compiles artifact body bytes as UTF-8
+Groovy source. The source can be a top-level script or a script class implementing `BlockingScriptFunction`,
+`CompiledScript`, `NodeScript`, or `ActorScript`. The jar engine treats body bytes as a JAR; its manifest must contain
+`Script-Class`, naming a class that can be adapted by `toCompiledScript`. Both engines cache by checksum when provided,
+otherwise by body content.
+
+Top-level Groovy scripts receive these binding variables: `context`, `runtime`, `services`, `request`, `artifact`,
+`metadata`, `resources`, `tables`, and `cancellation`. Node contexts also expose `target` and `nodeAddress`; actor
+contexts also expose `actor`, `target`, and `actorPath`. If the script returns `ScriptExecutionResult`, that result is
+used. If it returns `null` or any other value, the runner creates the default success result.
+
+```groovy
+// fix-player.groovy
+actor.repairPlayer("1001")
+```
 
 Uploading a Groovy or jar file only converts the file into a `ScriptArtifact` at the entry layer; it does not bypass
 policy. File size is constrained by both the entry-point configuration and `ScriptPolicy.maxArtifactBytes`. Checksums,
