@@ -123,7 +123,8 @@ underlying collection API.
 `@AsteriaConfigChangeHandler` marks a `ConfigChangeHandler<Receiver>` implementation. KSP validates the receiver type
 and generates handler lists such as `GeneratedConfigChangeHandlers.ALL`. At runtime, `ConfigChangeDispatcher` matches
 handlers by `watchedTables` and the event `changedTables`, then uses the revision tracker to avoid applying the same
-revision to the same actor twice.
+revision to the same actor twice. `handle(receiver, snapshot)` receives the current complete snapshot; online events
+invoke only matching handlers, while catch-up invokes all handlers.
 
 Config validators use the generic contribution mechanism. Use [Contribution Aggregation](contribution.md) with
 `@AsteriaContribution(contract = ConfigValidator::class)` when a generated validator list is needed.
@@ -193,11 +194,7 @@ Config-dependent actor updates can be modeled as change handlers:
 class ActivityConfigChangeHandler : ConfigChangeHandler<PlayerActor> {
     override val watchedTables = configTables(GameConfigTables.Activities)
 
-    override fun handleChange(actor: PlayerActor, event: ConfigChangedEvent) {
-        actor.syncActivities(event.current)
-    }
-
-    override fun catchUp(actor: PlayerActor, snapshot: ConfigSnapshot) {
+    override fun handle(actor: PlayerActor, snapshot: ConfigSnapshot) {
         actor.syncActivities(snapshot)
     }
 }

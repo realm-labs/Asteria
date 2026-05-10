@@ -117,7 +117,8 @@ chunk 拆分大文件，配置表很多时不会把所有 accessor 放进一个 
 
 `@AsteriaConfigChangeHandler` 标记一个 `ConfigChangeHandler<Receiver>` 实现。KSP 会校验 receiver 类型，生成
 `GeneratedConfigChangeHandlers.ALL` 这类 handler 清单。`ConfigChangeDispatcher` 运行时根据 handler 的 `watchedTables`
-和本次 `changedTables` 做匹配，并用 revision tracker 避免同一个 actor 重复处理同一版本。
+和本次 `changedTables` 做匹配，并用 revision tracker 避免同一个 actor 重复处理同一版本。`handle(receiver, snapshot)`
+接收当前完整快照；在线事件只调用命中的 handler，catch-up 会调用全部 handler。
 
 配置 validator 使用通用 contribution 机制聚合。需要生成 validator 清单时，使用 [贡献点聚合](contribution.md) 的
 `@AsteriaContribution(contract = ConfigValidator::class)`。
@@ -183,11 +184,7 @@ install(LubanConfigModule {
 class ActivityConfigChangeHandler : ConfigChangeHandler<PlayerActor> {
     override val watchedTables = configTables(GameConfigTables.Activities)
 
-    override fun handleChange(actor: PlayerActor, event: ConfigChangedEvent) {
-        actor.syncActivities(event.current)
-    }
-
-    override fun catchUp(actor: PlayerActor, snapshot: ConfigSnapshot) {
+  override fun handle(actor: PlayerActor, snapshot: ConfigSnapshot) {
         actor.syncActivities(snapshot)
     }
 }

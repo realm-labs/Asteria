@@ -18,7 +18,7 @@ class ConfigChangeDispatcherTest {
 
         dispatcher.dispatch(receiver, changeEvent(changedTables = configTables("items")))
 
-        assertEquals(listOf("items:change:v2"), receiver.events)
+        assertEquals(listOf("items:v2"), receiver.events)
     }
 
     @Test
@@ -36,7 +36,7 @@ class ConfigChangeDispatcherTest {
         assertTrue(dispatcher.catchUpIfNew(receiver, snapshot, tracker))
         assertFalse(dispatcher.catchUpIfNew(receiver, snapshot, tracker))
 
-        assertEquals(listOf("items:catch-up:v2", "worlds:catch-up:v2"), receiver.events)
+        assertEquals(listOf("items:v2", "worlds:v2"), receiver.events)
         assertEquals("v2", tracker.currentRevision())
     }
 
@@ -90,18 +90,11 @@ private class RecordingHandler(
     private val name: String,
     override val watchedTables: Set<ConfigTableName>,
 ) : ConfigChangeHandler<TestReceiver> {
-    override fun handleChange(
-        receiver: TestReceiver,
-        event: ConfigChangedEvent,
-    ) {
-        receiver.events += "$name:change:${event.currentRevision.version}"
-    }
-
-    override fun catchUp(
+    override fun handle(
         receiver: TestReceiver,
         snapshot: ConfigSnapshot,
     ) {
-        receiver.events += "$name:catch-up:${snapshot.revision.version}"
+        receiver.events += "$name:${snapshot.revision.version}"
     }
 }
 

@@ -7,30 +7,21 @@ package io.github.realmlabs.asteria.config
  * invokes only handlers whose watched tables intersect with [ConfigChangedEvent.changedTables]. During catch-up, all
  * handlers run because the receiver may have missed any number of revisions while it was offline or unloaded.
  *
- * Handlers should be idempotent against the supplied snapshot. Config reload events can be replayed by business code,
- * and catch-up can run after the same revision was already handled if the caller does not use a revision tracker.
+ * Handlers should synchronize receiver state from the supplied snapshot and remain idempotent.
  */
 interface ConfigChangeHandler<R : Any> {
     /**
-     * Table names that make [handleChange] relevant for a published reload event.
+     * Table names that make [handle] relevant for a published reload event.
      */
     val watchedTables: Set<ConfigTableName>
 
     /**
-     * Applies an online config change to [receiver].
+     * Synchronizes [receiver] from the current config [snapshot].
      */
-    fun handleChange(
-        receiver: R,
-        event: ConfigChangedEvent,
-    )
-
-    /**
-     * Rebuilds receiver state from the current snapshot after the receiver starts, loads, or becomes active.
-     */
-    fun catchUp(
+    fun handle(
         receiver: R,
         snapshot: ConfigSnapshot,
-    ) = Unit
+    )
 }
 
 /**
@@ -53,7 +44,7 @@ class ConfigChangeDispatcher<R : Any>(
     ) {
         for (handler in handlers) {
             if (handler.watchedTables.any(event.changedTables::contains)) {
-                handler.handleChange(receiver, event)
+                handler.handle(receiver, event.current)
             }
         }
     }
@@ -66,7 +57,7 @@ class ConfigChangeDispatcher<R : Any>(
         snapshot: ConfigSnapshot,
     ) {
         for (handler in handlers) {
-            handler.catchUp(receiver, snapshot)
+            handler.handle(receiver, snapshot)
         }
     }
 
