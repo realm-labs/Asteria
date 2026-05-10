@@ -42,6 +42,9 @@ data class GmPatchCreateHttpRequest(
     val targetType: String = "all-nodes",
     val roles: List<String> = emptyList(),
     val addresses: List<String> = emptyList(),
+    val requiredRoles: List<String> = emptyList(),
+    val requiredModules: List<String> = emptyList(),
+    val requiredCapabilities: List<String> = emptyList(),
     val status: PatchStatus = PatchStatus.Draft,
 ) {
     fun toRequest(): GmPatchCreateRequest {
@@ -53,6 +56,11 @@ data class GmPatchCreateHttpRequest(
             appName = appName,
             versions = versions.toSet(),
             target = target(),
+            requirements = PatchRequirements(
+                roles = requiredRoles.mapTo(linkedSetOf(), ::RoleKey),
+                modules = requiredModules.toSet(),
+                capabilities = requiredCapabilities.toSet(),
+            ),
             status = status,
         )
     }

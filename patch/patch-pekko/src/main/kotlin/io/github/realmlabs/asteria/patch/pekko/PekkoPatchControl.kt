@@ -1,9 +1,6 @@
 package io.github.realmlabs.asteria.patch.pekko
 
-import io.github.realmlabs.asteria.cluster.config.ClusterViewNode
-import io.github.realmlabs.asteria.cluster.config.ClusterViewNodeStatus
-import io.github.realmlabs.asteria.cluster.config.ClusterViewService
-import io.github.realmlabs.asteria.cluster.config.RuntimeNodeConfig
+import io.github.realmlabs.asteria.cluster.config.*
 import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
 import io.github.realmlabs.asteria.core.RoleKey
@@ -23,6 +20,7 @@ import kotlin.time.toJavaDuration
 
 class PekkoPatchControlModule(
     private val timeout: Duration = 10.seconds,
+    private val nodeProvider: PatchNodeProvider? = null,
 ) : AsteriaModule {
     override val name: String = "pekko-patch-control"
 
@@ -34,12 +32,23 @@ class PekkoPatchControlModule(
     override suspend fun start(context: ModuleContext) {
         val system = context.services.get<ActorSystem>()
         val service = context.services.find<PatchApplicationService>()
-        val nodeProvider = context.services.find<ClusterViewService>()
-            ?.let { ClusterViewPatchNodeProvider(it, service?.environment) }
+        val resolvedNodeProvider = nodeProvider
+            ?: context.services.find<ClusterViewService>()
+                ?.let { ClusterViewPatchNodeProvider(it, service?.environment) }
+            ?: context.services.find<ClusterTopologyProvider>()?.let {
+                ClusterViewPatchNodeProvider(
+                    TopologyClusterViewService(
+                        topology = it,
+                        appName = service?.environment?.appName ?: context.name,
+                        version = service?.environment?.version,
+                    ),
+                    service?.environment,
+                )
+            }
             ?: PekkoPatchNodeProvider(system, timeout)
         val nodeClient = PekkoPatchNodeClient(system, timeout)
 
-        context.services.register(PatchNodeProvider::class, nodeProvider)
+        context.services.register(PatchNodeProvider::class, resolvedNodeProvider)
         context.services.register(PatchNodeClient::class, nodeClient)
 
         val repository = context.services.find<RuntimePatchRepository>()
@@ -50,7 +59,7 @@ class PekkoPatchControlModule(
                 }
             context.services.register(
                 PatchClusterApplicationService::class,
-                PatchClusterApplicationService(repository, nodeProvider, nodeClient, results),
+                PatchClusterApplicationService(repository, resolvedNodeProvider, nodeClient, results),
             )
         }
 
@@ -88,6 +97,8 @@ class ClusterViewPatchNodeProvider(
             appName = appName,
             version = version ?: fallbackEnvironment?.version ?: return null,
             roles = roles,
+            modules = attributes[PATCH_MODULES_ATTRIBUTE].toStringSet(),
+            capabilities = attributes[PATCH_CAPABILITIES_ATTRIBUTE].toStringSet(),
             status = status.toPatchNodeStatus(),
         )
     }
@@ -99,6 +110,31 @@ class ClusterViewPatchNodeProvider(
             ClusterViewNodeStatus.Unreachable -> PatchNodeStatus.Unreachable
             ClusterViewNodeStatus.Removed -> PatchNodeStatus.Removed
         }
+    }
+}
+
+class PekkoPatchEnvironmentProvider(
+    private val version: String,
+    private val appName: String? = null,
+) : PatchEnvironmentProvider {
+    init {
+        require(version.isNotBlank()) { "patch environment version must not be blank" }
+        appName?.let { require(it.isNotBlank()) { "patch environment app name must not be blank" } }
+    }
+
+    override suspend fun environment(context: ModuleContext): PatchEnvironment {
+        val system = context.services.find<ActorSystem>()
+        val node = context.services.find<RuntimeNodeConfig>()
+        val attributes = node?.attributes ?: emptyMap()
+        return PatchEnvironment(
+            appName = appName ?: context.name,
+            version = version,
+            nodeAddress = system?.let { Cluster.get(it).selfAddress().toString() }
+                ?: node?.let { "${it.host}:${it.port}" },
+            roles = node?.roles?.mapTo(linkedSetOf(), ::RoleKey) ?: context.roles,
+            modules = attributes[PATCH_MODULES_ATTRIBUTE].toStringSet(),
+            capabilities = attributes[PATCH_CAPABILITIES_ATTRIBUTE].toStringSet(),
+        )
     }
 }
 
@@ -155,7 +191,14 @@ class PekkoPatchNodeClient(
         patchId: PatchId,
     ): Boolean {
         return try {
-            ask<Boolean>(system, node.address, PekkoPatchControlMessage.Disable(patchId), timeout)
+            val result = ask<PekkoPatchDisableResult>(
+                system,
+                node.address,
+                PekkoPatchControlMessage.Disable(patchId),
+                timeout,
+            )
+            result.message?.let { error(it) }
+            result.removed
         } catch (error: Throwable) {
             throw if (error is TimeoutException) {
                 TimeoutException("timed out disabling patch $patchId on ${node.address}")
@@ -180,13 +223,29 @@ private class PekkoPatchControlActor(
             .match(PekkoPatchControlMessage.Apply::class.java) { command ->
                 val replyTo = sender
                 scope.launch {
-                    replyTo.tell(service.apply(command.patchId), self)
+                    val result = runCatching {
+                        service.apply(command.patchId)
+                    }.getOrElse { error ->
+                        PatchApplyResult.Failed(
+                            patchId = command.patchId,
+                            message = error.message ?: error::class.qualifiedName ?: "unknown",
+                        )
+                    }
+                    replyTo.tell(result, self)
                 }
             }
             .match(PekkoPatchControlMessage.Disable::class.java) { command ->
                 val replyTo = sender
                 scope.launch {
-                    replyTo.tell(service.disable(command.patchId), self)
+                    val result = runCatching {
+                        PekkoPatchDisableResult(service.disable(command.patchId))
+                    }.getOrElse { error ->
+                        PekkoPatchDisableResult(
+                            removed = false,
+                            message = error.message ?: error::class.qualifiedName ?: "unknown",
+                        )
+                    }
+                    replyTo.tell(result, self)
                 }
             }
             .build()
@@ -204,6 +263,8 @@ private class PekkoPatchControlActor(
             appName = environment.appName,
             version = environment.version,
             roles = node?.roles?.mapTo(linkedSetOf(), ::RoleKey) ?: environment.roles,
+            modules = environment.modules,
+            capabilities = environment.capabilities,
         )
     }
 
@@ -219,12 +280,21 @@ private class PekkoPatchControlActor(
     }
 }
 
-private sealed interface PekkoPatchControlMessage : Serializable {
+sealed interface PekkoPatchControlMessage : Serializable {
     data object GetStatus : PekkoPatchControlMessage
 
     data class Apply(val patchId: PatchId) : PekkoPatchControlMessage
 
     data class Disable(val patchId: PatchId) : PekkoPatchControlMessage
+}
+
+data class PekkoPatchDisableResult(
+    val removed: Boolean,
+    val message: String? = null,
+) : Serializable {
+    init {
+        message?.let { require(it.isNotBlank()) { "patch disable result message must not be blank" } }
+    }
 }
 
 private suspend inline fun <reified T : Any> ask(
@@ -255,3 +325,14 @@ private fun selection(
 }
 
 private const val PEKKO_PATCH_CONTROL_ACTOR_NAME: String = "asteriaPatchControl"
+private const val PATCH_MODULES_ATTRIBUTE: String = "patch.modules"
+private const val PATCH_CAPABILITIES_ATTRIBUTE: String = "patch.capabilities"
+
+private fun String?.toStringSet(): Set<String> {
+    return this
+        ?.split(',', ';')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?.toCollection(linkedSetOf())
+        ?: emptySet()
+}

@@ -76,8 +76,8 @@ class PatchApplicationService(
     /**
      * Loads every enabled compatible patch from the repository and applies them in patch order.
      *
-     * The result is a per-patch report. One failing patch aborts the remaining tail of the batch because individual
-     * [PatchRuntime.apply] failures throw.
+     * The result is a per-patch report. Resolution or installation failures are returned as failed patch results so
+     * the rest of the enabled set can still be evaluated.
      */
     suspend fun applyEnabledPatches(): PatchApplyReport {
         return tracer.span("patch.apply_enabled", environment.traceAttributes()) {
@@ -119,7 +119,7 @@ class PatchApplicationService(
             val activeIds = runtime.appliedPatches().mapTo(mutableSetOf()) { it.id }
             val applied = desired
                 .filter { patch -> patch.id !in activeIds }
-                .map { patch -> runtime.apply(patch.execution(), resolver.resolve(patch)) }
+                .map { patch -> applyDescriptor(patch) }
             val report = PatchReconcileReport(applied, removed)
             metrics.counter("asteria.patch.reconcile.applied.total", environment.metricTags())
                 .increment(report.appliedCount.toLong())
@@ -134,12 +134,15 @@ class PatchApplicationService(
      */
     suspend fun apply(id: PatchId): PatchApplyResult {
         return tracer.span("patch.apply_one", TraceAttributes.of("patch.id" to id.value)) {
-            val patch = requireNotNull(repository.find(id)) { "patch $id not found" }
-            require(patch.canApplyTo(environment)) {
-                "patch $id cannot apply to ${environment.appName}:${environment.version}"
+            val patch = repository.find(id)
+                ?: return@span PatchApplyResult.Failed(id, "patch $id not found")
+            if (!patch.canApplyTo(environment)) {
+                return@span PatchApplyResult.Failed(
+                    id,
+                    "patch $id cannot apply to ${environment.appName}:${environment.version}",
+                )
             }
-            val plugin = resolver.resolve(patch)
-            runtime.apply(patch.execution(), plugin)
+            applyDescriptor(patch)
         }
     }
 
@@ -170,8 +173,21 @@ class PatchApplicationService(
     private suspend fun applyPatches(patches: List<RuntimePatchDescriptor>): PatchApplyReport {
         val results = patches
             .sortedBy { it.revision }
-            .map { patch -> runtime.apply(patch.execution(), resolver.resolve(patch)) }
+            .map { patch -> applyDescriptor(patch) }
         return PatchApplyReport(results)
+    }
+
+    private suspend fun applyDescriptor(patch: RuntimePatchDescriptor): PatchApplyResult {
+        return runCatching {
+            runtime.apply(patch.execution(), resolver.resolve(patch))
+        }.getOrElse { error ->
+            metrics.counter("asteria.patch.apply.failed.total", environment.metricTags()).increment()
+            logger.error("patch {} apply failed before runtime install", patch.id.value, error)
+            PatchApplyResult.Failed(
+                patchId = patch.id,
+                message = error.message ?: error::class.qualifiedName ?: "unknown",
+            )
+        }
     }
 
     private suspend fun removeUndesiredPatches(desiredById: Map<PatchId, RuntimePatchDescriptor>): List<PatchId> {

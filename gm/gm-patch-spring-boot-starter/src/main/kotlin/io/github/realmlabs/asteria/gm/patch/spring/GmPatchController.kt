@@ -36,6 +36,9 @@ class GmPatchController(
         @RequestParam targetType: String = "all-nodes",
         @RequestParam roles: List<String> = emptyList(),
         @RequestParam addresses: List<String> = emptyList(),
+        @RequestParam requiredRoles: List<String> = emptyList(),
+        @RequestParam requiredModules: List<String> = emptyList(),
+        @RequestParam requiredCapabilities: List<String> = emptyList(),
         @RequestParam status: PatchStatus = PatchStatus.Draft,
     ): RuntimePatchDescriptor {
         return endpoints.execute(
@@ -66,6 +69,9 @@ class GmPatchController(
                     targetType = targetType,
                     roles = roles,
                     addresses = addresses,
+                    requiredRoles = requiredRoles,
+                    requiredModules = requiredModules,
+                    requiredCapabilities = requiredCapabilities,
                     status = status,
                 ).toRequest(),
                 bytes,

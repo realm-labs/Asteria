@@ -1,7 +1,9 @@
 package io.github.realmlabs.asteria.gm.patch
 
+import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.patch.*
 import java.time.Instant
+import java.util.jar.JarInputStream
 
 interface GmPatchOperations {
     suspend fun create(
@@ -43,14 +45,17 @@ class DefaultGmPatchOperations(
             bytes = artifactBytes,
             version = request.artifactVersion,
         )
+        val requirements = request.requirements.takeUnless { it.isEmpty } ?: artifactBytes.patchRequirements()
         val patch = RuntimePatchDescriptor(
             id = request.id,
             name = request.name,
             artifact = artifact,
             compatibility = PatchCompatibility(request.appName, request.versions),
+            requirements = requirements,
             target = request.target,
             status = request.status,
         )
+        validateTarget(patch)
         return repository.save(patch)
     }
 
@@ -123,6 +128,8 @@ class DefaultGmPatchOperations(
                 appName = node.appName,
                 version = node.version,
                 roles = node.roles,
+                modules = node.modules,
+                capabilities = node.capabilities,
                 status = RuntimePatchNodeStatus.Applied,
                 attempt = 1,
                 operationCount = result.operationCount,
@@ -135,12 +142,44 @@ class DefaultGmPatchOperations(
                 appName = node.appName,
                 version = node.version,
                 roles = node.roles,
+                modules = node.modules,
+                capabilities = node.capabilities,
                 status = RuntimePatchNodeStatus.Ignored,
                 attempt = 1,
                 message = result.reason,
             )
+
+            is PatchApplyResult.Failed -> RuntimePatchNodeResult(
+                patchId = result.patchId,
+                nodeId = node.nodeId,
+                address = node.address,
+                appName = node.appName,
+                version = node.version,
+                roles = node.roles,
+                modules = node.modules,
+                capabilities = node.capabilities,
+                status = RuntimePatchNodeStatus.Failed,
+                attempt = 1,
+                message = result.message,
+            )
         }
         return PatchClusterApplyResult(result.patchId, requestedAt, listOf(nodeResult))
+    }
+
+    private suspend fun validateTarget(patch: RuntimePatchDescriptor) {
+        val provider = nodes ?: return
+        if (patch.requirements.isEmpty) {
+            return
+        }
+        val selected = provider.nodes()
+            .filter { node -> patch.compatibility.matches(node.environment()) && patch.target.matches(node.environment()) }
+        require(selected.isNotEmpty()) {
+            "patch ${patch.id} target does not match any known node"
+        }
+        val invalid = selected.filterNot { node -> patch.requirements.matches(node.environment()) }
+        require(invalid.isEmpty()) {
+            "patch ${patch.id} requirements do not match target nodes: ${invalid.joinToString { it.address }}"
+        }
     }
 }
 
@@ -152,6 +191,7 @@ data class GmPatchCreateRequest(
     val appName: String,
     val versions: Set<String>,
     val target: PatchTarget = PatchTarget.AllNodes,
+    val requirements: PatchRequirements = PatchRequirements(),
     val status: PatchStatus = PatchStatus.Draft,
 ) {
     init {
@@ -163,3 +203,33 @@ data class GmPatchCreateRequest(
         versions.forEach { require(it.isNotBlank()) { "patch version must not be blank" } }
     }
 }
+
+private fun ByteArray.patchRequirements(): PatchRequirements {
+    return runCatching {
+        JarInputStream(inputStream()).use { jar ->
+            val attributes = jar.manifest?.mainAttributes ?: return PatchRequirements()
+            PatchRequirements(
+                roles = attributes.getValue(PATCH_ROLES_MANIFEST_ATTRIBUTE).toRoles(),
+                modules = attributes.getValue(PATCH_MODULES_MANIFEST_ATTRIBUTE).toStringSet(),
+                capabilities = attributes.getValue(PATCH_CAPABILITIES_MANIFEST_ATTRIBUTE).toStringSet(),
+            )
+        }
+    }.getOrDefault(PatchRequirements())
+}
+
+private fun String?.toRoles(): Set<RoleKey> {
+    return toStringSet().mapTo(linkedSetOf(), ::RoleKey)
+}
+
+private fun String?.toStringSet(): Set<String> {
+    return this
+        ?.split(',', ';')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?.toCollection(linkedSetOf())
+        ?: emptySet()
+}
+
+private const val PATCH_ROLES_MANIFEST_ATTRIBUTE: String = "Asteria-Patch-Roles"
+private const val PATCH_MODULES_MANIFEST_ATTRIBUTE: String = "Asteria-Patch-Modules"
+private const val PATCH_CAPABILITIES_MANIFEST_ATTRIBUTE: String = "Asteria-Patch-Capabilities"

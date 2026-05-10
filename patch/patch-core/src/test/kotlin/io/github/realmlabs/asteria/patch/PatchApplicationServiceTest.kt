@@ -51,6 +51,23 @@ class PatchApplicationServiceTest {
     }
 
     @Test
+    fun applicationServiceContinuesAfterFailedPatch() = runBlocking {
+        val registry = PatchableRegistry(mapOf("handler" to "base"))
+        val broken = patch("broken", revision = 1)
+        val valid = patch("valid", revision = 2)
+        val repository = InMemoryRuntimePatchRepository(listOf(broken, valid))
+        val resolver = StaticRuntimePatchPluginResolver(
+            mapOf(valid.id to plugin { replaceSlot(registry, "handler", "valid") }),
+        )
+
+        val report = PatchApplicationService(runtime(), environment(), repository, resolver).applyEnabledPatches()
+
+        assertIs<PatchApplyResult.Failed>(report.results.first())
+        assertEquals(1, report.appliedCount)
+        assertEquals("valid", registry.require("handler"))
+    }
+
+    @Test
     fun moduleRegistersPatchServicesAndAppliesPatchesOnStart() = runBlocking {
         val registry = PatchableRegistry(mapOf("handler" to "base"))
         val patch = patch("startup", revision = 1)

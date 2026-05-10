@@ -22,6 +22,7 @@ data class RuntimePatchDescriptor(
     val id: PatchId,
     val artifact: PatchArtifact,
     val compatibility: PatchCompatibility,
+    val requirements: PatchRequirements = PatchRequirements(),
     val name: String = id.value,
     val target: PatchTarget = PatchTarget.AllNodes,
     val status: PatchStatus = PatchStatus.Enabled,
@@ -35,6 +36,7 @@ data class RuntimePatchDescriptor(
     fun canApplyTo(environment: PatchEnvironment): Boolean {
         return status == PatchStatus.Enabled &&
                 compatibility.matches(environment) &&
+                requirements.matches(environment) &&
                 target.matches(environment)
     }
 
@@ -94,11 +96,34 @@ data class PatchEnvironment(
     val version: String,
     val nodeAddress: String? = null,
     val roles: Set<RoleKey> = emptySet(),
+    val modules: Set<String> = emptySet(),
+    val capabilities: Set<String> = emptySet(),
 ) : Serializable {
     init {
         require(appName.isNotBlank()) { "patch environment app name must not be blank" }
         require(version.isNotBlank()) { "patch environment version must not be blank" }
         nodeAddress?.let { require(it.isNotBlank()) { "patch environment node address must not be blank" } }
+        modules.forEach { require(it.isNotBlank()) { "patch environment module must not be blank" } }
+        capabilities.forEach { require(it.isNotBlank()) { "patch environment capability must not be blank" } }
+    }
+}
+
+data class PatchRequirements(
+    val roles: Set<RoleKey> = emptySet(),
+    val modules: Set<String> = emptySet(),
+    val capabilities: Set<String> = emptySet(),
+) : Serializable {
+    init {
+        modules.forEach { require(it.isNotBlank()) { "patch requirement module must not be blank" } }
+        capabilities.forEach { require(it.isNotBlank()) { "patch requirement capability must not be blank" } }
+    }
+
+    val isEmpty: Boolean get() = roles.isEmpty() && modules.isEmpty() && capabilities.isEmpty()
+
+    fun matches(environment: PatchEnvironment): Boolean {
+        return roles.all { it in environment.roles } &&
+                modules.all { it in environment.modules } &&
+                capabilities.all { it in environment.capabilities }
     }
 }
 

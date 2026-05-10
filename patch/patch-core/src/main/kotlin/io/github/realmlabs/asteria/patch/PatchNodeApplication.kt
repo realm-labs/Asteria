@@ -15,6 +15,8 @@ data class PatchNode(
     val appName: String,
     val version: String,
     val roles: Set<RoleKey> = emptySet(),
+    val modules: Set<String> = emptySet(),
+    val capabilities: Set<String> = emptySet(),
     val status: PatchNodeStatus = PatchNodeStatus.Reachable,
 ) : Serializable {
     init {
@@ -22,6 +24,8 @@ data class PatchNode(
         require(address.isNotBlank()) { "patch node address must not be blank" }
         require(appName.isNotBlank()) { "patch node app name must not be blank" }
         require(version.isNotBlank()) { "patch node version must not be blank" }
+        modules.forEach { require(it.isNotBlank()) { "patch node module must not be blank" } }
+        capabilities.forEach { require(it.isNotBlank()) { "patch node capability must not be blank" } }
     }
 
     fun environment(): PatchEnvironment {
@@ -30,6 +34,8 @@ data class PatchNode(
             version = version,
             nodeAddress = address,
             roles = roles,
+            modules = modules,
+            capabilities = capabilities,
         )
     }
 }
@@ -152,6 +158,8 @@ data class RuntimePatchNodeResult(
     val appName: String,
     val version: String,
     val roles: Set<RoleKey> = emptySet(),
+    val modules: Set<String> = emptySet(),
+    val capabilities: Set<String> = emptySet(),
     val status: RuntimePatchNodeStatus,
     val attempt: Int,
     val operationCount: Int? = null,
@@ -163,6 +171,8 @@ data class RuntimePatchNodeResult(
         require(address.isNotBlank()) { "patch node result address must not be blank" }
         require(appName.isNotBlank()) { "patch node result app name must not be blank" }
         require(version.isNotBlank()) { "patch node result version must not be blank" }
+        modules.forEach { require(it.isNotBlank()) { "patch node result module must not be blank" } }
+        capabilities.forEach { require(it.isNotBlank()) { "patch node result capability must not be blank" } }
         require(attempt > 0) { "patch node result attempt must be positive" }
         operationCount?.let { require(it >= 0) { "patch node result operation count must not be negative" } }
         message?.let { require(it.isNotBlank()) { "patch node result message must not be blank" } }
@@ -262,6 +272,8 @@ class PatchClusterApplicationService(
                     appName = node.appName,
                     version = node.version,
                     roles = node.roles,
+                    modules = node.modules,
+                    capabilities = node.capabilities,
                     status = RuntimePatchNodeStatus.Failed,
                     attempt = attempt,
                     message = error.message ?: error::class.qualifiedName ?: "unknown",
@@ -293,6 +305,8 @@ class PatchClusterApplicationService(
                     appName = node.appName,
                     version = node.version,
                     roles = node.roles,
+                    modules = node.modules,
+                    capabilities = node.capabilities,
                     status = if (removed) RuntimePatchNodeStatus.Removed else RuntimePatchNodeStatus.Ignored,
                     attempt = attempt,
                     message = if (removed) null else "patch was not applied on node",
@@ -306,6 +320,8 @@ class PatchClusterApplicationService(
                     appName = node.appName,
                     version = node.version,
                     roles = node.roles,
+                    modules = node.modules,
+                    capabilities = node.capabilities,
                     status = RuntimePatchNodeStatus.Failed,
                     attempt = attempt,
                     message = error.message ?: error::class.qualifiedName ?: "unknown",
@@ -328,6 +344,8 @@ private fun PatchNode.unreachableResult(
         appName = appName,
         version = version,
         roles = roles,
+        modules = modules,
+        capabilities = capabilities,
         status = RuntimePatchNodeStatus.Unreachable,
         attempt = attempt,
         message = "node status is $status",
@@ -347,6 +365,8 @@ private fun PatchApplyResult.toNodeResult(
             appName = node.appName,
             version = node.version,
             roles = node.roles,
+            modules = node.modules,
+            capabilities = node.capabilities,
             status = RuntimePatchNodeStatus.Applied,
             attempt = attempt,
             operationCount = operationCount,
@@ -359,9 +379,25 @@ private fun PatchApplyResult.toNodeResult(
             appName = node.appName,
             version = node.version,
             roles = node.roles,
+            modules = node.modules,
+            capabilities = node.capabilities,
             status = RuntimePatchNodeStatus.Ignored,
             attempt = attempt,
             message = reason,
+        )
+
+        is PatchApplyResult.Failed -> RuntimePatchNodeResult(
+            patchId = patchId,
+            nodeId = node.nodeId,
+            address = node.address,
+            appName = node.appName,
+            version = node.version,
+            roles = node.roles,
+            modules = node.modules,
+            capabilities = node.capabilities,
+            status = RuntimePatchNodeStatus.Failed,
+            attempt = attempt,
+            message = message,
         )
     }
 }

@@ -45,12 +45,7 @@ With `starter-game-server-pekko`, business code usually wires durable repositori
 
 ```kotlin
 runtimePatches(
-    environment = PatchEnvironment(
-        appName = "game",
-        version = BuildInfo.version,
-        nodeAddress = pekkoAddress,
-        roles = setOf(RoleKey("player")),
-    ),
+    version = BuildInfo.version,
     repository = ZookeeperRuntimePatchRepository(asyncZk, "/asteria/prod/runtime-patches"),
     artifactStore = ZookeeperPatchArtifactStore(
         client = asyncZk,
@@ -61,6 +56,9 @@ runtimePatches(
     cacheDirectory = Paths.get("data/patch-cache"),
 )
 ```
+
+The `version` overload derives `appName`, node address, and roles from the running Pekko node. Use the explicit
+`PatchEnvironment` overload only when the host application owns those values itself.
 
 ## Patch Lifecycle
 
@@ -76,6 +74,13 @@ default is one minute, and `null` disables it. Periodic reconciliation compensat
 active member view during apply, transient network failures, and nodes that recover after the initial apply attempt.
 When the runtime provides `ClusterViewService`, Pekko patch control uses that view as the target node source. Configured
 nodes that are currently not reachable are recorded as `Unreachable` instead of being silently skipped.
+`PekkoPatchControlModule` can also accept an explicit `PatchNodeProvider`; otherwise it uses `ClusterViewService`,
+`ClusterTopologyProvider`, and finally active Pekko members in that order.
+
+Patch descriptors may carry `PatchRequirements` for required roles, modules, and capabilities. GM creation also reads
+the jar manifest attributes `Asteria-Patch-Roles`, `Asteria-Patch-Modules`, and `Asteria-Patch-Capabilities` when the
+request does not provide requirements. If a node provider is available, GM validates that the selected target nodes
+match those requirements before saving the descriptor.
 
 Patch precedence is defined by the repository-assigned `revision`. Business code does not need to provide an ordering
 field. `RuntimePatchRepository.save` assigns a revision for new descriptors and assigns a new revision again when an
@@ -152,8 +157,9 @@ class LevelPatch : RuntimePatchPlugin {
 ```
 
 The runtime runs patch installation to record an install plan, validates that each target key currently exists, and
-then commits the operations. If a commit fails, already committed operations are rolled back in reverse order. If the
-patch is already applied in the same runtime, repeated apply is ignored.
+then commits the operations. If installation, validation, or commit fails, already committed operations are rolled back
+in reverse order and the apply call returns `PatchApplyResult.Failed`. If the patch is already applied in the same
+runtime, repeated apply is ignored.
 
 `PatchableRegistry` keeps original base entries and replacement layers ordered by `revision/id`. Business reads through
 `get`, `require`, or `snapshot` see the current view after base entries and all active layers are merged. `replace`
@@ -173,6 +179,9 @@ targets by descriptor compatibility and target rules, invokes apply or disable o
 and stores every attempt in the node-result repository. Cluster patching should not assume that every node succeeds at
 the same time; GM or operations workflows should use each node's `Applied`, `Removed`, `Ignored`, or `Failed` result to
 decide whether to retry, roll back, or escalate.
+
+`patch-pekko` ships a default Pekko serializer binding for patch-control messages, node status responses, and apply
+results through `reference.conf`. Applications should not need to bind these messages to Java serialization manually.
 
 ## ZooKeeper Storage
 

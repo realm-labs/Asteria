@@ -67,7 +67,9 @@ class TopologyClusterViewService(
             nodes = topology.current().nodes.map { node ->
                 ClusterViewNode(
                     nodeId = node.nodeId,
-                    address = "${node.host}:${node.port}",
+                    address = node.attributes["address"]
+                        ?: node.attributes["pekkoAddress"]
+                        ?: "pekko://$appName@${node.host}:${node.port}",
                     appName = appName,
                     version = version,
                     roles = node.roles.mapTo(linkedSetOf(), ::RoleKey),

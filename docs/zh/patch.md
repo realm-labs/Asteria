@@ -41,12 +41,7 @@ Pekko 集群控制适配，`patch-zookeeper` 提供 ZooKeeper repository、artif
 
 ```kotlin
 runtimePatches(
-    environment = PatchEnvironment(
-        appName = "game",
-        version = BuildInfo.version,
-        nodeAddress = pekkoAddress,
-        roles = setOf(RoleKey("player")),
-    ),
+  version = BuildInfo.version,
     repository = ZookeeperRuntimePatchRepository(asyncZk, "/asteria/prod/runtime-patches"),
     artifactStore = ZookeeperPatchArtifactStore(
         client = asyncZk,
@@ -57,6 +52,9 @@ runtimePatches(
     cacheDirectory = Paths.get("data/patch-cache"),
 )
 ```
+
+`version` overload 会从当前 Pekko 节点推导 appName、节点地址和角色。只有宿主应用自己管理这些信息时，才需要使用显式的
+`PatchEnvironment` overload。
 
 ## 补丁生命周期
 
@@ -69,6 +67,12 @@ GM 推送，只要 repository 和 artifact store 是持久化的，就能从 ena
 可以关闭。周期 reconcile 用于补偿 apply 时不在 active member 视图里的节点、短暂网络故障和节点恢复后的状态对齐。
 如果运行时提供 `ClusterViewService`，Pekko patch 控制会优先用集群视图作为目标节点来源；配置中存在但当前不可达的节点会记录为
 `Unreachable`，不会被静默跳过。
+`PekkoPatchControlModule` 也可以传入显式 `PatchNodeProvider`；没有显式 provider 时会依次使用 `ClusterViewService`、
+`ClusterTopologyProvider` 和当前 Pekko active members。
+
+补丁 descriptor 可以携带 `PatchRequirements`，声明所需 role、module 和 capability。GM 创建补丁时，如果请求没有显式传
+requirements，会读取 jar manifest 中的 `Asteria-Patch-Roles`、`Asteria-Patch-Modules` 和
+`Asteria-Patch-Capabilities`。如果当前有 node provider，GM 会在保存 descriptor 前校验目标节点是否满足这些 requirements。
 
 补丁覆盖顺序由 repository 分配的 `revision` 决定。业务创建 descriptor 时不需要填写顺序字段；保存新 descriptor 或替换已有
 descriptor 时，repository 会分配新的递增 revision。多个 patch 替换同一个 handler 或 service 时，revision 更新的 patch 覆盖旧
@@ -134,8 +138,8 @@ class LevelPatch : RuntimePatchPlugin {
 }
 ```
 
-runtime 会先执行补丁安装并记录 install plan，再统一校验目标 key 当前存在，然后按操作提交；如果提交过程中失败，已经提交的操作会按反序回滚。补丁已经应用过时，
-同一个 runtime 会忽略重复 apply。
+runtime 会先执行补丁安装并记录 install plan，再统一校验目标 key 当前存在，然后按操作提交；如果安装、校验或提交失败，已经提交的操作会按反序回滚，并返回
+`PatchApplyResult.Failed`。补丁已经应用过时，同一个 runtime 会忽略重复 apply。
 
 `PatchableRegistry` 保存原始 base entry 和按 `revision/id` 排序的 replacement layer。业务读取 `get`、`require` 或
 `snapshot` 时看到的是 base 加所有有效 layer 之后的当前视图。`replace` 只写入当前 patch 的 layer，不修改 base；`remove(id)`
@@ -150,6 +154,9 @@ registry 自动回退到下一层。resolver 可以在禁用后清理 jar/classl
 筛选目标，再通过 `PatchNodeClient` 对每个节点发起 apply 或 disable，并把每次尝试写入 node-result
 repository。集群补丁不应该假设所有节点同时成功；
 GM 或运维流程应该基于每个节点的 `Applied`、`Removed`、`Ignored`、`Failed` 结果决定重试、回滚或人工介入。
+
+`patch-pekko` 通过 `reference.conf` 提供 patch control 消息、节点状态响应和 apply 结果的默认 Pekko serializer binding。
+业务项目不需要手动把这些消息绑定到 Java serializer。
 
 ## ZooKeeper 存储
 

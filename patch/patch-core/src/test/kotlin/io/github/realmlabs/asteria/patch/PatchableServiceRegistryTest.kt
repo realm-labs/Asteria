@@ -7,7 +7,6 @@ import io.github.realmlabs.asteria.core.ServiceRegistry
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
 class PatchableServiceRegistryTest {
@@ -39,14 +38,12 @@ class PatchableServiceRegistryTest {
         val services = PatchableServiceRegistry()
         val runtime = runtime()
 
-        val failed = runCatching {
-            runtime.apply(
-                patch("missing", revision = 1),
-                plugin { this.services.replace(services, GreetingService("patched")) },
-            )
-        }
+        val failed = runtime.apply(
+            patch("missing", revision = 1),
+            plugin { this.services.replace(services, GreetingService("patched")) },
+        )
 
-        assertFalse(failed.isSuccess)
+        assertIs<PatchApplyResult.Failed>(failed)
     }
 
     @Test

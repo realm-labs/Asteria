@@ -17,35 +17,16 @@ class PatchModule private constructor(
     private val logger = LoggerFactory.getLogger(PatchModule::class.java)
     private var scope: CoroutineScope? = null
     private var reconcileJob: Job? = null
+    private var installed: Boolean = false
 
     override suspend fun install(context: ModuleContext) {
-        val runtime = PatchRuntime(context.runtime, context.tracerOrNoop(), context.metricsOrNoop())
-        val repository = options.repository ?: InMemoryRuntimePatchRepository()
-        val resolver = options.resolver ?: StaticRuntimePatchPluginResolver()
-        val service =
-            PatchApplicationService(
-                runtime,
-                options.environment,
-                repository,
-                resolver,
-                context.tracerOrNoop(),
-                context.metricsOrNoop(),
-            )
-        val nodeResults = options.nodeResults ?: InMemoryRuntimePatchNodeResultRepository()
-        val nodeProvider = options.nodeProvider ?: LocalPatchNodeProvider(options.environment)
-        val nodeClient = options.nodeClient ?: LocalPatchNodeClient(service)
-        val clusterService = PatchClusterApplicationService(repository, nodeProvider, nodeClient, nodeResults)
-
-        context.services.register(PatchRuntime::class, runtime)
-        context.services.register(RuntimePatchRepository::class, repository)
-        context.services.register(RuntimePatchPluginResolver::class, resolver)
-        context.services.register(PatchApplicationService::class, service)
-        context.services.register(RuntimePatchNodeResultRepository::class, nodeResults)
-        context.services.register(PatchClusterApplicationService::class, clusterService)
+        if (options.environment != null) {
+            installServices(context, options.environment)
+        }
     }
 
     override suspend fun start(context: ModuleContext) {
-        val service = context.services.get(PatchApplicationService::class)
+        val service = installServices(context, environment(context))
         if (options.expireIncompatibleOnStart) {
             service.expireIncompatiblePatches()
         }
@@ -60,6 +41,54 @@ class PatchModule private constructor(
         reconcileJob = null
         scope?.cancel()
         scope = null
+        installed = false
+    }
+
+    private suspend fun installServices(
+        context: ModuleContext,
+        environment: PatchEnvironment,
+    ): PatchApplicationService {
+        if (installed) {
+            return context.services.get(PatchApplicationService::class)
+        }
+        val runtime = PatchRuntime(context.runtime, context.tracerOrNoop(), context.metricsOrNoop())
+        val repository = options.repository ?: InMemoryRuntimePatchRepository()
+        val resolver = options.resolver ?: StaticRuntimePatchPluginResolver()
+        val service =
+            PatchApplicationService(
+                runtime,
+                environment,
+                repository,
+                resolver,
+                context.tracerOrNoop(),
+                context.metricsOrNoop(),
+            )
+        val nodeResults = options.nodeResults ?: InMemoryRuntimePatchNodeResultRepository()
+        val nodeProvider = options.nodeProvider ?: LocalPatchNodeProvider(environment)
+        val nodeClient = options.nodeClient ?: LocalPatchNodeClient(service)
+        val clusterService = PatchClusterApplicationService(repository, nodeProvider, nodeClient, nodeResults)
+
+        context.services.register(PatchRuntime::class, runtime)
+        context.services.register(RuntimePatchRepository::class, repository)
+        context.services.register(RuntimePatchPluginResolver::class, resolver)
+        context.services.register(PatchApplicationService::class, service)
+        context.services.register(RuntimePatchNodeResultRepository::class, nodeResults)
+        context.services.register(PatchClusterApplicationService::class, clusterService)
+        installed = true
+        return service
+    }
+
+    private suspend fun environment(context: ModuleContext): PatchEnvironment {
+        options.environment?.let { return it }
+        options.environmentProvider?.let { return it.environment(context) }
+        val version = requireNotNull(options.version) {
+            "patch version must be configured when patch environment is inferred"
+        }
+        return PatchEnvironment(
+            appName = context.name,
+            version = version,
+            roles = context.roles,
+        )
     }
 
     private fun startPeriodicReconcile(service: PatchApplicationService) {
@@ -90,6 +119,8 @@ class PatchModule private constructor(
             return PatchModule(
                 PatchModuleOptions(
                     environment = environment,
+                    version = null,
+                    environmentProvider = null,
                     repository = null,
                     resolver = null,
                     nodeResults = null,
@@ -109,7 +140,9 @@ class PatchModule private constructor(
 }
 
 data class PatchModuleOptions(
-    val environment: PatchEnvironment,
+    val environment: PatchEnvironment?,
+    val version: String?,
+    val environmentProvider: PatchEnvironmentProvider?,
     val repository: RuntimePatchRepository?,
     val resolver: RuntimePatchPluginResolver?,
     val nodeResults: RuntimePatchNodeResultRepository?,
@@ -120,8 +153,14 @@ data class PatchModuleOptions(
     val reconcileInterval: Duration?,
 )
 
+fun interface PatchEnvironmentProvider {
+    suspend fun environment(context: ModuleContext): PatchEnvironment
+}
+
 class PatchModuleBuilder {
     var environment: PatchEnvironment? = null
+    var version: String? = null
+    private var environmentProvider: PatchEnvironmentProvider? = null
     private var repository: RuntimePatchRepository? = null
     private var resolver: RuntimePatchPluginResolver? = null
     private var nodeResults: RuntimePatchNodeResultRepository? = null
@@ -151,12 +190,19 @@ class PatchModuleBuilder {
         nodeClient = client
     }
 
+    fun environment(provider: PatchEnvironmentProvider) {
+        environmentProvider = provider
+    }
+
     internal fun build(): PatchModuleOptions {
         reconcileInterval?.let {
             require(it > Duration.ZERO) { "patch reconcile interval must be positive" }
         }
+        version?.let { require(it.isNotBlank()) { "patch version must not be blank" } }
         return PatchModuleOptions(
-            environment = requireNotNull(environment) { "patch environment must be configured" },
+            environment = environment,
+            version = version,
+            environmentProvider = environmentProvider,
             repository = repository,
             resolver = resolver,
             nodeResults = nodeResults,
@@ -165,7 +211,11 @@ class PatchModuleBuilder {
             applyOnStart = applyOnStart,
             expireIncompatibleOnStart = expireIncompatibleOnStart,
             reconcileInterval = reconcileInterval,
-        )
+        ).also {
+            require(
+                it.environment != null || it.environmentProvider != null || it.version != null
+            ) { "patch environment, environment provider, or version must be configured" }
+        }
     }
 }
 

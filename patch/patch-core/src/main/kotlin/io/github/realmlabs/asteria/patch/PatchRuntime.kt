@@ -138,7 +138,7 @@ class PatchRuntime(
      * Applies one patch execution if it is not already applied.
      *
      * Status, compatibility, and targeting are handled before a descriptor reaches this node-local runtime. Validation,
-     * install, commit, or rollback failures throw.
+     * install, commit, or rollback failures are returned as [PatchApplyResult.Failed].
      *
      * Successful application records the patch in the in-memory applied set so later [remove] calls can uninstall it.
      */
@@ -167,8 +167,8 @@ class PatchRuntime(
     /**
      * Applies several patches in ascending revision order.
      *
-     * This method is sequential, not transactional across the whole batch: if one patch throws, previously applied
-     * earlier patches remain applied.
+     * This method is sequential, not transactional across the whole batch: if one patch fails, previously applied
+     * earlier patches remain applied and later patches are still attempted.
      */
     suspend fun applyAll(patches: Iterable<Pair<RuntimePatch, RuntimePatchPlugin>>): List<PatchApplyResult> {
         val sorted = patches.sortedBy { it.first.order }
@@ -236,7 +236,10 @@ class PatchRuntime(
         } catch (error: Throwable) {
             metrics.counter("asteria.patch.apply.failed.total", patch.metricTags()).increment()
             logger.error("patch {} apply failed", patch.id.value, error)
-            throw error
+            return PatchApplyResult.Failed(
+                patchId = patch.id,
+                message = error.message ?: error::class.qualifiedName ?: "unknown",
+            )
         }
     }
 }
@@ -258,6 +261,7 @@ private fun RuntimePatch.traceAttributes(): TraceAttributes {
 private fun PatchApplyResult.resultTag(): String {
     return when (this) {
         is PatchApplyResult.Applied -> "applied"
+        is PatchApplyResult.Failed -> "failed"
         is PatchApplyResult.Ignored -> "ignored"
     }
 }
@@ -280,6 +284,18 @@ sealed interface PatchApplyResult : Serializable {
         override val patchId: PatchId,
         val reason: String,
     ) : PatchApplyResult
+
+    /**
+     * Patch failed during resolution, validation, installation, or commit without changing active runtime state.
+     */
+    data class Failed(
+        override val patchId: PatchId,
+        val message: String,
+    ) : PatchApplyResult {
+        init {
+            require(message.isNotBlank()) { "patch failure message must not be blank" }
+        }
+    }
 }
 
 private data class AppliedRuntimePatch(

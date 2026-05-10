@@ -68,17 +68,15 @@ class PatchRuntimeTest {
         val runtime = runtime()
         val patch = patch("broken", revision = 1)
 
-        val failed = runCatching {
-            runtime.apply(
-                patch,
-                plugin {
-                    replaceSlot(registry, "handler", "patched")
-                    replaceSlot(registry, "missing", "bad")
-                },
-            )
-        }
+        val failed = runtime.apply(
+            patch,
+            plugin {
+                replaceSlot(registry, "handler", "patched")
+                replaceSlot(registry, "missing", "bad")
+            },
+        )
 
-        assertTrue(failed.isFailure)
+        assertIs<PatchApplyResult.Failed>(failed)
         assertEquals("base", registry.require("handler"))
         assertEquals(emptyList(), runtime.appliedPatches())
     }

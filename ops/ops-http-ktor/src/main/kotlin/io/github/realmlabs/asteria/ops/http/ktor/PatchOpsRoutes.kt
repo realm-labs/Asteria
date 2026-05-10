@@ -2,9 +2,9 @@ package io.github.realmlabs.asteria.ops.http.ktor
 
 import io.github.realmlabs.asteria.core.ServiceRegistry
 import io.github.realmlabs.asteria.patch.*
-import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.response.respond
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
 fun Route.patchOpsRoutes(
@@ -129,6 +129,8 @@ private suspend fun localPatchDisableResult(
                 appName = environment.appName,
                 version = environment.version,
                 roles = environment.roles,
+                modules = environment.modules,
+                capabilities = environment.capabilities,
                 status = if (removed) RuntimePatchNodeStatus.Removed else RuntimePatchNodeStatus.Ignored,
                 attempt = 1,
             ),
@@ -145,6 +147,8 @@ private fun PatchApplyResult.toNodeResult(environment: PatchEnvironment): Runtim
             appName = environment.appName,
             version = environment.version,
             roles = environment.roles,
+            modules = environment.modules,
+            capabilities = environment.capabilities,
             status = RuntimePatchNodeStatus.Applied,
             attempt = 1,
             operationCount = operationCount,
@@ -157,9 +161,25 @@ private fun PatchApplyResult.toNodeResult(environment: PatchEnvironment): Runtim
             appName = environment.appName,
             version = environment.version,
             roles = environment.roles,
+            modules = environment.modules,
+            capabilities = environment.capabilities,
             status = RuntimePatchNodeStatus.Ignored,
             attempt = 1,
             message = reason,
+        )
+
+        is PatchApplyResult.Failed -> RuntimePatchNodeResult(
+            patchId = patchId,
+            nodeId = null,
+            address = environment.nodeAddress ?: "local",
+            appName = environment.appName,
+            version = environment.version,
+            roles = environment.roles,
+            modules = environment.modules,
+            capabilities = environment.capabilities,
+            status = RuntimePatchNodeStatus.Failed,
+            attempt = 1,
+            message = message,
         )
     }
 }
