@@ -5,6 +5,7 @@ import io.github.realmlabs.asteria.cluster.pekko.PekkoRuntimeModule
 import io.github.realmlabs.asteria.core.gameApplication
 import io.github.realmlabs.asteria.script.*
 import kotlinx.coroutines.runBlocking
+import kotlin.io.path.createTempDirectory
 import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -155,6 +156,29 @@ class ScriptModuleTest {
             assertFalse(result.success)
             assertEquals("node scripts are disabled", result.error)
             assertEquals(listOf("rejected:denied-script:node scripts are disabled"), auditSink.events)
+        } finally {
+            app.stop()
+        }
+    }
+
+    @Test
+    fun scriptModuleRegistersConfiguredResourceResolver() = runBlocking {
+        val cacheDirectory = createTempDirectory("asteria-script-resource-cache")
+        val app = gameApplication {
+            name = "asteria-script-resource-test-${System.nanoTime()}"
+            role("script-test")
+            install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
+            install(
+                ScriptModule {
+                    engine(EchoScriptEngine)
+                    resourceCache(cacheDirectory)
+                },
+            )
+        }
+
+        try {
+            app.launch()
+            assertNotNull(app.services.find<ScriptResourceResolver>())
         } finally {
             app.stop()
         }

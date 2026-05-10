@@ -9,6 +9,7 @@ import io.github.realmlabs.asteria.observability.NoopTracer
 import io.github.realmlabs.asteria.observability.Tracer
 import io.github.realmlabs.asteria.script.*
 import org.apache.pekko.actor.ActorSystem
+import java.nio.file.Path
 
 class ScriptModule private constructor(
     private val options: ScriptModuleOptions,
@@ -35,6 +36,7 @@ class ScriptModule private constructor(
         context.services.register(ScriptPolicy::class, policy)
         context.services.register(ScriptAuditSink::class, auditSink)
         context.services.register(ScriptExecutionStore::class, executionStore)
+        options.resourceResolver?.let { context.services.register(ScriptResourceResolver::class, it) }
         context.services.register(ScriptRunner::class, ScriptRunner(executor, policy, auditSink, executionStore))
         context.services.register(ScriptModuleOptions::class, options)
     }
@@ -67,6 +69,7 @@ data class ScriptModuleOptions(
     val policy: ScriptPolicy?,
     val executionStore: ScriptExecutionStore?,
     val auditSinks: List<ScriptAuditSink>,
+    val resourceResolver: ScriptResourceResolver?,
 )
 
 @AsteriaDsl
@@ -78,6 +81,7 @@ class ScriptModuleBuilder {
     var maxArtifactBytes: Int = 1024 * 1024
     private var policy: ScriptPolicy? = null
     private var executionStore: ScriptExecutionStore? = null
+    private var resourceResolver: ScriptResourceResolver? = null
 
     fun engine(engine: ScriptEngine) {
         engines.add(engine)
@@ -95,6 +99,17 @@ class ScriptModuleBuilder {
         auditSinks.add(auditSink)
     }
 
+    fun resourceResolver(resourceResolver: ScriptResourceResolver) {
+        this.resourceResolver = resourceResolver
+    }
+
+    fun resourceCache(
+        cacheDirectory: Path,
+        downloader: ScriptResourceDownloader = DefaultScriptResourceDownloader,
+    ) {
+        resourceResolver(CachingScriptResourceResolver(cacheDirectory, downloader))
+    }
+
     internal fun build(): ScriptModuleOptions {
         return ScriptModuleOptions(
             engines = engines.toList(),
@@ -104,6 +119,7 @@ class ScriptModuleBuilder {
             policy = policy,
             executionStore = executionStore,
             auditSinks = auditSinks.toList(),
+            resourceResolver = resourceResolver,
         )
     }
 }

@@ -65,6 +65,45 @@ used. If it returns `null` or any other value, the runner creates the default su
 actor.repairPlayer("1001")
 ```
 
+## Large Resources
+
+Do not put large files into `bodyText`, `bodyBase64`, or multipart artifacts. The script request should carry only
+resource references; the actual files should live on a local path, shared storage, HTTP endpoint, or object storage:
+
+```json
+{
+  "metadata": {
+    "resources": [
+      {
+        "name": "compensation",
+        "uri": "s3://ops/compensation.csv",
+        "checksum": "sha256:<hex>",
+        "format": "csv",
+        "attributes": {
+          "downloadUrl": "https://..."
+        }
+      }
+    ]
+  }
+}
+```
+
+The default resolver only supports node-local paths and `file:` URIs. Configure `ScriptModule` explicitly when scripts
+need to read HTTP or object-store resources:
+
+```kotlin
+install(ScriptModule {
+    engine(GroovyScriptEngine())
+    allowNodeScripts = true
+    allowActorScripts = true
+    resourceCache(Path.of("/var/lib/asteria/script-resources"))
+})
+```
+
+`resourceCache` registers a `CachingScriptResourceResolver`: remote resources are downloaded to a node-local cache on
+first use and verified by checksum. Use `resourceResolver(customResolver)` when the application needs its own storage,
+authorization, or download behavior.
+
 Uploading a Groovy or jar file only converts the file into a `ScriptArtifact` at the entry layer; it does not bypass
 policy. File size is constrained by both the entry-point configuration and `ScriptPolicy.maxArtifactBytes`. Checksums,
 signatures, template ids, approvers, permissions, and ticket ids should be passed in metadata attributes and validated

@@ -56,6 +56,44 @@ body 内容生成缓存 key。
 actor.repairPlayer("1001")
 ```
 
+## 大文件资源
+
+大文件不要放进 `bodyText`、`bodyBase64` 或 multipart artifact。脚本入口只携带资源引用，真正文件放在本地路径、共享目录、HTTP
+地址或对象存储中：
+
+```json
+{
+  "metadata": {
+    "resources": [
+      {
+        "name": "compensation",
+        "uri": "s3://ops/compensation.csv",
+        "checksum": "sha256:<hex>",
+        "format": "csv",
+        "attributes": {
+          "downloadUrl": "https://..."
+        }
+      }
+    ]
+  }
+}
+```
+
+默认资源解析器只支持节点本地路径和 `file:` URI。需要让脚本读取 HTTP 或对象存储资源时，在 `ScriptModule` 中显式配置：
+
+```kotlin
+install(ScriptModule {
+    engine(GroovyScriptEngine())
+    allowNodeScripts = true
+    allowActorScripts = true
+    resourceCache(Path.of("/var/lib/asteria/script-resources"))
+})
+```
+
+`resourceCache` 会注册 `CachingScriptResourceResolver`，远程资源首次读取时下载到节点本地缓存，并按 checksum
+校验。需要接入业务自己的存储、鉴权或下载逻辑时，使用
+`resourceResolver(customResolver)`。
+
 上传 groovy 或 jar 只是在入口层把文件转换成 `ScriptArtifact`，不会绕过策略。文件大小还会受入口配置和
 `ScriptPolicy.maxArtifactBytes`
 共同限制；checksum、签名、模板 id、审批人、权限、工单号等都应放在 metadata attributes 中，由业务策略验证。
