@@ -1171,7 +1171,7 @@ object AsteriaMongoEntityCodeGenerator {
         val noopJournal = ClassName(MONGODB_PACKAGE, "NoopMongoWriteJournal")
         val metricsType = ClassName("io.github.realmlabs.asteria.observability", "Metrics")
         val noopMetrics = ClassName("io.github.realmlabs.asteria.observability", "NoopMetrics")
-        val clockType = ClassName("java.time", "Clock")
+        val clockType = ClassName("kotlin.time", "Clock")
         val tableType = ClassName(MONGODB_PACKAGE, "MongoKeyedDocumentTable")
             .parameterizedBy(model.id.type.copy(nullable = false), model.entityType, wrapperType)
         val scannedTableType = ClassName(MONGODB_PACKAGE, "MongoScannedKeyedDocumentTable")
@@ -1208,7 +1208,7 @@ object AsteriaMongoEntityCodeGenerator {
                     )
                     .addParameter(
                         ParameterSpec.builder("clock", clockType)
-                            .defaultValue("%T.systemUTC()", clockType)
+                            .defaultValue("%T.System", clockType)
                             .build(),
                     )
                     .returns(tableType)
@@ -1249,7 +1249,7 @@ object AsteriaMongoEntityCodeGenerator {
                     )
                     .addParameter(
                         ParameterSpec.builder("clock", clockType)
-                            .defaultValue("%T.systemUTC()", clockType)
+                            .defaultValue("%T.System", clockType)
                             .build(),
                     )
                     .returns(scannedTableType)

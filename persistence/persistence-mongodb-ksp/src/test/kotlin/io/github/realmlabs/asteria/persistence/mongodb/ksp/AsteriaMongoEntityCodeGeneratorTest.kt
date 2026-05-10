@@ -5,6 +5,7 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 class AsteriaMongoEntityCodeGeneratorTest {
     @Test
@@ -166,6 +167,9 @@ class AsteriaMongoEntityCodeGeneratorTest {
         assertContains(code, "fun scannedTable(")
         assertContains(code, "MongoScannedKeyedDocumentTable<Long, PlayerEntity>")
         assertContains(code, "metrics: Metrics = NoopMetrics")
+        assertContains(code, "import kotlin.time.Clock")
+        assertContains(code, "clock: Clock = Clock.System")
+        assertFalse("import java.time.Clock" in code)
     }
 
     @Test
