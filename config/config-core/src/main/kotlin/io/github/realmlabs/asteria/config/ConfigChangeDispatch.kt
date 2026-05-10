@@ -29,14 +29,13 @@ interface ConfigChangeHandler<R : Any> {
  */
 class ConfigChangeDispatcher<R : Any>(
     handlers: Iterable<ConfigChangeHandler<R>> = emptyList(),
+    private val executor: ConfigChangeExecutor<R> = ConfigChangeExecutor.DIRECT,
+    private val failureHandler: ConfigChangeFailureHandler<R> = ConfigChangeFailureHandler.THROW,
 ) {
     private val handlers: List<ConfigChangeHandler<R>> = handlers.toList()
 
     /**
      * Runs handlers whose [ConfigChangeHandler.watchedTables] intersect with [event.changedTables].
-     *
-     * If a handler throws, dispatch stops and the exception is propagated. The caller should update any revision
-     * tracker only after this method returns successfully.
      */
     fun dispatch(
         receiver: R,
@@ -64,7 +63,7 @@ class ConfigChangeDispatcher<R : Any>(
     /**
      * Dispatches [event] only when [tracker] has not already recorded [ConfigChangedEvent.currentRevision].
      *
-     * The tracker is updated after all matching handlers complete successfully.
+     * The tracker is updated after all matching handler tasks are submitted to [executor].
      */
     fun dispatchIfNew(
         receiver: R,
@@ -82,7 +81,7 @@ class ConfigChangeDispatcher<R : Any>(
     /**
      * Dispatches [snapshot] only when [tracker] has not already recorded [ConfigSnapshot.revision].
      *
-     * The tracker is updated after all handlers complete successfully.
+     * The tracker is updated after all handler tasks are submitted to [executor].
      */
     fun dispatchIfNew(
         receiver: R,
@@ -102,35 +101,68 @@ class ConfigChangeDispatcher<R : Any>(
         snapshot: ConfigSnapshot,
         selectedHandlers: Iterable<ConfigChangeHandler<R>>,
     ) {
-        val failures = mutableListOf<ConfigChangeHandlerFailure>()
         for (handler in selectedHandlers) {
-            try {
-                handler.handle(receiver, snapshot)
-            } catch (error: Throwable) {
-                failures += ConfigChangeHandlerFailure(handler::class.qualifiedName ?: handler::class.toString(), error)
-            }
-        }
-        if (failures.isNotEmpty()) {
-            throw ConfigChangeDispatchException(snapshot.revision, failures)
+            val handlerName = handler::class.qualifiedName ?: handler::class.toString()
+            executor.execute(
+                receiver,
+                ConfigChangeTask(
+                    handler = handlerName,
+                    revision = snapshot.revision,
+                ) {
+                    try {
+                        handler.handle(receiver, snapshot)
+                    } catch (error: Throwable) {
+                        failureHandler.handle(receiver, ConfigChangeFailure(snapshot.revision, handlerName, error))
+                    }
+                },
+            )
         }
     }
 }
 
-data class ConfigChangeHandlerFailure(
+/**
+ * Executes a config change handler task.
+ *
+ * Actor runtimes can adapt this to their mailbox, for example:
+ *
+ * `ConfigChangeExecutor<MyActor> { actor, task -> actor.execute("config-change:${task.handler}", task::run) }`
+ */
+fun interface ConfigChangeExecutor<in R : Any> {
+    fun execute(
+        receiver: R,
+        task: ConfigChangeTask,
+    )
+
+    companion object {
+        val DIRECT: ConfigChangeExecutor<Any> = ConfigChangeExecutor { _, task -> task.run() }
+    }
+}
+
+class ConfigChangeTask internal constructor(
+    val handler: String,
+    val revision: ConfigRevision,
+    private val block: () -> Unit,
+) {
+    fun run() {
+        block()
+    }
+}
+
+data class ConfigChangeFailure(
+    val revision: ConfigRevision,
     val handler: String,
     val cause: Throwable,
 )
 
-class ConfigChangeDispatchException(
-    val revision: ConfigRevision,
-    val failures: List<ConfigChangeHandlerFailure>,
-) : IllegalStateException(
-    "config change dispatch failed for revision ${revision.version}: " +
-            failures.joinToString { "${it.handler}: ${it.cause.message ?: it.cause::class.simpleName}" },
-) {
-    init {
-        require(failures.isNotEmpty()) { "config change dispatch failures must not be empty" }
-        failures.forEach { addSuppressed(it.cause) }
+fun interface ConfigChangeFailureHandler<in R : Any> {
+    fun handle(
+        receiver: R,
+        failure: ConfigChangeFailure,
+    )
+
+    companion object {
+        val THROW: ConfigChangeFailureHandler<Any> = ConfigChangeFailureHandler { _, failure -> throw failure.cause }
+        val IGNORE: ConfigChangeFailureHandler<Any> = ConfigChangeFailureHandler { _, _ -> }
     }
 }
 

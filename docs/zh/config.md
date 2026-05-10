@@ -194,7 +194,25 @@ dispatcher.dispatchIfNew(actor, event, actor.configRevisionTracker)
 dispatcher.dispatchIfNew(actor, configService.current(), actor.configRevisionTracker)
 ```
 
-框架只负责 handler 清单、依赖匹配和 revision 去重；事件如何送到 actor、actor 的 revision 存在哪里，由业务 runtime 决定。
+Actor 不希望在当前调用栈里同步跑所有 handler 时，可以给 dispatcher 传执行器，把每个 handler 投递回 actor 自己的 mailbox：
+
+```kotlin
+val dispatcher = ConfigChangeDispatcher(
+    GeneratedPlayerConfigChangeHandlers.ALL,
+    executor = ConfigChangeExecutor<PlayerActor> { actor, task ->
+        actor.execute("config-change:${task.handler}", task::run)
+    },
+    failureHandler = ConfigChangeFailureHandler<PlayerActor> { actor, failure ->
+        actor.recordConfigChangeFailure(failure)
+    },
+)
+```
+
+`dispatchIfNew` 的 revision tracker 表示指定 revision 的 handler 任务已经提交给执行器。handler 执行失败会进入
+`failureHandler`，由业务决定是记录日志、上报监控、标记 actor 状态还是触发重试。
+
+框架只负责 handler 清单、依赖匹配和 revision 去重；事件如何送到 actor、失败怎么处理、actor 的 revision 存在哪里，由业务
+runtime 决定。
 
 ## 配置中心和发布
 

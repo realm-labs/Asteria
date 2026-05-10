@@ -2,7 +2,6 @@ package io.github.realmlabs.asteria.config
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -42,26 +41,51 @@ class ConfigChangeDispatcherTest {
     }
 
     @Test
-    fun `dispatch continues after handler failure and does not update tracker`() {
+    fun `dispatcher can enqueue handler tasks through executor`() {
         val receiver = TestReceiver()
         val tracker = TestRevisionTracker()
+        val tasks = mutableListOf<ConfigChangeTask>()
+        val dispatcher = ConfigChangeDispatcher(
+            listOf(
+                RecordingHandler("items", configTables("items")),
+                RecordingHandler("worlds", configTables("worlds")),
+            ),
+            executor = { _, task -> tasks += task },
+        )
+        val snapshot = snapshot("v2")
+
+        assertTrue(dispatcher.dispatchIfNew(receiver, snapshot, tracker))
+
+        assertEquals("v2", tracker.currentRevision())
+        assertEquals(emptyList(), receiver.events)
+        assertEquals(2, tasks.size)
+
+        tasks.forEach(ConfigChangeTask::run)
+
+        assertEquals(listOf("items:v2", "worlds:v2"), receiver.events)
+    }
+
+    @Test
+    fun `handler failure is reported to failure handler and does not stop later handler`() {
+        val receiver = TestReceiver()
+        val tracker = TestRevisionTracker()
+        val failures = mutableListOf<ConfigChangeFailure>()
         val dispatcher = ConfigChangeDispatcher(
             listOf(
                 RecordingHandler("before", configTables("items")),
                 FailingHandler(configTables("items")),
                 RecordingHandler("after", configTables("items")),
             ),
+            failureHandler = { _, failure -> failures += failure },
         )
 
-        val error = assertFailsWith<ConfigChangeDispatchException> {
-            dispatcher.dispatchIfNew(receiver, changeEvent(changedTables = configTables("items")), tracker)
-        }
+        assertTrue(dispatcher.dispatchIfNew(receiver, changeEvent(changedTables = configTables("items")), tracker))
 
         assertEquals(listOf("before:v2", "after:v2"), receiver.events)
-        assertEquals(null, tracker.currentRevision())
-        assertEquals(1, error.failures.size)
-        assertEquals("handler failed", error.failures.single().cause.message)
-        assertEquals(1, error.suppressedExceptions.size)
+        assertEquals("v2", tracker.currentRevision())
+        assertEquals(1, failures.size)
+        assertEquals("handler failed", failures.single().cause.message)
+        assertEquals(ConfigRevision("v2"), failures.single().revision)
     }
 
     @Test

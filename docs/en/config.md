@@ -204,8 +204,27 @@ dispatcher.dispatchIfNew(actor, event, actor.configRevisionTracker)
 dispatcher.dispatchIfNew(actor, configService.current(), actor.configRevisionTracker)
 ```
 
+Actors that should not run every handler synchronously on the current call stack can pass an executor and enqueue each
+handler task back to the actor mailbox:
+
+```kotlin
+val dispatcher = ConfigChangeDispatcher(
+    GeneratedPlayerConfigChangeHandlers.ALL,
+    executor = ConfigChangeExecutor<PlayerActor> { actor, task ->
+        actor.execute("config-change:${task.handler}", task::run)
+    },
+    failureHandler = ConfigChangeFailureHandler<PlayerActor> { actor, failure ->
+        actor.recordConfigChangeFailure(failure)
+    },
+)
+```
+
+For `dispatchIfNew`, the revision tracker means that handler tasks for that revision have been submitted to the
+executor. Handler failures are sent to `failureHandler`; projects decide whether to log, report, mark actor state, or
+retry.
+
 The framework provides handler aggregation, dependency matching, and revision de-duplication. Projects still decide how
-events reach actors and where each actor stores its handled revision.
+events reach actors, how failures are handled, and where each actor stores its handled revision.
 
 ## Config Center and Publication
 
