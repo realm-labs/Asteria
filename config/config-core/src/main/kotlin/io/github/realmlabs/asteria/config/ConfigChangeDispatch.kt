@@ -3,9 +3,9 @@ package io.github.realmlabs.asteria.config
 /**
  * Handles config-derived state for one receiver type.
  *
- * A handler declares the tables it depends on through [watchedTables]. During a hot reload, [ConfigChangeDispatcher]
- * invokes only handlers whose watched tables intersect with [ConfigChangedEvent.changedTables]. During catch-up, all
- * handlers run because the receiver may have missed any number of revisions while it was offline or unloaded.
+ * A handler declares the tables it depends on through [watchedTables]. Dispatching a [ConfigChangedEvent] invokes only
+ * handlers whose watched tables intersect with [ConfigChangedEvent.changedTables]. Dispatching a [ConfigSnapshot]
+ * invokes every handler.
  *
  * Handlers should synchronize receiver state from the supplied snapshot and remain idempotent.
  */
@@ -42,23 +42,23 @@ class ConfigChangeDispatcher<R : Any>(
         receiver: R,
         event: ConfigChangedEvent,
     ) {
-        for (handler in handlers) {
-            if (handler.watchedTables.any(event.changedTables::contains)) {
-                handler.handle(receiver, event.current)
-            }
-        }
+        dispatchToHandlers(
+            receiver = receiver,
+            snapshot = event.current,
+            selectedHandlers = handlers.filter { handler ->
+                handler.watchedTables.any(event.changedTables::contains)
+            },
+        )
     }
 
     /**
      * Runs every handler against [snapshot], regardless of watched table names.
      */
-    fun catchUp(
+    fun dispatch(
         receiver: R,
         snapshot: ConfigSnapshot,
     ) {
-        for (handler in handlers) {
-            handler.handle(receiver, snapshot)
-        }
+        dispatchToHandlers(receiver, snapshot, handlers)
     }
 
     /**
@@ -80,11 +80,11 @@ class ConfigChangeDispatcher<R : Any>(
     }
 
     /**
-     * Runs catch-up only when [tracker] has not already recorded [ConfigSnapshot.revision].
+     * Dispatches [snapshot] only when [tracker] has not already recorded [ConfigSnapshot.revision].
      *
      * The tracker is updated after all handlers complete successfully.
      */
-    fun catchUpIfNew(
+    fun dispatchIfNew(
         receiver: R,
         snapshot: ConfigSnapshot,
         tracker: ConfigRevisionTracker,
@@ -92,9 +92,45 @@ class ConfigChangeDispatcher<R : Any>(
         if (tracker.currentRevision() == snapshot.revision.version) {
             return false
         }
-        catchUp(receiver, snapshot)
+        dispatch(receiver, snapshot)
         tracker.updateRevision(snapshot.revision.version)
         return true
+    }
+
+    private fun dispatchToHandlers(
+        receiver: R,
+        snapshot: ConfigSnapshot,
+        selectedHandlers: Iterable<ConfigChangeHandler<R>>,
+    ) {
+        val failures = mutableListOf<ConfigChangeHandlerFailure>()
+        for (handler in selectedHandlers) {
+            try {
+                handler.handle(receiver, snapshot)
+            } catch (error: Throwable) {
+                failures += ConfigChangeHandlerFailure(handler::class.qualifiedName ?: handler::class.toString(), error)
+            }
+        }
+        if (failures.isNotEmpty()) {
+            throw ConfigChangeDispatchException(snapshot.revision, failures)
+        }
+    }
+}
+
+data class ConfigChangeHandlerFailure(
+    val handler: String,
+    val cause: Throwable,
+)
+
+class ConfigChangeDispatchException(
+    val revision: ConfigRevision,
+    val failures: List<ConfigChangeHandlerFailure>,
+) : IllegalStateException(
+    "config change dispatch failed for revision ${revision.version}: " +
+            failures.joinToString { "${it.handler}: ${it.cause.message ?: it.cause::class.simpleName}" },
+) {
+    init {
+        require(failures.isNotEmpty()) { "config change dispatch failures must not be empty" }
+        failures.forEach { addSuppressed(it.cause) }
     }
 }
 

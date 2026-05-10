@@ -118,7 +118,7 @@ chunk 拆分大文件，配置表很多时不会把所有 accessor 放进一个 
 `@AsteriaConfigChangeHandler` 标记一个 `ConfigChangeHandler<Receiver>` 实现。KSP 会校验 receiver 类型，生成
 `GeneratedConfigChangeHandlers.ALL` 这类 handler 清单。`ConfigChangeDispatcher` 运行时根据 handler 的 `watchedTables`
 和本次 `changedTables` 做匹配，并用 revision tracker 避免同一个 actor 重复处理同一版本。`handle(receiver, snapshot)`
-接收当前完整快照；在线事件只调用命中的 handler，catch-up 会调用全部 handler。
+接收当前完整快照；`dispatch(event)` 只调用命中的 handler，`dispatch(snapshot)` 会调用全部 handler。
 
 配置 validator 使用通用 contribution 机制聚合。需要生成 validator 清单时，使用 [贡献点聚合](contribution.md) 的
 `@AsteriaContribution(contract = ConfigValidator::class)`。
@@ -191,7 +191,7 @@ class ActivityConfigChangeHandler : ConfigChangeHandler<PlayerActor> {
 
 val dispatcher = ConfigChangeDispatcher(GeneratedPlayerConfigChangeHandlers.ALL)
 dispatcher.dispatchIfNew(actor, event, actor.configRevisionTracker)
-dispatcher.catchUpIfNew(actor, configService.current(), actor.configRevisionTracker)
+dispatcher.dispatchIfNew(actor, configService.current(), actor.configRevisionTracker)
 ```
 
 框架只负责 handler 清单、依赖匹配和 revision 去重；事件如何送到 actor、actor 的 revision 存在哪里，由业务 runtime 决定。
@@ -216,7 +216,7 @@ manifest。
 
 - 不要把集群节点 host、port、seed 这类启动拓扑当成普通热更配置。运行中的 Pekko actor system 不会因为配置表变化自动换端口或
   seed。
-- 不要在配置变更 handler 中只依赖“差量事件”。actor 新上线或错过热更事件时，应该通过 `catchUpIfNew` 用当前快照补齐状态。
+- 不要在配置变更 handler 中只依赖“差量事件”。actor 新上线或错过热更事件时，应该用当前快照调用 `dispatchIfNew` 补齐状态。
 - 不要对 Luban Java entity 强行做注解侵入。用 metadata 生成 marker 更稳。
 - `ConfigStore.watch` 不包含初始快照。watch 之前先 `get` 或 `children`，watch 事件只作为后续重读信号。
 - `ConfigPath` 必须是绝对路径，不能有尾斜杠和空路径段。

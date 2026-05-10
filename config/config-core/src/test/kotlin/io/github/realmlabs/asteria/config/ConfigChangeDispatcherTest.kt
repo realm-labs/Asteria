@@ -2,6 +2,7 @@ package io.github.realmlabs.asteria.config
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -22,7 +23,7 @@ class ConfigChangeDispatcherTest {
     }
 
     @Test
-    fun `catch up runs all handlers and revision tracker gates repeated work`() {
+    fun `snapshot dispatch runs all handlers and revision tracker gates repeated work`() {
         val receiver = TestReceiver()
         val tracker = TestRevisionTracker()
         val dispatcher = ConfigChangeDispatcher(
@@ -33,11 +34,34 @@ class ConfigChangeDispatcherTest {
         )
         val snapshot = snapshot("v2")
 
-        assertTrue(dispatcher.catchUpIfNew(receiver, snapshot, tracker))
-        assertFalse(dispatcher.catchUpIfNew(receiver, snapshot, tracker))
+        assertTrue(dispatcher.dispatchIfNew(receiver, snapshot, tracker))
+        assertFalse(dispatcher.dispatchIfNew(receiver, snapshot, tracker))
 
         assertEquals(listOf("items:v2", "worlds:v2"), receiver.events)
         assertEquals("v2", tracker.currentRevision())
+    }
+
+    @Test
+    fun `dispatch continues after handler failure and does not update tracker`() {
+        val receiver = TestReceiver()
+        val tracker = TestRevisionTracker()
+        val dispatcher = ConfigChangeDispatcher(
+            listOf(
+                RecordingHandler("before", configTables("items")),
+                FailingHandler(configTables("items")),
+                RecordingHandler("after", configTables("items")),
+            ),
+        )
+
+        val error = assertFailsWith<ConfigChangeDispatchException> {
+            dispatcher.dispatchIfNew(receiver, changeEvent(changedTables = configTables("items")), tracker)
+        }
+
+        assertEquals(listOf("before:v2", "after:v2"), receiver.events)
+        assertEquals(null, tracker.currentRevision())
+        assertEquals(1, error.failures.size)
+        assertEquals("handler failed", error.failures.single().cause.message)
+        assertEquals(1, error.suppressedExceptions.size)
     }
 
     @Test
@@ -95,6 +119,17 @@ private class RecordingHandler(
         snapshot: ConfigSnapshot,
     ) {
         receiver.events += "$name:${snapshot.revision.version}"
+    }
+}
+
+private class FailingHandler(
+    override val watchedTables: Set<ConfigTableName>,
+) : ConfigChangeHandler<TestReceiver> {
+    override fun handle(
+        receiver: TestReceiver,
+        snapshot: ConfigSnapshot,
+    ) {
+        error("handler failed")
     }
 }
 

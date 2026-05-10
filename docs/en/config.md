@@ -123,8 +123,8 @@ underlying collection API.
 `@AsteriaConfigChangeHandler` marks a `ConfigChangeHandler<Receiver>` implementation. KSP validates the receiver type
 and generates handler lists such as `GeneratedConfigChangeHandlers.ALL`. At runtime, `ConfigChangeDispatcher` matches
 handlers by `watchedTables` and the event `changedTables`, then uses the revision tracker to avoid applying the same
-revision to the same actor twice. `handle(receiver, snapshot)` receives the current complete snapshot; online events
-invoke only matching handlers, while catch-up invokes all handlers.
+revision to the same actor twice. `handle(receiver, snapshot)` receives the current complete snapshot;
+`dispatch(event)` invokes only matching handlers, while `dispatch(snapshot)` invokes all handlers.
 
 Config validators use the generic contribution mechanism. Use [Contribution Aggregation](contribution.md) with
 `@AsteriaContribution(contract = ConfigValidator::class)` when a generated validator list is needed.
@@ -201,7 +201,7 @@ class ActivityConfigChangeHandler : ConfigChangeHandler<PlayerActor> {
 
 val dispatcher = ConfigChangeDispatcher(GeneratedPlayerConfigChangeHandlers.ALL)
 dispatcher.dispatchIfNew(actor, event, actor.configRevisionTracker)
-dispatcher.catchUpIfNew(actor, configService.current(), actor.configRevisionTracker)
+dispatcher.dispatchIfNew(actor, configService.current(), actor.configRevisionTracker)
 ```
 
 The framework provides handler aggregation, dependency matching, and revision de-duplication. Projects still decide how
@@ -228,8 +228,8 @@ the publication manifest version.
 
 - Do not treat cluster host, port, seed, or role topology as normal hot-reload config. A running Pekko actor system does
   not change ports or seeds from a table reload.
-- Do not rely only on delta events in config change handlers. Actors that start later or miss a reload should use
-  `catchUpIfNew` against the current snapshot.
+- Do not rely only on delta events in config change handlers. Actors that start later or miss a reload should call
+  `dispatchIfNew` with the current snapshot.
 - Do not force annotations into Luban Java entities. Generate marker metadata instead.
 - `ConfigStore.watch` does not include the initial snapshot. Call `get` or `children` first; use watch events as reread
   signals.
