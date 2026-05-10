@@ -2,18 +2,19 @@
 
 ## 基础层
 
-| 模块                                                                         | 职责                                                  | 何时使用                          |
-|----------------------------------------------------------------------------|-----------------------------------------------------|-------------------------------|
-| `foundation-core`                                                          | 应用生命周期、模块系统、角色、实体和单例声明、服务注册表                        | 所有 Asteria 应用都需要              |
-| `foundation-actor`                                                         | Pekko actor 基类、actor dispatcher 上的协程 scope、timer 辅助 | 业务 actor 需要协程或生命周期 gate 时     |
-| `foundation-event`                                                         | 进程内事实事件、topic 树、父节点 fan-out、事件 handler           | 业务模块需要解耦领域通知时                |
-| `foundation-event-ksp`                                                     | 扫描事件 handler 注解并生成 event dispatcher                    | event handler 多、希望避免手写注册时     |
-| `foundation-message`                                                       | 消息接口、handler、dispatch、路由注册                          | 需要框架级消息分发或生成 handler 注册时      |
-| `foundation-message-ksp`                                                   | 扫描消息 handler 注解并生成注册代码                              | handler 多、希望避免手写注册时           |
-| `foundation-message-gradle-plugin`                                         | 给业务工程接入 message KSP                                 | 业务模块使用 Gradle 插件接入代码生成时       |
-| `foundation-protobuf`                                                      | protobuf message registry 基础设施                      | protobuf 消息需要统一 id registry 时 |
-| `foundation-id`                                                            | worker id 租约和 Snowflake 风格 id 生成                    | 多节点生成唯一 id 时                  |
-| `foundation-id-etcd` / `foundation-id-mongodb` / `foundation-id-zookeeper` | worker id 租约后端                                      | 按已有基础设施选择一种                   |
+| 模块                                                                         | 职责                                                  | 何时使用                                    |
+|----------------------------------------------------------------------------|-----------------------------------------------------|-----------------------------------------|
+| `foundation-core`                                                          | 应用生命周期、模块系统、角色、实体和单例声明、服务注册表                        | 所有 Asteria 应用都需要                        |
+| `foundation-actor`                                                         | Pekko actor 基类、actor dispatcher 上的协程 scope、timer 辅助 | 业务 actor 需要协程或生命周期 gate 时               |
+| `foundation-contribution` / `foundation-contribution-ksp`                  | 通用贡献点注解和 KSP 聚合清单生成                                 | 业务扩展点需要生成列表后自行建索引或 patchable registry 时 |
+| `foundation-event`                                                         | 进程内事实事件、topic 树、父节点 fan-out、事件 handler              | 业务模块需要解耦领域通知时                           |
+| `foundation-event-ksp`                                                     | 扫描事件 handler 注解并生成 event dispatcher                 | event handler 多、希望避免手写注册时               |
+| `foundation-message`                                                       | 消息接口、handler、dispatch、路由注册                          | 需要框架级消息分发或生成 handler 注册时                |
+| `foundation-message-ksp`                                                   | 扫描消息 handler 注解并生成注册代码                              | handler 多、希望避免手写注册时                     |
+| `foundation-message-gradle-plugin`                                         | 给业务工程接入 message KSP                                 | 业务模块使用 Gradle 插件接入代码生成时                 |
+| `foundation-protobuf`                                                      | protobuf message registry 基础设施                      | protobuf 消息需要统一 id registry 时           |
+| `foundation-id`                                                            | worker id 租约和 Snowflake 风格 id 生成                    | 多节点生成唯一 id 时                            |
+| `foundation-id-etcd` / `foundation-id-mongodb` / `foundation-id-zookeeper` | worker id 租约后端                                      | 按已有基础设施选择一种                             |
 
 ## 运行时和通信
 

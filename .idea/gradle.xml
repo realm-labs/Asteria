@@ -42,6 +42,8 @@
             <option value="$PROJECT_DIR$/config/config-publisher" />
             <option value="$PROJECT_DIR$/foundation" />
             <option value="$PROJECT_DIR$/foundation/foundation-actor" />
+            <option value="$PROJECT_DIR$/foundation/foundation-contribution" />
+            <option value="$PROJECT_DIR$/foundation/foundation-contribution-ksp" />
             <option value="$PROJECT_DIR$/foundation/foundation-core" />
             <option value="$PROJECT_DIR$/foundation/foundation-event" />
             <option value="$PROJECT_DIR$/foundation/foundation-event-ksp" />

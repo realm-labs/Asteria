@@ -14,6 +14,8 @@ rootProject.name = "Asteria"
 include(
     "foundation:foundation-core",
     "foundation:foundation-actor",
+    "foundation:foundation-contribution",
+    "foundation:foundation-contribution-ksp",
     "foundation:foundation-id",
     "foundation:foundation-id-etcd",
     "foundation:foundation-id-mongodb",
