@@ -11,9 +11,9 @@ import org.apache.zookeeper.KeeperException
 import org.apache.zookeeper.data.Stat
 import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets.UTF_8
-import java.time.Duration
-import java.time.Instant
 import java.util.*
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 class ZookeeperWorkerIdRepository(
     private val client: AsyncCuratorFramework,
@@ -29,7 +29,7 @@ class ZookeeperWorkerIdRepository(
         ttl: Duration,
         now: Instant,
     ): WorkerIdLease = measured("acquire") {
-        require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+        require(ttl > Duration.ZERO) { "worker id lease ttl must be positive" }
         expire(now)
         leases(now)
             .firstOrNull { lease -> lease.owner == owner && lease.id in range }
@@ -45,7 +45,7 @@ class ZookeeperWorkerIdRepository(
         ttl: Duration,
         now: Instant,
     ): WorkerIdLease? = measured("renew") {
-        require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+        require(ttl > Duration.ZERO) { "worker id lease ttl must be positive" }
         val path = pathOf(lease.id)
         val current = read(path) ?: return@measured null
         if (current.lease.owner != lease.owner || current.lease.token != lease.token || current.lease.isExpired(now)) {
@@ -54,7 +54,7 @@ class ZookeeperWorkerIdRepository(
             }
             return@measured null
         }
-        val renewed = current.lease.copy(expiresAt = now.plus(ttl))
+        val renewed = current.lease.copy(expiresAt = now + ttl)
         try {
             client.setData()
                 .withVersion(current.version)
@@ -97,7 +97,7 @@ class ZookeeperWorkerIdRepository(
             owner = owner,
             token = UUID.randomUUID().toString(),
             acquiredAt = now,
-            expiresAt = now.plus(ttl),
+            expiresAt = now + ttl,
         )
         val current = read(path)
         return if (current == null) {
@@ -181,8 +181,8 @@ class ZookeeperWorkerIdRepository(
             id.value.toString(),
             owner.value.encodeToken(),
             token.encodeToken(),
-            acquiredAt.toEpochMilli().toString(),
-            expiresAt.toEpochMilli().toString(),
+            acquiredAt.toEpochMilliseconds().toString(),
+            expiresAt.toEpochMilliseconds().toString(),
         ).joinToString("\n")
     }
 
@@ -195,8 +195,8 @@ class ZookeeperWorkerIdRepository(
             id = WorkerId(parts[0].toIntOrNull() ?: return null),
             owner = WorkerIdOwner(parts[1].decodeTokenOrNull() ?: return null),
             token = parts[2].decodeTokenOrNull() ?: return null,
-            acquiredAt = Instant.ofEpochMilli(parts[3].toLongOrNull() ?: return null),
-            expiresAt = Instant.ofEpochMilli(parts[4].toLongOrNull() ?: return null),
+            acquiredAt = Instant.fromEpochMilliseconds(parts[3].toLongOrNull() ?: return null),
+            expiresAt = Instant.fromEpochMilliseconds(parts[4].toLongOrNull() ?: return null),
         )
     }
 

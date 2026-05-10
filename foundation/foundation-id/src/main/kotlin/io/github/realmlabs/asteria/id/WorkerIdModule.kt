@@ -7,11 +7,13 @@ import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.metricsOrNoop
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
-import java.time.Duration
-import java.time.Instant
 import java.util.*
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /**
  * Acquires a process-wide [WorkerId] and registers a lease-aware [IdGenerator].
@@ -55,7 +57,7 @@ class WorkerIdModule(
             renewJob = scope.launch {
                 var current = acquired
                 while (isActive) {
-                    delay(options.renewInterval.toMillis().milliseconds)
+                    delay(options.renewInterval)
                     val renewed = renewLease(context.name, current, workerIdRuntime, metrics) ?: return@launch
                     metrics.counter("asteria.worker_id.renewed.total", renewed.metricTags(context.name)).increment()
                     current = renewed
@@ -84,8 +86,8 @@ class WorkerIdModule(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                val now = Instant.now()
-                if (!current.expiresAt.isAfter(now)) {
+                val now = Clock.System.now()
+                if (current.expiresAt <= now) {
                     metrics.counter("asteria.worker_id.renew.failed.total", current.metricTags(appName)).increment()
                     markLeaseLost(appName, current, runtime, error)
                     return null
@@ -126,10 +128,10 @@ class WorkerIdModule(
         now: Instant,
         current: WorkerIdLease,
     ): Long {
-        val untilExpiry = Duration.between(now, current.expiresAt).toMillis()
+        val untilExpiry = (current.expiresAt - now).inWholeMilliseconds
         return minOf(
-            DEFAULT_RENEW_RETRY_DELAY.toMillis(),
-            options.renewInterval.toMillis(),
+            DEFAULT_RENEW_RETRY_DELAY.inWholeMilliseconds,
+            options.renewInterval.inWholeMilliseconds,
             untilExpiry,
         ).coerceAtLeast(1)
     }
@@ -233,18 +235,18 @@ private class LeaseAwareIdGenerator(
     }
 }
 
-private val DEFAULT_RENEW_RETRY_DELAY: Duration = Duration.ofSeconds(1)
+private val DEFAULT_RENEW_RETRY_DELAY: Duration = 1.seconds
 
 data class WorkerIdModuleOptions(
     val range: WorkerIdRange = WorkerIdRange.of(0, 1023),
-    val ttl: Duration = Duration.ofSeconds(30),
-    val renewInterval: Duration = Duration.ofSeconds(10),
+    val ttl: Duration = 30.seconds,
+    val renewInterval: Duration = 10.seconds,
     val owner: ((ModuleContext) -> WorkerIdOwner)? = null,
     val generator: (WorkerId) -> IdGenerator = { workerId -> SnowflakeIdGenerator(workerId) },
 ) {
     init {
-        require(!ttl.isNegative && !ttl.isZero) { "worker id ttl must be positive" }
-        require(!renewInterval.isNegative && !renewInterval.isZero) { "worker id renewInterval must be positive" }
+        require(ttl > Duration.ZERO) { "worker id ttl must be positive" }
+        require(renewInterval > Duration.ZERO) { "worker id renewInterval must be positive" }
         require(renewInterval < ttl) { "worker id renewInterval must be smaller than ttl" }
     }
 }

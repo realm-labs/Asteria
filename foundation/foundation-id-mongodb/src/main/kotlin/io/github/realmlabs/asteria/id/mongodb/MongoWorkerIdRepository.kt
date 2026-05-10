@@ -17,9 +17,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.toList
 import org.bson.Document
 import org.slf4j.LoggerFactory
-import java.time.Duration
-import java.time.Instant
 import java.util.*
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 class MongoWorkerIdRepository(
     database: MongoDatabase,
@@ -43,7 +43,7 @@ class MongoWorkerIdRepository(
         now: Instant,
     ): WorkerIdLease {
         return measured("acquire") {
-            require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+            require(ttl > Duration.ZERO) { "worker id lease ttl must be positive" }
             expire(now)
             renewCurrentOwnerLease(owner, range, ttl, now)?.let { return@measured it }
             for (id in range.ids()) {
@@ -59,15 +59,15 @@ class MongoWorkerIdRepository(
         now: Instant,
     ): WorkerIdLease? {
         return measured("renew") {
-            require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+            require(ttl > Duration.ZERO) { "worker id lease ttl must be positive" }
             leases.findOneAndUpdate(
                 and(
                     eq("_id", lease.id.value),
                     eq("owner", lease.owner.value),
                     eq("token", lease.token),
-                    gte("expiresAtMillis", now.toEpochMilli() + 1),
+                    gte("expiresAtMillis", now.toEpochMilliseconds() + 1),
                 ),
-                set("expiresAtMillis", now.plus(ttl).toEpochMilli()),
+                set("expiresAtMillis", (now + ttl).toEpochMilliseconds()),
                 FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER),
             )?.toLease()
         }
@@ -123,7 +123,7 @@ class MongoWorkerIdRepository(
             and(
                 `in`("_id", ids),
                 eq("owner", owner.value),
-                gte("expiresAtMillis", now.toEpochMilli() + 1),
+                gte("expiresAtMillis", now.toEpochMilliseconds() + 1),
             ),
         )
             .sort(Sorts.ascending("_id"))
@@ -144,7 +144,7 @@ class MongoWorkerIdRepository(
             owner = owner,
             token = UUID.randomUUID().toString(),
             acquiredAt = now,
-            expiresAt = now.plus(ttl),
+            expiresAt = now + ttl,
         )
         return try {
             leases.insertOne(lease.toDocument())
@@ -158,15 +158,15 @@ class MongoWorkerIdRepository(
     }
 
     private suspend fun expire(now: Instant) {
-        leases.deleteMany(lte("expiresAtMillis", now.toEpochMilli()))
+        leases.deleteMany(lte("expiresAtMillis", now.toEpochMilliseconds()))
     }
 
     private fun WorkerIdLease.toDocument(): Document {
         return Document("_id", id.value)
             .append("owner", owner.value)
             .append("token", token)
-            .append("acquiredAtMillis", acquiredAt.toEpochMilli())
-            .append("expiresAtMillis", expiresAt.toEpochMilli())
+            .append("acquiredAtMillis", acquiredAt.toEpochMilliseconds())
+            .append("expiresAtMillis", expiresAt.toEpochMilliseconds())
     }
 
     private fun Document.toLease(): WorkerIdLease {
@@ -174,8 +174,8 @@ class MongoWorkerIdRepository(
             id = WorkerId(requiredNumber("_id").toInt()),
             owner = WorkerIdOwner(requiredString("owner")),
             token = requiredString("token"),
-            acquiredAt = Instant.ofEpochMilli(requiredNumber("acquiredAtMillis").toLong()),
-            expiresAt = Instant.ofEpochMilli(requiredNumber("expiresAtMillis").toLong()),
+            acquiredAt = Instant.fromEpochMilliseconds(requiredNumber("acquiredAtMillis").toLong()),
+            expiresAt = Instant.fromEpochMilliseconds(requiredNumber("expiresAtMillis").toLong()),
         )
     }
 

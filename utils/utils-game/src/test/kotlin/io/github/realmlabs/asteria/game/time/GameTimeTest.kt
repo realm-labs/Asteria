@@ -1,10 +1,16 @@
 package io.github.realmlabs.asteria.game.time
 
-import java.time.*
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class GameTimeTest {
     private val rule = GameDayRule(
@@ -75,11 +81,11 @@ class GameTimeTest {
     fun cooldownCalculatesReadyTimeAndRemainingTime() {
         val lastUsedAt = Instant.parse("2026-05-01T00:00:00Z")
 
-        assertFalse(Cooldown.isReady(lastUsedAt, Instant.parse("2026-05-01T00:04:59Z"), Duration.ofMinutes(5)))
-        assertTrue(Cooldown.isReady(lastUsedAt, Instant.parse("2026-05-01T00:05:00Z"), Duration.ofMinutes(5)))
+        assertFalse(Cooldown.isReady(lastUsedAt, Instant.parse("2026-05-01T00:04:59Z"), 5.minutes))
+        assertTrue(Cooldown.isReady(lastUsedAt, Instant.parse("2026-05-01T00:05:00Z"), 5.minutes))
         assertEquals(
-            Duration.ofSeconds(1),
-            Cooldown.remaining(lastUsedAt, Instant.parse("2026-05-01T00:04:59Z"), Duration.ofMinutes(5)),
+            1.seconds,
+            Cooldown.remaining(lastUsedAt, Instant.parse("2026-05-01T00:04:59Z"), 5.minutes),
         )
     }
 

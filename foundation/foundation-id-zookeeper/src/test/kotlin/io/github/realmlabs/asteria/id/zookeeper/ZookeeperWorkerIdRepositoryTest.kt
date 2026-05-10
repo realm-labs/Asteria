@@ -10,21 +10,21 @@ import org.apache.curator.framework.CuratorFrameworkFactory
 import org.apache.curator.retry.ExponentialBackoffRetry
 import org.apache.curator.test.TestingServer
 import org.apache.curator.x.async.AsyncCuratorFramework
-import java.time.Duration
-import java.time.Instant
 import kotlin.test.*
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class ZookeeperWorkerIdRepositoryTest {
     @Test
-    fun acquireAssignsDistinctWorkerIdsAndReusesOwnerLease() = runBlocking {
+    fun acquireAssignsDistinctWorkerIdsAndReusesOwnerLease(): Unit = runBlocking {
         withZookeeperRepository { repository ->
             val range = WorkerIdRange.of(1, 2)
             val now = Instant.parse("2026-05-02T00:00:00Z")
 
-            val first = repository.acquire(WorkerIdOwner("node-a"), range, Duration.ofSeconds(30), now)
+            val first = repository.acquire(WorkerIdOwner("node-a"), range, 30.seconds, now)
             val firstAgain =
-                repository.acquire(WorkerIdOwner("node-a"), range, Duration.ofSeconds(30), now.plusSeconds(1))
-            val second = repository.acquire(WorkerIdOwner("node-b"), range, Duration.ofSeconds(30), now)
+                repository.acquire(WorkerIdOwner("node-a"), range, 30.seconds, now + 1.seconds)
+            val second = repository.acquire(WorkerIdOwner("node-b"), range, 30.seconds, now)
 
             assertEquals(WorkerId(1), first.id)
             assertEquals(first.id, firstAgain.id)
@@ -34,13 +34,13 @@ class ZookeeperWorkerIdRepositoryTest {
     }
 
     @Test
-    fun expiredLeaseCanBeReacquired() = runBlocking {
+    fun expiredLeaseCanBeReacquired(): Unit = runBlocking {
         withZookeeperRepository { repository ->
             val range = WorkerIdRange.of(1, 1)
             val now = Instant.parse("2026-05-02T00:00:00Z")
 
-            val old = repository.acquire(WorkerIdOwner("node-a"), range, Duration.ofSeconds(1), now)
-            val next = repository.acquire(WorkerIdOwner("node-b"), range, Duration.ofSeconds(30), now.plusSeconds(2))
+            val old = repository.acquire(WorkerIdOwner("node-a"), range, 1.seconds, now)
+            val next = repository.acquire(WorkerIdOwner("node-b"), range, 30.seconds, now + 2.seconds)
 
             assertEquals(old.id, next.id)
             assertNotEquals(old.token, next.token)
@@ -48,18 +48,18 @@ class ZookeeperWorkerIdRepositoryTest {
     }
 
     @Test
-    fun renewAndReleaseRequireMatchingLeaseToken() = runBlocking {
+    fun renewAndReleaseRequireMatchingLeaseToken(): Unit = runBlocking {
         withZookeeperRepository { repository ->
             val now = Instant.parse("2026-05-02T00:00:00Z")
             val lease = repository.acquire(
                 WorkerIdOwner("node-a"),
                 WorkerIdRange.of(1, 1),
-                Duration.ofSeconds(30),
+                30.seconds,
                 now,
             )
             val stale = lease.copy(token = "stale")
 
-            assertNull(repository.renew(stale, Duration.ofSeconds(30), now.plusSeconds(1)))
+            assertNull(repository.renew(stale, 30.seconds, now + 1.seconds))
             assertFalse(repository.release(stale))
             assertTrue(repository.release(lease))
             assertEquals(emptyList(), repository.leases())
@@ -67,12 +67,12 @@ class ZookeeperWorkerIdRepositoryTest {
     }
 
     @Test
-    fun unavailableRangeFailsFast() = runBlocking {
+    fun unavailableRangeFailsFast(): Unit = runBlocking {
         withZookeeperRepository { repository ->
-            repository.acquire(WorkerIdOwner("node-a"), WorkerIdRange.of(1, 1), Duration.ofSeconds(30))
+            repository.acquire(WorkerIdOwner("node-a"), WorkerIdRange.of(1, 1), 30.seconds)
 
             val failure = runCatching {
-                repository.acquire(WorkerIdOwner("node-b"), WorkerIdRange.of(1, 1), Duration.ofSeconds(30))
+                repository.acquire(WorkerIdOwner("node-b"), WorkerIdRange.of(1, 1), 30.seconds)
             }
 
             assertIs<WorkerIdUnavailableException>(failure.exceptionOrNull())

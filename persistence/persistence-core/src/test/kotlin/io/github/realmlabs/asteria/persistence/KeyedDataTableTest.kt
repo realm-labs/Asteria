@@ -1,15 +1,14 @@
 package io.github.realmlabs.asteria.persistence
 
 import kotlinx.coroutines.runBlocking
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneId
 import kotlin.test.*
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class KeyedDataTableTest {
     @Test
-    fun `use lazily loads one row`() = runBlocking {
+    fun `use lazily loads one row`(): Unit = runBlocking {
         val table = TestTable(rows = listOf(TestRow(1, "alice")))
 
         table.use(1) { row ->
@@ -24,7 +23,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `useOrNull returns null when row does not exist`() = runBlocking {
+    fun `useOrNull returns null when row does not exist`(): Unit = runBlocking {
         val table = TestTable(rows = emptyList())
 
         val result = table.useOrNull(1) { it.name }
@@ -34,7 +33,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `idle unload flushes row and invalidates leaked reference`() = runBlocking {
+    fun `idle unload flushes row and invalidates leaked reference`(): Unit = runBlocking {
         val clock = MutableTableClock()
         val table = TestTable(rows = listOf(TestRow(1, "alice")), clock = clock)
         var leaked: TestRow? = null
@@ -55,7 +54,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `failed row flush keeps row loaded`() = runBlocking {
+    fun `failed row flush keeps row loaded`(): Unit = runBlocking {
         val clock = MutableTableClock()
         val table = TestTable(rows = listOf(TestRow(1, "alice")), clock = clock, flushResult = false)
 
@@ -71,7 +70,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `idle unload only unloads expired rows`() = runBlocking {
+    fun `idle unload only unloads expired rows`(): Unit = runBlocking {
         val clock = MutableTableClock()
         val table = TestTable(
             rows = listOf(TestRow(1, "alice"), TestRow(2, "bob")),
@@ -91,7 +90,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `use refreshes last access time`() = runBlocking {
+    fun `use refreshes last access time`(): Unit = runBlocking {
         val clock = MutableTableClock()
         val table = TestTable(rows = listOf(TestRow(1, "alice")), clock = clock)
 
@@ -112,7 +111,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `unloaded row is loaded again as a fresh object`() = runBlocking {
+    fun `unloaded row is loaded again as a fresh object`(): Unit = runBlocking {
         val clock = MutableTableClock()
         val table = TestTable(rows = listOf(TestRow(1, "alice")), clock = clock)
         var first: TestRow? = null
@@ -136,7 +135,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `loadAllIntoMemory loads all rows explicitly`() = runBlocking {
+    fun `loadAllIntoMemory loads all rows explicitly`(): Unit = runBlocking {
         val table = TestTable(rows = listOf(TestRow(1, "alice"), TestRow(2, "bob")))
 
         val loaded = table.loadAllIntoMemory()
@@ -146,7 +145,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `loadAllIntoMemory does not overwrite already loaded rows`() = runBlocking {
+    fun `loadAllIntoMemory does not overwrite already loaded rows`(): Unit = runBlocking {
         val table = TestTable(rows = listOf(TestRow(1, "alice"), TestRow(2, "bob")))
 
         table.use(1) { it.rename("alice-local") }
@@ -159,7 +158,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `subclass can add created row to loaded cache`() = runBlocking {
+    fun `subclass can add created row to loaded cache`(): Unit = runBlocking {
         val table = TestTable(rows = emptyList())
 
         table.createLoaded(TestRow(1, "alice"))
@@ -171,7 +170,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `flush writes loaded rows without unloading`() = runBlocking {
+    fun `flush writes loaded rows without unloading`(): Unit = runBlocking {
         val table = TestTable(rows = listOf(TestRow(1, "alice"), TestRow(2, "bob")))
 
         table.use(1) { it.rename("alice-1") }
@@ -186,7 +185,7 @@ class KeyedDataTableTest {
     }
 
     @Test
-    fun `database queries return candidate keys and caller rechecks current row`() = runBlocking {
+    fun `database queries return candidate keys and caller rechecks current row`(): Unit = runBlocking {
         val table = TestTable(
             rows = listOf(
                 TestRow(1, "alice", inactive = true),
@@ -212,7 +211,7 @@ class KeyedDataTableTest {
 
 private class TestTable(
     rows: List<TestRow>,
-    clock: Clock = Clock.systemUTC(),
+    clock: Clock = Clock.System,
     private val flushResult: Boolean = true,
 ) : KeyedDataTable<Int, TestRow>(
     cachePolicy = RowCachePolicy(10.seconds),
@@ -268,16 +267,12 @@ private data class TestRow(
     }
 }
 
-private class MutableTableClock : Clock() {
-    private var instant: Instant = Instant.EPOCH
+private class MutableTableClock : Clock {
+    private var instant: Instant = Instant.fromEpochMilliseconds(0)
 
-    override fun instant(): Instant = instant
-
-    override fun withZone(zone: ZoneId): Clock = this
-
-    override fun getZone(): ZoneId = ZoneId.of("UTC")
+    override fun now(): Instant = instant
 
     fun advanceSeconds(seconds: Long) {
-        instant = instant.plusSeconds(seconds)
+        instant += seconds.seconds
     }
 }

@@ -16,9 +16,9 @@ import io.github.realmlabs.asteria.observability.NoopMetrics
 import kotlinx.coroutines.future.await
 import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets.UTF_8
-import java.time.Duration
-import java.time.Instant
 import java.util.*
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 class EtcdWorkerIdRepository(
     private val client: Client,
@@ -35,7 +35,7 @@ class EtcdWorkerIdRepository(
         now: Instant,
     ): WorkerIdLease {
         return measured("acquire") {
-            require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+            require(ttl > Duration.ZERO) { "worker id lease ttl must be positive" }
             expire(now)
             leases(now)
                 .firstOrNull { lease -> lease.owner == owner && lease.id in range }
@@ -53,7 +53,7 @@ class EtcdWorkerIdRepository(
         now: Instant,
     ): WorkerIdLease? {
         return measured("renew") {
-            require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+            require(ttl > Duration.ZERO) { "worker id lease ttl must be positive" }
             val key = byteKey(lease.id)
             val current = client.kvClient.get(key).await().kvs.firstOrNull() ?: return@measured null
             val currentLease = current.toLeaseOrNull() ?: return@measured null
@@ -63,7 +63,7 @@ class EtcdWorkerIdRepository(
                 }
                 return@measured null
             }
-            val renewed = currentLease.copy(expiresAt = now.plus(ttl))
+            val renewed = currentLease.copy(expiresAt = now + ttl)
             val response = client.kvClient.txn()
                 .If(Cmp(key, Cmp.Op.EQUAL, CmpTarget.modRevision(current.modRevision)))
                 .Then(Op.put(key, ByteSequence.from(renewed.encode(), UTF_8), PutOption.DEFAULT))
@@ -125,7 +125,7 @@ class EtcdWorkerIdRepository(
             owner = owner,
             token = UUID.randomUUID().toString(),
             acquiredAt = now,
-            expiresAt = now.plus(ttl),
+            expiresAt = now + ttl,
         )
         val current = client.kvClient.get(key).await().kvs.firstOrNull()
         val response = if (current == null) {
@@ -185,8 +185,8 @@ class EtcdWorkerIdRepository(
             id.value.toString(),
             owner.value.encodeToken(),
             token.encodeToken(),
-            acquiredAt.toEpochMilli().toString(),
-            expiresAt.toEpochMilli().toString(),
+            acquiredAt.toEpochMilliseconds().toString(),
+            expiresAt.toEpochMilliseconds().toString(),
         ).joinToString("\n")
     }
 
@@ -199,8 +199,8 @@ class EtcdWorkerIdRepository(
             id = WorkerId(parts[0].toIntOrNull() ?: return null),
             owner = WorkerIdOwner(parts[1].decodeTokenOrNull() ?: return null),
             token = parts[2].decodeTokenOrNull() ?: return null,
-            acquiredAt = Instant.ofEpochMilli(parts[3].toLongOrNull() ?: return null),
-            expiresAt = Instant.ofEpochMilli(parts[4].toLongOrNull() ?: return null),
+            acquiredAt = Instant.fromEpochMilliseconds(parts[3].toLongOrNull() ?: return null),
+            expiresAt = Instant.fromEpochMilliseconds(parts[4].toLongOrNull() ?: return null),
         )
     }
 

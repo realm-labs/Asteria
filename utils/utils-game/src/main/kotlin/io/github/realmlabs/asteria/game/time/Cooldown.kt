@@ -1,7 +1,7 @@
 package io.github.realmlabs.asteria.game.time
 
-import java.time.Duration
-import java.time.Instant
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 /**
  * Small helpers for checking timestamp-based cooldowns.
@@ -15,8 +15,8 @@ object Cooldown {
         now: Instant,
         cooldown: Duration,
     ): Boolean {
-        require(!cooldown.isNegative) { "cooldown must not be negative" }
-        return lastUsedAt == null || !readyAt(lastUsedAt, cooldown).isAfter(now)
+        require(cooldown >= Duration.ZERO) { "cooldown must not be negative" }
+        return lastUsedAt == null || readyAt(lastUsedAt, cooldown) <= now
     }
 
     /**
@@ -26,8 +26,8 @@ object Cooldown {
         lastUsedAt: Instant,
         cooldown: Duration,
     ): Instant {
-        require(!cooldown.isNegative) { "cooldown must not be negative" }
-        return lastUsedAt.plus(cooldown)
+        require(cooldown >= Duration.ZERO) { "cooldown must not be negative" }
+        return lastUsedAt + cooldown
     }
 
     /**
@@ -40,11 +40,11 @@ object Cooldown {
         now: Instant,
         cooldown: Duration,
     ): Duration {
-        require(!cooldown.isNegative) { "cooldown must not be negative" }
+        require(cooldown >= Duration.ZERO) { "cooldown must not be negative" }
         if (lastUsedAt == null) {
             return Duration.ZERO
         }
-        val remaining = Duration.between(now, readyAt(lastUsedAt, cooldown))
-        return if (remaining.isNegative) Duration.ZERO else remaining
+        val remaining = readyAt(lastUsedAt, cooldown) - now
+        return if (remaining < Duration.ZERO) Duration.ZERO else remaining
     }
 }

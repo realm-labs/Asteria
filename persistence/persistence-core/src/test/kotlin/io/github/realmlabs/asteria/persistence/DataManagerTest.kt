@@ -3,15 +3,14 @@ package io.github.realmlabs.asteria.persistence
 import io.github.realmlabs.asteria.core.EntityKind
 import io.github.realmlabs.asteria.core.ServiceRegistry
 import kotlinx.coroutines.runBlocking
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneId
 import kotlin.test.*
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class DataManagerTest {
     @Test
-    fun `loadEager only loads eager modules`() = runBlocking {
+    fun `loadEager only loads eager modules`(): Unit = runBlocking {
         val eagerData = TestData()
         val lazyData = NamedData("mail")
         val manager = DataManager(
@@ -32,7 +31,7 @@ class DataManagerTest {
     }
 
     @Test
-    fun `lazy data loads on first access`() = runBlocking {
+    fun `lazy data loads on first access`(): Unit = runBlocking {
         val data = NamedData("mail")
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
@@ -50,7 +49,7 @@ class DataManagerTest {
     }
 
     @Test
-    fun `unloadable data must be accessed with scoped use`() = runBlocking {
+    fun `unloadable data must be accessed with scoped use`(): Unit = runBlocking {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(
@@ -64,7 +63,7 @@ class DataManagerTest {
     }
 
     @Test
-    fun `idle unload flushes and invalidates unloadable data`() = runBlocking {
+    fun `idle unload flushes and invalidates unloadable data`(): Unit = runBlocking {
         val clock = MutableClock()
         var leaked: GuardedData? = null
         val manager = DataManager(
@@ -90,7 +89,7 @@ class DataManagerTest {
     }
 
     @Test
-    fun `failed flush keeps unloadable data alive`() = runBlocking {
+    fun `failed flush keeps unloadable data alive`(): Unit = runBlocking {
         val clock = MutableClock()
         val data = GuardedData(flushResult = false)
         val manager = DataManager(
@@ -111,7 +110,7 @@ class DataManagerTest {
     }
 
     @Test
-    fun `use refreshes unloadable data last access time`() = runBlocking {
+    fun `use refreshes unloadable data last access time`(): Unit = runBlocking {
         val clock = MutableClock()
         val data = GuardedData()
         val manager = DataManager(
@@ -141,7 +140,7 @@ class DataManagerTest {
     }
 
     @Test
-    fun `idle unload only unloads expired modules`() = runBlocking {
+    fun `idle unload only unloads expired modules`(): Unit = runBlocking {
         val clock = MutableClock()
         val expired = GuardedData()
         val active = OtherGuardedData()
@@ -169,7 +168,7 @@ class DataManagerTest {
     }
 
     @Test
-    fun `unloaded data is loaded again as a fresh instance`() = runBlocking {
+    fun `unloaded data is loaded again as a fresh instance`(): Unit = runBlocking {
         val clock = MutableClock()
         val created = mutableListOf<GuardedData>()
         val manager = DataManager(
@@ -198,7 +197,7 @@ class DataManagerTest {
     }
 
     @Test
-    fun `loadEager cannot be called twice`() = runBlocking {
+    fun `loadEager cannot be called twice`(): Unit = runBlocking {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(dataModule { TestData() }),
@@ -282,16 +281,12 @@ private class OtherGuardedData : LeaseGuardedMemData(), AutoFlushMemData {
     }
 }
 
-private class MutableClock : Clock() {
-    private var instant: Instant = Instant.EPOCH
+private class MutableClock : Clock {
+    private var instant: Instant = Instant.fromEpochMilliseconds(0)
 
-    override fun instant(): Instant = instant
-
-    override fun withZone(zone: ZoneId): Clock = this
-
-    override fun getZone(): ZoneId = ZoneId.of("UTC")
+    override fun now(): Instant = instant
 
     fun advanceSeconds(seconds: Long) {
-        instant = instant.plusSeconds(seconds)
+        instant += seconds.seconds
     }
 }

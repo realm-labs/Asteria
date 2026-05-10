@@ -3,19 +3,14 @@ package io.github.realmlabs.asteria.id
 import io.github.realmlabs.asteria.core.gameApplication
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import java.time.Duration
-import java.time.Instant
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
+import kotlin.test.*
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Instant
 
 class WorkerIdModuleTest {
     @Test
-    fun moduleAcquiresWorkerIdAndRegistersRuntimeServices() = runBlocking {
+    fun moduleAcquiresWorkerIdAndRegistersRuntimeServices(): Unit = runBlocking {
         val repository = InMemoryWorkerIdRepository()
         val app = gameApplication {
             name = "test-game"
@@ -45,7 +40,7 @@ class WorkerIdModuleTest {
     }
 
     @Test
-    fun defaultOwnerIsUniquePerModuleInstance() = runBlocking {
+    fun defaultOwnerIsUniquePerModuleInstance(): Unit = runBlocking {
         val repository = InMemoryWorkerIdRepository()
         val first = gameApplication {
             name = "same-game"
@@ -70,7 +65,7 @@ class WorkerIdModuleTest {
     }
 
     @Test
-    fun runtimeLeaseTracksRenewedLease() = runBlocking {
+    fun runtimeLeaseTracksRenewedLease(): Unit = runBlocking {
         val repository = InMemoryWorkerIdRepository()
         val app = gameApplication {
             install(
@@ -78,8 +73,8 @@ class WorkerIdModuleTest {
                     repository,
                     WorkerIdModuleOptions(
                         range = WorkerIdRange.of(1, 1),
-                        ttl = Duration.ofMillis(200),
-                        renewInterval = Duration.ofMillis(50),
+                        ttl = 200.milliseconds,
+                        renewInterval = 50.milliseconds,
                     ),
                 ),
             )
@@ -94,11 +89,11 @@ class WorkerIdModuleTest {
         val newExpiresAt = runtime.lease.expiresAt
         app.stop()
 
-        kotlin.test.assertTrue(newExpiresAt.isAfter(oldExpiresAt))
+        kotlin.test.assertTrue(newExpiresAt > oldExpiresAt)
     }
 
     @Test
-    fun renewRetriesTransientRepositoryFailures() = runBlocking {
+    fun renewRetriesTransientRepositoryFailures(): Unit = runBlocking {
         val repository = FlakyRenewRepository(failures = 2)
         val app = gameApplication {
             install(
@@ -106,8 +101,8 @@ class WorkerIdModuleTest {
                     repository,
                     WorkerIdModuleOptions(
                         range = WorkerIdRange.of(1, 1),
-                        ttl = Duration.ofMillis(400),
-                        renewInterval = Duration.ofMillis(50),
+                        ttl = 400.milliseconds,
+                        renewInterval = 50.milliseconds,
                     ),
                 ),
             )
@@ -120,14 +115,14 @@ class WorkerIdModuleTest {
         delay(220)
 
         assertFalse(runtime.lost)
-        assertTrue(runtime.lease.expiresAt.isAfter(oldExpiresAt))
+        assertTrue(runtime.lease.expiresAt > oldExpiresAt)
         assertNotNull(app.services.get<IdGenerator>().nextId())
 
         app.stop()
     }
 
     @Test
-    fun idGeneratorFailsClosedAfterLeaseIsLost() = runBlocking {
+    fun idGeneratorFailsClosedAfterLeaseIsLost(): Unit = runBlocking {
         val repository = LostOnRenewRepository()
         val app = gameApplication {
             install(
@@ -135,8 +130,8 @@ class WorkerIdModuleTest {
                     repository,
                     WorkerIdModuleOptions(
                         range = WorkerIdRange.of(1, 1),
-                        ttl = Duration.ofMillis(200),
-                        renewInterval = Duration.ofMillis(50),
+                        ttl = 200.milliseconds,
+                        renewInterval = 50.milliseconds,
                     ),
                 ),
             )

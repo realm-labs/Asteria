@@ -1,9 +1,10 @@
 package io.github.realmlabs.asteria.gateway
 
-import java.time.Duration
-import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 /**
  * Mutable gateway session state bound to one client connection.
@@ -16,7 +17,7 @@ import java.util.concurrent.atomic.AtomicReference
 class GatewaySession(
     val id: GatewaySessionId,
     val connection: GatewayConnection,
-    val createdAt: Instant = Instant.now(),
+    val createdAt: Instant = Clock.System.now(),
 ) {
     private val attributes: MutableMap<GatewaySessionAttributeKey<*>, Any> = ConcurrentHashMap()
     private val stateRef: AtomicReference<GatewaySessionState> = AtomicReference(GatewaySessionState.OPEN)
@@ -64,7 +65,7 @@ class GatewaySession(
      */
     fun write(frame: GatewayFrame) {
         check(isOpen) { "gateway session ${id.value} is ${state.name.lowercase()}" }
-        lastWriteAt = Instant.now()
+        lastWriteAt = Clock.System.now()
         connection.write(frame)
     }
 
@@ -78,7 +79,7 @@ class GatewaySession(
             return false
         }
         closeReason = reason
-        closedAt = Instant.now()
+        closedAt = Clock.System.now()
         connection.close()
         stateRef.set(GatewaySessionState.CLOSED)
         return true
@@ -87,7 +88,7 @@ class GatewaySession(
     /**
      * Updates the last-read timestamp.
      */
-    fun markRead(now: Instant = Instant.now()) {
+    fun markRead(now: Instant = Clock.System.now()) {
         lastReadAt = now
     }
 
@@ -98,7 +99,7 @@ class GatewaySession(
      */
     fun markClosed(
         reason: GatewayCloseReason,
-        now: Instant = Instant.now(),
+        now: Instant = Clock.System.now(),
     ): Boolean {
         while (true) {
             val current = stateRef.get()
@@ -264,25 +265,25 @@ class GatewayIdleDetector(
      *
      * The same session may appear multiple times when it violates more than one threshold.
      */
-    fun detect(now: Instant = Instant.now()): List<GatewayIdleSession> {
+    fun detect(now: Instant = Clock.System.now()): List<GatewayIdleSession> {
         return sessions.all().flatMap { session ->
             buildList {
                 policy.readIdle?.let { threshold ->
-                    val idleFor = Duration.between(session.lastReadAt, now)
-                    if (!idleFor.minus(threshold).isNegative) {
+                    val idleFor = now - session.lastReadAt
+                    if (idleFor >= threshold) {
                         add(GatewayIdleSession(session, GatewayIdleKind.READ, idleFor))
                     }
                 }
                 policy.writeIdle?.let { threshold ->
-                    val idleFor = Duration.between(session.lastWriteAt, now)
-                    if (!idleFor.minus(threshold).isNegative) {
+                    val idleFor = now - session.lastWriteAt
+                    if (idleFor >= threshold) {
                         add(GatewayIdleSession(session, GatewayIdleKind.WRITE, idleFor))
                     }
                 }
                 policy.allIdle?.let { threshold ->
                     val latestActivity = maxOf(session.lastReadAt, session.lastWriteAt)
-                    val idleFor = Duration.between(latestActivity, now)
-                    if (!idleFor.minus(threshold).isNegative) {
+                    val idleFor = now - latestActivity
+                    if (idleFor >= threshold) {
                         add(GatewayIdleSession(session, GatewayIdleKind.ALL, idleFor))
                     }
                 }

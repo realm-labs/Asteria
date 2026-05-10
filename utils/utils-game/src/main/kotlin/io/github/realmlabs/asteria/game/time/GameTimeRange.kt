@@ -1,9 +1,10 @@
 package io.github.realmlabs.asteria.game.time
 
 import java.time.DayOfWeek
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import kotlin.time.Instant
+import java.time.Instant as JavaInstant
 
 /**
  * A half-open instant range: `[start, end)`.
@@ -28,7 +29,7 @@ data class GameTimeRange(
      * Returns true when [instant] is inside `[start, end)`.
      */
     fun contains(instant: Instant): Boolean {
-        return !instant.isBefore(start) && instant.isBefore(end)
+        return instant >= start && instant < end
     }
 
     /**
@@ -65,7 +66,7 @@ data class DailyTimeWindow(
         instant: Instant,
         rule: GameDayRule = GameDayRule(),
     ): Boolean {
-        val time = instant.atZone(rule.zoneId).toLocalTime()
+        val time = instant.toJavaInstant().atZone(rule.zoneId).toLocalTime()
         return if (start < end) {
             !time.isBefore(start) && time.isBefore(end)
         } else {
@@ -110,7 +111,7 @@ data class WeeklyTimeWindow(
         instant: Instant,
         rule: GameDayRule = GameDayRule(),
     ): Boolean {
-        val local = instant.atZone(rule.zoneId)
+        val local = instant.toJavaInstant().atZone(rule.zoneId)
         val point = local.dayOfWeek.weekMinute(local.toLocalTime())
         val start = startDay.weekMinute(startTime)
         val end = endDay.weekMinute(endTime)
@@ -129,8 +130,8 @@ fun gameDayRange(
     gameDay: LocalDate,
     rule: GameDayRule = GameDayRule(),
 ): GameTimeRange {
-    val start = GameTime.startOfGameDay(gameDay, rule).toInstant()
-    val end = GameTime.startOfGameDay(gameDay.plusDays(1), rule).toInstant()
+    val start = GameTime.startOfGameDay(gameDay, rule).toInstant().toKotlinInstant()
+    val end = GameTime.startOfGameDay(gameDay.plusDays(1), rule).toInstant().toKotlinInstant()
     return GameTimeRange(start, end)
 }
 
@@ -149,3 +150,11 @@ private fun DayOfWeek.weekMinute(time: LocalTime): Int {
 }
 
 private const val MINUTES_PER_DAY: Int = 24 * 60
+
+private fun java.time.Instant.toKotlinInstant(): Instant {
+    return Instant.fromEpochSeconds(epochSecond, nano.toLong())
+}
+
+private fun Instant.toJavaInstant(): JavaInstant {
+    return JavaInstant.ofEpochSecond(epochSeconds, nanosecondsOfSecond.toLong())
+}

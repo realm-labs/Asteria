@@ -6,19 +6,14 @@ import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
-import io.github.realmlabs.asteria.persistence.DataLease
-import io.github.realmlabs.asteria.persistence.DataLeaseAware
-import io.github.realmlabs.asteria.persistence.Entity
-import io.github.realmlabs.asteria.persistence.EntityScanPlan
-import io.github.realmlabs.asteria.persistence.KeyedDataTable
-import io.github.realmlabs.asteria.persistence.RowCachePolicy
+import io.github.realmlabs.asteria.persistence.*
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.toList
 import org.bson.Document
 import org.bson.conversions.Bson
-import java.time.Clock
-import java.util.IdentityHashMap
+import java.util.*
 import kotlin.reflect.KClass
+import kotlin.time.Clock
 import kotlin.time.TimeSource
 
 /**
@@ -35,7 +30,7 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
     database: MongoDatabase,
     private val journal: MongoWriteJournal = NoopMongoWriteJournal,
     private val metrics: Metrics = NoopMetrics,
-    clock: Clock = Clock.systemUTC(),
+    clock: Clock = Clock.System,
 ) : KeyedDataTable<ID, E>(cachePolicy, clock), MongoScannedTable {
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
     private val database: MongoDatabase = database

@@ -1,7 +1,7 @@
 package io.github.realmlabs.asteria.game.time
 
 import java.time.DayOfWeek
-import java.time.Instant
+import kotlin.time.Instant
 
 /**
  * A repeatable reset schedule used by activities, shops, quests, and cooldown pools.

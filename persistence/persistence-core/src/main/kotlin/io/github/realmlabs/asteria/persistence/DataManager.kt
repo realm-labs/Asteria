@@ -4,8 +4,8 @@ import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
 import org.slf4j.LoggerFactory
-import java.time.Clock
 import kotlin.reflect.KClass
+import kotlin.time.Clock
 
 /**
  * Actor-local manager for one entity's mutable data modules.
@@ -18,7 +18,7 @@ import kotlin.reflect.KClass
 class DataManager<ID : Any>(
     private val scope: DataScope<ID>,
     modules: Iterable<DataModule<ID, out MemData>>,
-    private val clock: Clock = Clock.systemUTC(),
+    private val clock: Clock = Clock.System,
     private val metrics: Metrics = NoopMetrics,
 ) {
     private val logger = LoggerFactory.getLogger(DataManager::class.java)
@@ -109,7 +109,7 @@ class DataManager<ID : Any>(
      * Flushes and unloads idle data from unloadable buckets.
      */
     suspend fun unloadIdle() = measured("unload_idle", baseTags()) {
-        val now = clock.millis()
+        val now = clock.now().toEpochMilliseconds()
         val expired = loadedDataByType.values
             .filter { loadedData ->
                 val idleUnloadAfter = loadedData.module.bucket.idleUnloadAfter ?: return@filter false
@@ -146,7 +146,7 @@ class DataManager<ID : Any>(
                 null
             }
             data.load()
-            loadedDataByType[module.type] = LoadedData(module, data, clock.millis(), lease)
+            loadedDataByType[module.type] = LoadedData(module, data, clock.now().toEpochMilliseconds(), lease)
             data
         }
     }
@@ -154,7 +154,7 @@ class DataManager<ID : Any>(
     private fun touch(type: KClass<out MemData>) {
         val loadedData = loadedDataByType[type] ?: return
         loadedData.lease?.ensureActive()
-        loadedData.lastAccessMillis = clock.millis()
+        loadedData.lastAccessMillis = clock.now().toEpochMilliseconds()
     }
 
     private suspend fun unload(loadedData: LoadedData<ID, out MemData>) =
@@ -163,7 +163,7 @@ class DataManager<ID : Any>(
             if (data is AutoFlushMemData && !data.flush()) {
                 metrics.counter("asteria.persistence.data.unload.skipped.total", dataTags(loadedData.module))
                     .increment()
-                loadedData.lastAccessMillis = clock.millis()
+                loadedData.lastAccessMillis = clock.now().toEpochMilliseconds()
                 return@measured
             }
             loadedData.lease?.invalidate()

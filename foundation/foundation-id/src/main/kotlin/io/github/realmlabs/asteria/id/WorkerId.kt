@@ -1,7 +1,7 @@
 package io.github.realmlabs.asteria.id
 
 import java.io.Serializable
-import java.time.Instant
+import kotlin.time.Instant
 
 @JvmInline
 value class WorkerId(val value: Int) : Serializable {
@@ -54,10 +54,10 @@ data class WorkerIdLease(
     val expiresAt: Instant,
 ) : Serializable {
     init {
-        require(expiresAt.isAfter(acquiredAt)) { "worker id lease expiresAt must be after acquiredAt" }
+        require(expiresAt > acquiredAt) { "worker id lease expiresAt must be after acquiredAt" }
     }
 
     fun isExpired(now: Instant): Boolean {
-        return !expiresAt.isAfter(now)
+        return expiresAt <= now
     }
 }

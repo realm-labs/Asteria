@@ -1,6 +1,6 @@
 package io.github.realmlabs.asteria.persistence
 
-import java.time.Clock
+import kotlin.time.Clock
 
 /**
  * Actor-local row cache for a large logical table.
@@ -13,7 +13,7 @@ import java.time.Clock
  */
 abstract class KeyedDataTable<K : Any, R : Any>(
     private val cachePolicy: RowCachePolicy,
-    private val clock: Clock = Clock.systemUTC(),
+    private val clock: Clock = Clock.System,
 ) {
     private val rows: MutableMap<K, LoadedRow<K, R>> = linkedMapOf()
 
@@ -66,7 +66,7 @@ abstract class KeyedDataTable<K : Any, R : Any>(
      * Flushes and unloads rows that have not been accessed for [RowCachePolicy.idleUnloadAfter].
      */
     suspend fun unloadIdle() {
-        val now = clock.millis()
+        val now = clock.now().toEpochMilliseconds()
         val expired = rows.values
             .filter { now - it.lastAccessMillis >= cachePolicy.idleUnloadAfter.inWholeMilliseconds }
             .toList()
@@ -112,7 +112,7 @@ abstract class KeyedDataTable<K : Any, R : Any>(
     private fun bindRow(key: K, row: R): LoadedRow<K, R> {
         val lease = DataLease("row $key")
         bindLease(row, lease)
-        return LoadedRow(key, row, clock.millis(), lease)
+        return LoadedRow(key, row, clock.now().toEpochMilliseconds(), lease)
     }
 
     private suspend fun load(key: K): LoadedRow<K, R>? {
@@ -124,12 +124,12 @@ abstract class KeyedDataTable<K : Any, R : Any>(
 
     private fun touch(row: LoadedRow<K, R>) {
         row.lease.ensureActive()
-        row.lastAccessMillis = clock.millis()
+        row.lastAccessMillis = clock.now().toEpochMilliseconds()
     }
 
     private suspend fun unload(row: LoadedRow<K, R>) {
         if (!flushRow(row.row)) {
-            row.lastAccessMillis = clock.millis()
+            row.lastAccessMillis = clock.now().toEpochMilliseconds()
             return
         }
         row.lease.invalidate()

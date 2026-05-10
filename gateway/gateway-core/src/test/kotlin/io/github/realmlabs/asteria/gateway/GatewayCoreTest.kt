@@ -3,11 +3,11 @@ package io.github.realmlabs.asteria.gateway
 import io.github.realmlabs.asteria.message.RouteTarget
 import kotlinx.coroutines.runBlocking
 import java.net.SocketAddress
-import java.time.Duration
-import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class GatewayCoreTest {
     @Test
@@ -23,7 +23,7 @@ class GatewayCoreTest {
     }
 
     @Test
-    fun `dispatcher resolves and forwards route`() = runBlocking {
+    fun `dispatcher resolves and forwards route`(): Unit = runBlocking {
         val session = GatewaySession(GatewaySessionId("s1"), RecordingConnection())
         val context = GatewaySessionContext(session)
         var forwarded: Pair<GatewayRoute, String>? = null
@@ -43,7 +43,7 @@ class GatewayCoreTest {
     }
 
     @Test
-    fun `transport handler registers receives and unregisters sessions`() = runBlocking {
+    fun `transport handler registers receives and unregisters sessions`(): Unit = runBlocking {
         val registry = LocalGatewaySessionRegistry()
         val connection = RecordingConnection()
         var forwarded: String? = null
@@ -80,7 +80,7 @@ class GatewayCoreTest {
     }
 
     @Test
-    fun `session responder writes packet to session`() = runBlocking {
+    fun `session responder writes packet to session`(): Unit = runBlocking {
         val registry = LocalGatewaySessionRegistry()
         val connection = RecordingConnection()
         val session = GatewaySession(GatewaySessionId("s1"), connection)
@@ -97,7 +97,7 @@ class GatewayCoreTest {
     }
 
     @Test
-    fun `session responder returns false for missing session`() = runBlocking {
+    fun `session responder returns false for missing session`(): Unit = runBlocking {
         val responder = SessionGatewayResponder<String>(
             sessions = LocalGatewaySessionRegistry(),
             write = { target, packet -> target.write(GatewayFrame(packet.encodeToByteArray())) },
@@ -119,7 +119,7 @@ class GatewayCoreTest {
         val closedAgain = session.close(GatewayCloseReason("second"))
 
         assertEquals(listOf(GatewayFrame("hello".encodeToByteArray())), connection.frames)
-        assertEquals(true, !session.lastWriteAt.isBefore(firstWriteAt))
+        assertEquals(true, session.lastWriteAt >= firstWriteAt)
         assertEquals(true, closed)
         assertEquals(false, closedAgain)
         assertEquals(true, connection.closed)
@@ -131,7 +131,7 @@ class GatewayCoreTest {
     }
 
     @Test
-    fun `session controller closes and unregisters session with lifecycle`() = runBlocking {
+    fun `session controller closes and unregisters session with lifecycle`(): Unit = runBlocking {
         val registry = LocalGatewaySessionRegistry()
         val lifecycle = RecordingLifecycle()
         val session = GatewaySession(GatewaySessionId("s1"), RecordingConnection())
@@ -158,16 +158,16 @@ class GatewayCoreTest {
     fun `idle detector reports idle sessions without applying policy`() {
         val registry = LocalGatewaySessionRegistry()
         val now = Instant.parse("2026-05-02T00:00:00Z")
-        val session = GatewaySession(GatewaySessionId("s1"), RecordingConnection(), createdAt = now.minusSeconds(60))
+        val session = GatewaySession(GatewaySessionId("s1"), RecordingConnection(), createdAt = now - 60.seconds)
         registry.register(session)
-        session.markRead(now.minusSeconds(20))
+        session.markRead(now - 20.seconds)
 
         val detector = GatewayIdleDetector(
             registry,
             GatewayIdlePolicy(
-                readIdle = Duration.ofSeconds(10),
-                writeIdle = Duration.ofSeconds(30),
-                allIdle = Duration.ofSeconds(10),
+                readIdle = 10.seconds,
+                writeIdle = 30.seconds,
+                allIdle = 10.seconds,
             ),
         )
 

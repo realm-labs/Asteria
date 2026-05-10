@@ -14,19 +14,13 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.MongoDBContainer
 import org.testcontainers.utility.DockerImageName
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneId
-import java.util.UUID
+import java.util.*
 import kotlin.io.path.createTempDirectory
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class MongoScannedKeyedDocumentTableIntegrationTest {
     @Test
@@ -71,7 +65,7 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
     }
 
     @Test
-    fun `failed flush keeps pending write queued`() = runBlocking {
+    fun `failed flush keeps pending write queued`(): Unit = runBlocking {
         val client = MongoClient.create("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=50")
         try {
             val runtime = runtimeFor(id = 1, database = client.getDatabase("unreachable"))
@@ -120,7 +114,7 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
     }
 
     @Test
-    fun `failed idle unload keeps loaded scanned row`() = runBlocking {
+    fun `failed idle unload keeps loaded scanned row`(): Unit = runBlocking {
         val client = MongoClient.create("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=50")
         try {
             val clock = MutableTableClock()
@@ -216,7 +210,7 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
     private fun table(
         database: MongoDatabase,
         cachePolicy: RowCachePolicy = RowCachePolicy(1.minutes),
-        clock: Clock = Clock.systemUTC(),
+        clock: Clock = Clock.System,
     ): MongoScannedKeyedDocumentTable<Int, TestEntity> {
         return MongoScannedKeyedDocumentTable(
             collectionName = COLLECTION,
@@ -264,17 +258,13 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
         var bag: MutableMap<String, Int>,
     ) : Entity<Int>
 
-    private class MutableTableClock : Clock() {
-        private var instant: Instant = Instant.EPOCH
+    private class MutableTableClock : Clock {
+        private var instant: Instant = Instant.fromEpochMilliseconds(0)
 
-        override fun instant(): Instant = instant
-
-        override fun withZone(zone: ZoneId): Clock = this
-
-        override fun getZone(): ZoneId = ZoneId.of("UTC")
+        override fun now(): Instant = instant
 
         fun advanceSeconds(seconds: Long) {
-            instant = instant.plusSeconds(seconds)
+            instant += seconds.seconds
         }
     }
 

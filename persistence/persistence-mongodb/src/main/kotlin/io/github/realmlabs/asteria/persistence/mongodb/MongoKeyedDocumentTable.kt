@@ -8,9 +8,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.toList
 import org.bson.Document
 import org.bson.conversions.Bson
-import java.time.Clock
 import java.util.*
 import kotlin.reflect.KClass
+import kotlin.time.Clock
 import kotlin.time.TimeSource
 
 /**
@@ -26,7 +26,7 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
     cachePolicy: RowCachePolicy,
     database: MongoDatabase,
     private val journal: MongoWriteJournal = NoopMongoWriteJournal,
-    clock: Clock = Clock.systemUTC(),
+    clock: Clock = Clock.System,
 ) : KeyedDataTable<ID, T>(cachePolicy, clock) {
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
     private val database: MongoDatabase = database

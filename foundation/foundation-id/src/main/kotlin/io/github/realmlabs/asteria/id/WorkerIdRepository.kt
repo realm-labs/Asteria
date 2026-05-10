@@ -2,9 +2,10 @@ package io.github.realmlabs.asteria.id
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.time.Duration
-import java.time.Instant
 import java.util.*
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 /**
  * Shared lease store for process-local worker ids.
@@ -24,7 +25,7 @@ interface WorkerIdRepository {
         owner: WorkerIdOwner,
         range: WorkerIdRange,
         ttl: Duration,
-        now: Instant = Instant.now(),
+        now: Instant = Clock.System.now(),
     ): WorkerIdLease
 
     /**
@@ -36,7 +37,7 @@ interface WorkerIdRepository {
     suspend fun renew(
         lease: WorkerIdLease,
         ttl: Duration,
-        now: Instant = Instant.now(),
+        now: Instant = Clock.System.now(),
     ): WorkerIdLease?
 
     /**
@@ -49,7 +50,7 @@ interface WorkerIdRepository {
     /**
      * Returns currently active leases after ignoring or removing expired entries.
      */
-    suspend fun leases(now: Instant = Instant.now()): List<WorkerIdLease>
+    suspend fun leases(now: Instant = Clock.System.now()): List<WorkerIdLease>
 }
 
 class WorkerIdUnavailableException(
@@ -70,12 +71,12 @@ class InMemoryWorkerIdRepository : WorkerIdRepository {
         ttl: Duration,
         now: Instant,
     ): WorkerIdLease {
-        require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+        require(ttl > Duration.ZERO) { "worker id lease ttl must be positive" }
         return lock.withLock {
             removeExpired(now)
             val current = leasesById.values.firstOrNull { lease -> lease.owner == owner && lease.id in range }
             if (current != null) {
-                val renewed = current.copy(expiresAt = now.plus(ttl))
+                val renewed = current.copy(expiresAt = now + ttl)
                 leasesById[current.id] = renewed
                 return@withLock renewed
             }
@@ -86,7 +87,7 @@ class InMemoryWorkerIdRepository : WorkerIdRepository {
                 owner = owner,
                 token = UUID.randomUUID().toString(),
                 acquiredAt = now,
-                expiresAt = now.plus(ttl),
+                expiresAt = now + ttl,
             )
             leasesById[free] = lease
             lease
@@ -98,7 +99,7 @@ class InMemoryWorkerIdRepository : WorkerIdRepository {
         ttl: Duration,
         now: Instant,
     ): WorkerIdLease? {
-        require(!ttl.isNegative && !ttl.isZero) { "worker id lease ttl must be positive" }
+        require(ttl > Duration.ZERO) { "worker id lease ttl must be positive" }
         return lock.withLock {
             val current = leasesById[lease.id] ?: return@withLock null
             if (current.token != lease.token || current.owner != lease.owner || current.isExpired(now)) {
@@ -107,7 +108,7 @@ class InMemoryWorkerIdRepository : WorkerIdRepository {
                 }
                 return@withLock null
             }
-            val renewed = current.copy(expiresAt = now.plus(ttl))
+            val renewed = current.copy(expiresAt = now + ttl)
             leasesById[current.id] = renewed
             renewed
         }

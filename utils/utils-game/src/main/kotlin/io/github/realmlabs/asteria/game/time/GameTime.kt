@@ -2,6 +2,8 @@ package io.github.realmlabs.asteria.game.time
 
 import java.time.*
 import java.time.temporal.ChronoUnit
+import kotlin.time.Instant
+import java.time.Instant as JavaInstant
 
 /**
  * Helpers for game time calculations that are based on a configurable logical day start.
@@ -19,7 +21,7 @@ object GameTime {
         instant: Instant,
         rule: GameDayRule = GameDayRule(),
     ): LocalDate {
-        val local = instant.atZone(rule.zoneId)
+        val local = instant.toJavaInstant().atZone(rule.zoneId)
         return if (local.toLocalTime() < rule.dayStart) {
             local.toLocalDate().minusDays(1)
         } else {
@@ -34,7 +36,7 @@ object GameTime {
         instant: Instant,
         rule: GameDayRule = GameDayRule(),
     ): Instant {
-        return startOfGameDay(gameDayOf(instant, rule), rule).toInstant()
+        return startOfGameDay(gameDayOf(instant, rule), rule).toInstant().toKotlinInstant()
     }
 
     /**
@@ -44,7 +46,7 @@ object GameTime {
         instant: Instant,
         rule: GameDayRule = GameDayRule(),
     ): Instant {
-        return startOfGameDay(gameDayOf(instant, rule).plusDays(1), rule).toInstant()
+        return startOfGameDay(gameDayOf(instant, rule).plusDays(1), rule).toInstant().toKotlinInstant()
     }
 
     /**
@@ -70,7 +72,7 @@ object GameTime {
     ): Instant {
         val gameDay = gameDayOf(instant, rule)
         val daysSinceStart = Math.floorMod(gameDay.dayOfWeek.value - firstDayOfWeek.value, 7)
-        return startOfGameDay(gameDay.minusDays(daysSinceStart.toLong()), rule).toInstant()
+        return startOfGameDay(gameDay.minusDays(daysSinceStart.toLong()), rule).toInstant().toKotlinInstant()
     }
 
     /**
@@ -81,8 +83,9 @@ object GameTime {
         rule: GameDayRule = GameDayRule(),
         firstDayOfWeek: DayOfWeek = DayOfWeek.MONDAY,
     ): Instant {
-        val currentStart = startOfGameWeek(instant, rule, firstDayOfWeek).atZone(rule.zoneId).toLocalDate()
-        return startOfGameDay(currentStart.plusWeeks(1), rule).toInstant()
+        val currentStart =
+            startOfGameWeek(instant, rule, firstDayOfWeek).toJavaInstant().atZone(rule.zoneId).toLocalDate()
+        return startOfGameDay(currentStart.plusWeeks(1), rule).toInstant().toKotlinInstant()
     }
 
     /**
@@ -94,7 +97,7 @@ object GameTime {
         instant: Instant,
         rule: GameDayRule = GameDayRule(),
     ): Instant {
-        return startOfGameDay(gameDayOf(instant, rule).withDayOfMonth(1), rule).toInstant()
+        return startOfGameDay(gameDayOf(instant, rule).withDayOfMonth(1), rule).toInstant().toKotlinInstant()
     }
 
     /**
@@ -105,7 +108,7 @@ object GameTime {
         rule: GameDayRule = GameDayRule(),
     ): Instant {
         val monthStart = gameDayOf(instant, rule).withDayOfMonth(1)
-        return startOfGameDay(monthStart.plusMonths(1), rule).toInstant()
+        return startOfGameDay(monthStart.plusMonths(1), rule).toInstant().toKotlinInstant()
     }
 
     /**
@@ -118,10 +121,11 @@ object GameTime {
         time: LocalTime,
         rule: GameDayRule = GameDayRule(),
     ): Instant {
-        val local = instant.atZone(rule.zoneId)
+        val javaInstant = instant.toJavaInstant()
+        val local = javaInstant.atZone(rule.zoneId)
         val today = local.toLocalDate().atTime(time).atZone(rule.zoneId)
-        val next = if (today.toInstant() > instant) today else today.plusDays(1)
-        return next.toInstant()
+        val next = if (today.toInstant() > javaInstant) today else today.plusDays(1)
+        return next.toInstant().toKotlinInstant()
     }
 
     /**
@@ -135,14 +139,15 @@ object GameTime {
         rule: GameDayRule = GameDayRule(),
         time: LocalTime = rule.dayStart,
     ): Instant {
-        val local = instant.atZone(rule.zoneId)
+        val javaInstant = instant.toJavaInstant()
+        val local = javaInstant.atZone(rule.zoneId)
         val currentDate = local.toLocalDate()
         val daysUntil = Math.floorMod(dayOfWeek.value - currentDate.dayOfWeek.value, 7)
         val candidate = currentDate.plusDays(daysUntil.toLong()).atTime(time).atZone(rule.zoneId)
-        return if (candidate.toInstant() > instant) {
-            candidate.toInstant()
+        return if (candidate.toInstant() > javaInstant) {
+            candidate.toInstant().toKotlinInstant()
         } else {
-            candidate.plusWeeks(1).toInstant()
+            candidate.plusWeeks(1).toInstant().toKotlinInstant()
         }
     }
 
@@ -157,4 +162,12 @@ object GameTime {
             .atZone(rule.zoneId)
             .truncatedTo(ChronoUnit.SECONDS)
     }
+}
+
+private fun Instant.toJavaInstant(): JavaInstant {
+    return JavaInstant.ofEpochSecond(epochSeconds, nanosecondsOfSecond.toLong())
+}
+
+private fun JavaInstant.toKotlinInstant(): Instant {
+    return Instant.fromEpochSeconds(epochSecond, nano.toLong())
 }
