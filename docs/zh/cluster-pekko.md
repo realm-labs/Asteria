@@ -15,7 +15,7 @@ val app = gameApplication {
         role = RoleKey("world")
     }
 
-    install(PekkoRuntimeModule())
+    install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
 }
 
 app.launch()
@@ -23,6 +23,14 @@ app.launch()
 
 业务项目通常会在 `cluster-config` 中从配置中心读取当前节点的 host、port、roles 和 seed nodes，再交给 Pekko
 runtime。启动拓扑属于进程启动输入，变更后通常通过滚动重启生效。
+
+`PekkoRuntimeModule` 的 `install` 阶段调用 `PekkoClusterStartup.resolve()` 得到启动计划，创建 `ActorSystem`，根据计划更新当前节点
+roles，并注册 `PekkoRuntime`、`ActorSystem`、`RuntimeNodeConfig`、`ClusterTopology`、`EntityShardRegistry` 和
+`SingletonActorRegistry`。`start` 阶段才读取应用声明的 entity/singleton 拓扑并启动 sharding、singleton 或 proxy。
+
+`TopologyPekkoClusterStartup` 会从 `ClusterTopologyProvider.current()` 取完整拓扑，用 `nodeId` 选出当前节点，校验应用声明的
+roles 都被拓扑覆盖，然后由 `PekkoClusterConfig.build()` 生成 Pekko host、port、role 和 seed-node 配置。`watch()`
+可供工具展示变化，默认 Pekko 启动路径不会把拓扑热应用到已经创建的 ActorSystem。
 
 ## Entity 和 sharding
 
@@ -38,6 +46,19 @@ val extractor = PekkoShardExtractors.longId<WorldWakeupReq>(
 ```
 
 具体 actor props、message extractor 和启动 wiring 由业务模块接入；框架提供通用拓扑和辅助类型。
+
+启动方式决定当前节点拿到的引用类型：
+
+- `Auto`：节点拥有 entity role 时启动 shard region，否则启动 proxy。
+- `Region`：必须拥有 entity role，否则启动失败。
+- `Proxy`：总是启动 proxy。
+
+如果 entity 没有声明 extractor，runtime 使用按 entity id hash 的默认 extractor。启动 region 时必须提供 actor props；启动
+proxy
+只需要 kind、role 和 extractor。启动后引用注册到 `EntityShardRegistry`，下游转发模块可以按 kind 取用。
+
+Singleton 的 `Auto` 只在拥有目标 role 的节点启动 host，`Host` 会强制校验 role，`Proxy` 不启动 host。无论当前节点是否 host，
+runtime 都会启动 singleton proxy 并注册到 `SingletonActorRegistry`。
 
 ## 实体预唤醒
 

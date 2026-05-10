@@ -62,13 +62,38 @@ data class ItemStack(
 )
 ```
 
-Generated code usually contains a tracked wrapper and helper. Business code mutates the wrapper, and the Mongo runtime
-collects dirty paths for batched writes. Helpers may also include scan plans and constructors for tracked or scanned
-tables. Scan mode is useful when comparing existing DTOs; tracked-wrapper mode is useful when actor code mutates state
-directly.
+Generated code usually contains:
+
+- `Tracked<Entity>`: the mutable actor-local wrapper. Property setters, nested objects, and map/list/set facades enqueue
+  dirty operations.
+- `<Entity>Mongo` helper: collection metadata, wrapping functions, tracked document data/table constructors, and scan
+  plans when scan mode is available.
+- Nested tracked value wrappers: generated when data classes or collection elements need field-level tracking. Deep
+  mutable objects that cannot produce stable field-level updates fall back to whole-field writes at the nearest stable
+  boundary.
+
+Tracked-wrapper mode is useful when actor code mutates state directly and wants dirty paths recorded as mutations
+happen. Scan mode is useful when comparing existing DTOs, usually for migrations or reuse of an existing object model.
+
+## Dirty Flush Mechanism
+
+Each loaded document or row owns a `MongoTrackedDocumentRuntime`. Wrapper setters enqueue `Set`, `Unset`, or `Delete`
+operations into a `MongoPendingWriteQueue`; the queue merges repeated operations per document and removes redundant
+hierarchical paths, for example an update to `profile` makes an older `profile.name` update unnecessary.
+
+`flush()` drains current pending writes and turns them into Mongo bulk writes. On success, covered journal sequences are
+acknowledged; on failure, unflushed writes are requeued for the next flush. `MongoKeyedDocumentTable` also keeps a dirty
+row queue, and `flushSome(budget)` flushes part of it by row-count and duration budget so actor timers can spread write
+load over time.
+
+Creating a new document enqueues `$set` operations for every field except `_id`. Deleting a document uses a
+whole-document
+delete and suppresses unflushed field updates for that document. These queues are actor-local; they are not cross-thread
+write queues.
 
 ## Annotation Rules
 
+- `@AsteriaMongoEntity`: marks a Mongo DTO, declares the collection, and can override generated wrapper/helper names.
 - `@AsteriaMongoId`: every Mongo entity must have exactly one id.
 - `@AsteriaMongoField`: overrides the Mongo field name.
 - `@AsteriaMongoIgnore`: excludes a property from generated tracking and persistence mapping.
@@ -77,13 +102,17 @@ directly.
 - `@AsteriaMongoScanWholeField`: maps are scanned by key by default; mark a map when whole-field writes are required.
 - `@AsteriaMongoValue`: the project guarantees that the type is safe to persist through the Mongo driver.
 
+KSP validates non-blank collections, unique ids, and field types that can be tracked or persisted. It rejects recursive
+data classes, unstable mutable object graphs, nullable collections, and other models that would produce ambiguous dirty
+results.
+
 ## Boundaries
 
 `DataManager` assumes calls come from the owning actor or an equivalent single-threaded boundary. Do not expose one
 `DataManager` to concurrent threads.
 
-Mongo KSP rejects unstable mutable object graphs. Prefer immutable data classes for custom types. Use
-`@AsteriaMongoValue` only when the project already provides a codec or explicitly guarantees serialization safety.
+Prefer immutable data classes for custom types. Use `@AsteriaMongoValue` only when the project already provides a codec
+or explicitly guarantees serialization safety.
 
 Raw `querySnapshots()` results from Mongo tables are detached snapshots; mutating them is not tracked. To mutate data,
 query keys and re-enter tracked `use`, or use the helper-provided mapper entry point.

@@ -80,14 +80,31 @@ class PlayerCombatDirtyHandler {
 }
 ```
 
-Handlers without a topic are registered by concrete event type. Handlers with `topicRefs` or `topics` are registered by
-topic path and must accept `GameEvent`, because a topic subscription can receive any event that declares that topic or
-one of its children.
+`@AsteriaEventHandler` fields:
 
-The processor generates `Generated<Module>EventDispatchers`, `Generated<Module>EventTopicPaths`, and chunked handle
-lists under the root package. A handler package such as `com.example.game.handler.player` uses `com.example.game` as
-the root; otherwise the handler's own package is used. Handlers in one generated dispatcher must share the same context
-type.
+- `dispatcher`: logical dispatcher key, defaulting to `default`. Different keys generate different registries and
+  dispatchers.
+- `topicRefs`: recommended form, referencing topic objects marked with `@AsteriaEventTopicRoot` /
+  `@AsteriaEventTopic`.
+- `topics`: direct topic paths, useful for the rare external topic string.
+- `order`: execution order for handlers under the same event type or topic; smaller values run first.
+
+A handler must define exactly one `handle(context, event, publisher)`. The first parameter determines the context type,
+the second parameter determines event-type versus topic registration, and the third parameter is an `EventPublisher<C>`
+for nested publishes. Handlers without a topic are registered by concrete event type. Handlers with `topicRefs` or
+`topics` are registered by topic path and must accept `GameEvent`, because a topic subscription can receive any event
+that declares that topic or one of its children. Handlers in one generated dispatcher must share the same context type.
+
+KSP generates the following under the root package's `.generated` package:
+
+- `Generated<Module>EventDispatchers`: exposes each dispatcher key's registry and dispatcher.
+- `Generated<Module><Dispatcher>EventHandles` plus chunks: stores the static `EventHandle` list.
+- `Generated<Module>EventTopicPaths`: stores string constants derived from annotated topic trees.
+- `META-INF/asteria/codegen-snapshots/event/*.json`: records the scanned topic and handler model for optional
+  verification.
+
+A handler package such as `com.example.game.handler.player` uses `com.example.game` as the root; otherwise the handler's
+own package is used.
 
 Synchronous code can use the generated dispatcher directly:
 
@@ -127,13 +144,14 @@ override fun createReceive(): Receive {
 
 `publish` only matches and queues handlers, returning `EventPublishReceipt`. `pump` runs handlers. If work remains after
 a pump, the dispatcher calls `schedulePump` again. Increase `maxHandlers` to control how many event handlers one actor
-receive may run.
+receive may run. The queued dispatcher and synchronous dispatcher use the same registry, so patched slot behavior is the
+same.
 
 ## Patch Support
 
-The generated `${dispatcher}Registry` is a `PatchableEventHandleRegistry`. Runtime patches can replace one handler slot;
-dispatchers read the registry's current snapshot during routing, so both synchronous dispatch and actor queued dispatch
-see the latest handler.
+The generated `${dispatcher}Registry` is a `PatchableEventHandleRegistry`. Runtime patches replace one handler slot,
+not the whole dispatcher and not every handler under a topic. Dispatchers read the registry's current snapshot during
+routing, so both synchronous dispatch and actor queued dispatch see the latest handler.
 
 ```kotlin
 class LevelPatch : RuntimePatchPlugin {
@@ -152,7 +170,9 @@ class LevelPatch : RuntimePatchPlugin {
 The patch key is an `EventHandleKey`, not an event type or topic. One event type or topic usually has multiple
 handlers, so replacing by topic would affect unrelated subscribers. KSP-generated keys are computed with
 `eventHandleKey(Handler::class)`; when one handler subscribes to multiple topics, use
-`eventHandleKey(Handler::class, topic)` to target one subscription slot.
+`eventHandleKey(Handler::class, topic)` to target one subscription slot. A patch can only replace an existing slot; it
+cannot introduce a brand-new subscription. After removal, the slot falls back to the next patch layer or the base
+handler.
 
 ## KSP Registration
 

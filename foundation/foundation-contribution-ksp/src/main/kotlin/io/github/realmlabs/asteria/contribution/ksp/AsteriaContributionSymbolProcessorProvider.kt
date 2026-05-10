@@ -3,25 +3,13 @@ package io.github.realmlabs.asteria.contribution.ksp
 import com.google.devtools.ksp.getAllSuperTypes
 import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.getVisibility
-import com.google.devtools.ksp.processing.CodeGenerator
-import com.google.devtools.ksp.processing.Dependencies
-import com.google.devtools.ksp.processing.KSPLogger
-import com.google.devtools.ksp.processing.Resolver
-import com.google.devtools.ksp.processing.SymbolProcessor
-import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
-import com.google.devtools.ksp.processing.SymbolProcessorProvider
-import com.google.devtools.ksp.symbol.ClassKind
-import com.google.devtools.ksp.symbol.KSAnnotated
-import com.google.devtools.ksp.symbol.KSAnnotation
-import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.symbol.KSType
-import com.google.devtools.ksp.symbol.Modifier
-import com.google.devtools.ksp.symbol.Visibility
+import com.google.devtools.ksp.processing.*
+import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.writeTo
-import java.util.Locale
+import java.util.*
 
 class AsteriaContributionSymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
@@ -147,7 +135,7 @@ private class AsteriaContributionSymbolProcessor(
         val packageName = annotation.stringArg("packageName")
             .ifBlank { contractModel.packageName }
         val className = annotation.stringArg("className")
-            .ifBlank { "Generated${contract.simpleName.asString().toTypeNamePart()}Contributions" }
+            .ifBlank { "Generated${contract.simpleName.asString().toContributionTypeNamePart()}Contributions" }
         val chunkSize = annotation.intArg("chunkSize", default = DEFAULT_CHUNK_SIZE)
         if (chunkSize <= 0) {
             logger.error("contribution catalog chunkSize must be greater than zero", declaration)
@@ -165,7 +153,7 @@ private class AsteriaContributionSymbolProcessor(
     private fun defaultConfig(contract: ContractModel): ContributionCodegenConfig {
         return ContributionCodegenConfig(
             packageName = contract.packageName,
-            className = "Generated${contract.simpleName.toTypeNamePart()}Contributions",
+            className = "Generated${contract.simpleName.toContributionTypeNamePart()}Contributions",
             contractType = contract.type,
         )
     }
@@ -222,10 +210,17 @@ private class AsteriaContributionSymbolProcessor(
         return arguments.firstOrNull { it.name?.asString() == name }?.value as? Int ?: default
     }
 
-    private fun String.toTypeNamePart(): String {
-        val tokens = split(Regex("[^A-Za-z0-9]+")).filter { it.isNotBlank() }.ifEmpty { listOf("Default") }
-        return tokens.joinToString("") { token ->
-            token.lowercase(Locale.getDefault()).replaceFirstChar { it.titlecase(Locale.getDefault()) }
+}
+
+internal fun String.toContributionTypeNamePart(): String {
+    val tokens = split(Regex("[^A-Za-z0-9]+")).filter { it.isNotBlank() }.ifEmpty { listOf("Default") }
+    return tokens.joinToString("") { token ->
+        token.replaceFirstChar { char ->
+            if (char.isLowerCase()) {
+                char.titlecase(Locale.getDefault())
+            } else {
+                char.toString()
+            }
         }
     }
 }

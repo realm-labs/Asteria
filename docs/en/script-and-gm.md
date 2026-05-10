@@ -8,15 +8,29 @@ operations backend.
 
 `script-core` defines script resources, contexts, policies, targets, and results. Concrete engines are provided by
 `script-engine-groovy` or `script-engine-jar`.
+The core execution chain is:
+
+1. The entry point builds a `ScriptExecutionCommand`. `executionId` is the idempotency and audit key, `target` describes
+   routing, `artifact` carries script bytes and the engine name, and `metadata` carries operator, reason, approval,
+   permission, ticket, and resource references.
+2. `ScriptRuntime` routes the command. `execute` is for one effective result, `executeAll` collects all observable
+   results before the timeout, and `dispatch` is fire-and-forget.
+3. The target node or actor converts the command into a `ScriptExecutionRequest`, adding `scope`, node address, or actor
+   path.
+4. `ScriptRunner` calls `ScriptPolicy.authorize` first. Rejections are audited and returned as failed results. Allowed
+   requests go through `ScriptExecutionStore` for running/completed checks before `ScriptExecutor` is invoked.
+5. `ScriptExecutor` resolves the engine from `ScriptEngineRegistry`, compiles by `artifact.engine`, and executes the
+   script. The script sees a `ScriptContext` with runtime, services, metadata, resource access, and an optional
+   cancellation token.
 
 ```kotlin
 val command = ScriptExecutionCommand(
     executionId = "gm-20260505-001",
-    target = ScriptTarget.Entity(kind = "world", ids = listOf("1001")),
-    resource = ScriptResource.Inline(
+    target = ScriptTarget.Entity(kind = EntityKind("world"), ids = listOf("1001")),
+    artifact = ScriptArtifact(
         name = "fix-world",
-        language = "groovy",
-        content = "world.rebuildIndex()",
+        engine = "groovy",
+        body = "world.rebuildIndex()".encodeToByteArray(),
     ),
     metadata = ScriptExecutionMetadata(requester = "gm:alice"),
 )
@@ -24,8 +38,29 @@ val command = ScriptExecutionCommand(
 val result = scriptRuntime.execute(command)
 ```
 
-Script policy should be defined by the project according to risk: allowed languages, timeout, target scope, approval
-state, and callable functions.
+`ScriptPolicy` is the hard pre-execution boundary. The default policy can restrict node/actor scope, allowed engines,
+allowed target types, artifact size, approval, signatures, templates, engine/target permissions, and obvious dangerous
+API tokens. The default permission check only reads `metadata.attributes["script.permissions"]`; production systems
+usually need their own permission authorizer, signature verifier, template catalog, and audit sink.
+
+`ScriptTarget` only describes where a script should go; it does not grant permission. Current targets are `AllNodes`,
+`Role`, `Node`, `ActorPath`, `Entity`, and `Singleton`. Routing capability, fan-out behavior, and actor cooperation are
+runtime-specific.
+
+## Groovy and jar Artifacts
+
+`ScriptArtifact.engine` must match a registered script engine. The Groovy engine treats artifact body bytes as Groovy
+class source. The jar engine treats body bytes as a JAR; its manifest must contain `Script-Class`, naming a class that
+can be adapted by `toCompiledScript`. Both engines cache by checksum when provided, otherwise by body content.
+
+Uploading a Groovy or jar file only converts the file into a `ScriptArtifact` at the entry layer; it does not bypass
+policy. File size is constrained by both the entry-point configuration and `ScriptPolicy.maxArtifactBytes`. Checksums,
+signatures, template ids, approvers, permissions, and ticket ids should be passed in metadata attributes and validated
+by project policy.
+
+Scripts and jar classes run inside the service process and can call business services through `ScriptContext.services`.
+Treat submission endpoints, `ScriptPolicy`, review/signature workflows, audit, and service-account permissions as the
+security boundary; Groovy/JAR execution is not an isolation sandbox.
 
 ## Pekko Script Targets
 
@@ -37,6 +72,12 @@ state, and callable functions.
 - `ActorPath`: execute on selected actor paths.
 - `Entity`: execute on selected sharding entities.
 - `Singleton`: execute on selected cluster singletons.
+
+`PekkoScriptRuntime` is backed by the local `ScriptRuntimeActor`. `AllNodes` and `Role` execute locally first, then
+publish through distributed pub-sub; `Node` only executes on matching cluster addresses; `ActorPath` sends actor
+selection messages one by one; `Entity` routes through `EntityShardRegistry`; `Singleton` sends through
+`SingletonActorRegistry`. `executeAll` installs a temporary collector and returns results received before the timeout,
+so missing targets or slow replies may produce partial or empty batches.
 
 Business actors must expose a script execution entry point, usually by composing `ActorScriptSupport` and merging
 `ActorScriptSupport.receive()` into the receive states that should accept scripts.
@@ -66,6 +107,16 @@ must be used to read results.
 `timeout` is the timeout for one item attempt, not a deadline for the whole job. `executionId` and target affect
 idempotency and replay semantics, so resubmitting the same command should not be treated as guaranteed re-execution.
 
+On submit, `ScriptJobService` creates a `ScriptJob` and expands the target into items: `Node` by address, `ActorPath`
+by path, and `Entity` by id. `AllNodes`, `Role`, and `Singleton` remain one item and leave fan-out to the runtime. Each
+item attempt derives its execution id as `sourceExecutionId.itemId.attempt` and adds `script.jobId`, `script.itemId`,
+`script.attempt`, `script.workerId`, and `script.sourceExecutionId` to metadata.
+
+Item status normally moves `Pending -> Running -> Completed/Failed/Cancelled`. Cancelling a pending item is immediate
+in the repository; cancelling a running item depends on cooperative script cancellation or recovery after lease expiry.
+Retry is only valid for failed items, creates a new attempt, and schedules it asynchronously. `summarizeResults`
+groups failures by error, and `exportResults` emits item-level CSV.
+
 ## Throttling and Leases
 
 `ScriptJobExecutionLimiter` controls concurrency and external permits. The Mongo permit repository uses leases to
@@ -93,8 +144,12 @@ class RechargeFeature : GmFeature {
 }
 ```
 
-`GmFeatureRegistry` rejects duplicate feature ids and duplicate permission keys. Optional modules publish features
-through Java `ServiceLoader`; Spring starters expose feature lists and concrete HTTP APIs.
+`GmFeatureRegistry` is an immutable feature catalog. It rejects duplicate feature ids and duplicate permission keys at
+startup so extension modules cannot silently shadow each other. A feature descriptor is metadata only: feature
+id/name/description, permissions, menus, and routes. Optional modules publish features through Java `ServiceLoader`;
+`gm-spring-boot-starter` combines ServiceLoader-discovered features with `GmFeature` Spring beans, then exposes feature,
+permission, menu, and route lists. Concrete business APIs are still provided by the individual starters or business
+controllers.
 
 `highRisk` is metadata only. It does not automatically add approval, MFA, or ticket workflows. Production systems should
 implement those policies in `GmPrincipalResolver`, `GmPolicyEvaluator`, or business controllers.
@@ -156,9 +211,8 @@ project permission model.
 ## Node-Local Ops HTTP
 
 `ops-http-ktor` provides a GM-independent node-local HTTP endpoint for SSH/curl operations. Operators can SSH to any
-game
-node and execute scripts or trigger patch controls through loopback HTTP. The endpoint defaults to a local bind address
-and is intended as a lightweight operations control plane when no GM node is deployed.
+game node and execute scripts or trigger patch controls through loopback HTTP. The endpoint defaults to a local bind
+address and is intended as a lightweight operations control plane when no GM node is deployed.
 
 ```kotlin
 nodeLocalOpsHttp {
@@ -169,8 +223,16 @@ nodeLocalOpsHttp {
 ```
 
 Without the starter, install `NodeLocalOpsHttpModule` directly. The module reads a bearer token on startup;
-`requireToken` defaults to `true`, and startup fails unless `token` or `tokenFile` is configured. In production, the
-token file should be readable only by trusted operations users or the service account.
+`requireToken` defaults to `true`, and startup fails unless `token` or `tokenFile` is configured. `requireOperator`
+requires `X-Asteria-Operator` by default, and `requireReasonForMutations` requires `X-Asteria-Reason` for mutating
+requests by default. In production, the token file should be readable only by trusted operations users or the service
+account, and the endpoint should usually bind to loopback or a controlled management network.
+
+The request path is: Ktor routes validate bearer token, operator, and reason, then convert headers into a
+`NodeLocalOpsPrincipal`; JSON body or multipart form is converted into `ScriptExecutionCommand`; the synchronous entry
+calls `ScriptRuntime.executeAll`, and the asynchronous entry calls `ScriptJobService.submit`; success and failure are
+recorded through `NodeLocalOpsAuditSink`. Local HTTP audit only proves this endpoint received the request. Script-level
+allow/deny and execution audit are still owned by `ScriptPolicy`, `ScriptAuditSink`, and `ScriptJobAuditSink`.
 
 Inspect the endpoint description first after logging into a node:
 
@@ -187,17 +249,29 @@ curl -X POST http://127.0.0.1:17321/ops/scripts/execute \
   -F 'artifact=@./fix-player.groovy'
 ```
 
+For multipart uploads, `artifact=@./fix-player.groovy` infers engine `groovy`, and `artifact=@./repair.jar` infers
+engine `jar`; other filenames must provide an explicit `engine` field. JSON requests can send script content as
+`bodyText` or `bodyBase64`. The endpoint only checks maximum bytes and basic request shape. Whether Groovy/JAR is
+allowed, and whether signature, approval, or permissions are required, is still decided by the installed
+`ScriptPolicy`.
+
 Available endpoints include:
 
 - `GET /ops`: returns auth headers, limits, endpoint list, and request examples.
+- `GET /ops/health`: health check for the local endpoint.
 - `POST /ops/scripts/execute`: execute a script and return a batch result.
 - `POST /ops/scripts/jobs`: submit an asynchronous script job.
-- `GET /ops/scripts/jobs`, `GET /ops/scripts/jobs/{jobId}`, `GET /ops/scripts/jobs/{jobId}/items`: inspect jobs.
-- `POST /ops/scripts/jobs/{jobId}/cancel`, `POST /ops/scripts/jobs/{jobId}/items/{itemId}/retry`: cancel or retry work.
+- `GET /ops/scripts/jobs`, `GET /ops/scripts/jobs/{jobId}`, `GET /ops/scripts/jobs/{jobId}/summary`,
+  `GET /ops/scripts/jobs/{jobId}/items`, `GET /ops/scripts/jobs/{jobId}/items/{itemId}`: inspect jobs, summaries, and
+  items.
+- `POST /ops/scripts/jobs/{jobId}/cancel`, `POST /ops/scripts/jobs/{jobId}/items/{itemId}/cancel`,
+  `POST /ops/scripts/jobs/{jobId}/items/{itemId}/retry`, `POST /ops/scripts/jobs/{jobId}/failed-items/retry`: cancel or
+  retry work.
+- `GET /ops/patches`, `GET /ops/patches/{patchId}`, `GET /ops/patches/node-results`: inspect patch descriptors and
+  node results.
 - `POST /ops/patches/{patchId}/apply`, `POST /ops/patches/{patchId}/disable`, `POST /ops/patches/reconcile`: apply,
   disable, or reconcile runtime patches.
 
 This endpoint only handles local HTTP authentication and request conversion. The installed `ScriptPolicy` still decides
 whether a script is allowed to run. High-risk deployments should require `X-Asteria-Reason`, ticket or approval
-metadata,
-and a `NodeLocalOpsAuditSink` that records operations to an independent audit stream.
+metadata, and a `NodeLocalOpsAuditSink` that records operations to an independent audit stream.

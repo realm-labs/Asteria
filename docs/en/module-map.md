@@ -66,6 +66,29 @@
 | `observability-core` / `observability-opentelemetry`                             | Metrics/tracing abstractions and OTel implementation                 | The service reports observability data            |
 | `starter-game-server-pekko`                                                      | Local and cluster startup DSL, route module, patch starter           | Business projects want less startup glue          |
 
+## How It Works
+
+- `foundation-core`: runs module `install` and `start` in declaration order, then `stop` and `uninstall` in reverse
+  order. `ServiceRegistry` uses exact type lookup; it does not search supertypes or interfaces.
+- `foundation-contribution-*`: KSP scans `@AsteriaContribution` at compile time and emits static contribution lists.
+  Runtime code does not scan the classpath. Business code turns the list into maps, grouped indexes, or patchable
+  registries.
+- `foundation-event-*` and `foundation-message-*`: KSP emits handler handles, registries, and dispatchers. Generated
+  registries are patchable slot registries, so patches replace one handler slot rather than the dispatcher object.
+- `config-*`: each `ConfigLoader` run creates a complete snapshot, which is published only after validators pass.
+  Config-center watches are reread signals, not full state. Config KSP generates typed table access and change-handler
+  lists.
+- `cluster-pekko-*`: topology is declared by `foundation-core`; the Pekko runtime starts actor systems, sharding, and
+  singletons from role, entity, and singleton metadata.
+- `gateway-*`, `protocol-*`, and `rpc-*`: protocol registries map ids, types, and parsers; gateway transports manage
+  connections and frames; route/forwarder code decides how messages reach actor runtime.
+- `persistence-*`: actors own their data managers. Mongo KSP emits tracked wrappers and dirty-path plans; repositories
+  flush dirty state in batches.
+- `script-*`, `gm-*`, and `ops-http-ktor`: script runtime, GM features, and node-local HTTP control are separate layers.
+  Script runtime owns targets and policy; GM/ops entry points own authorization, audit context, and request submission.
+- `patch-*`: patch plugins replace patchable registry slots or service slots through `PatchInstallContext`. Base entries
+  remain registered, so uninstall falls back to the next patch layer or the base implementation.
+
 ## Suggested Combinations
 
 A minimal single-process service only needs `foundation-core` and business modules. A Pekko cluster service usually

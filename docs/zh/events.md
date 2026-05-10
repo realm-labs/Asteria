@@ -75,12 +75,26 @@ class PlayerCombatDirtyHandler {
 }
 ```
 
-不配置 topic 的 handler 会按具体事件类型注册。配置了 `topicRefs` 或 `topics` 的 handler 会按 topic path 注册，并且 event 参数必须是
-`GameEvent`，因为 topic 订阅可能收到声明了这个 topic 或其子 topic 的任意事件。
+`@AsteriaEventHandler` 的字段含义：
 
-KSP 会在 root package 下生成 `Generated<Module>EventDispatchers`、`Generated<Module>EventTopicPaths` 和分片后的 handle 列表。如果 handler 包名类似
-`com.example.game.handler.player`，root package 是 `com.example.game`；否则使用 handler 自己所在的包。同一个生成 dispatcher
-里的 handler 必须使用同一种 context 类型。
+- `dispatcher`：逻辑分发器 key，默认 `default`。不同 key 会生成不同 registry 和 dispatcher。
+- `topicRefs`：推荐写法，引用被 `@AsteriaEventTopicRoot` / `@AsteriaEventTopic` 标记的 topic object。
+- `topics`：直接写 topic path，适合少量外部 topic 字符串。
+- `order`：同一个事件或 topic 下 handler 的执行顺序，数值小的先执行。
+
+handler 必须定义唯一的 `handle(context, event, publisher)`。第一个参数决定 context 类型，第二个参数决定按事件类型注册还是按
+topic 注册，第三个参数是可继续发布事件的 `EventPublisher<C>`。不配置 topic 的 handler 会按具体事件类型注册。配置了
+`topicRefs` 或 `topics` 的 handler 会按 topic path 注册，并且 event 参数必须是 `GameEvent`，因为 topic 订阅可能收到声明了这个
+topic 或其子 topic 的任意事件。同一个生成 dispatcher 里的 handler 必须使用同一种 context 类型。
+
+KSP 会在 root package 的 `.generated` 包下生成：
+
+- `Generated<Module>EventDispatchers`：暴露每个 dispatcher key 对应的 registry 和 dispatcher。
+- `Generated<Module><Dispatcher>EventHandles` 及 chunk：保存静态 `EventHandle` 列表。
+- `Generated<Module>EventTopicPaths`：保存从 topic 注解树推导出的字符串常量。
+- `META-INF/asteria/codegen-snapshots/event/*.json`：记录本次扫描到的 topic 和 handler 模型，供可选校验使用。
+
+如果 handler 包名类似 `com.example.game.handler.player`，root package 是 `com.example.game`；否则使用 handler 自己所在的包。
 
 同步场景可以直接使用生成的 dispatcher：
 
@@ -118,12 +132,13 @@ override fun createReceive(): Receive {
 
 `publish` 只负责匹配并排队 handler，返回 `EventPublishReceipt`。`pump` 才会实际执行 handler；如果队列里还有任务，
 dispatcher 会再次调用 `schedulePump`。业务可以把 `maxHandlers` 调大，控制每次 actor receive 最多处理多少个事件
-handler。
+handler。队列 dispatcher 和同步 dispatcher 使用同一种 registry，因此 patch 后的 slot 规则一致。
 
 ## Patch 支持
 
-KSP 生成的 `${dispatcher}Registry` 是 `PatchableEventHandleRegistry`。运行时补丁可以替换某一个 handler slot；dispatcher
-每次路由都会读取 registry 当前快照，所以同步分发和 actor 队列分发都会看到最新 handler。
+KSP 生成的 `${dispatcher}Registry` 是 `PatchableEventHandleRegistry`。运行时补丁替换的是某一个 handler slot，
+不是整个 dispatcher，也不是某个 topic 下的所有 handler。dispatcher 每次路由都会读取 registry 当前快照，所以同步分发和
+actor 队列分发都会看到最新 handler。
 
 ```kotlin
 class LevelPatch : RuntimePatchPlugin {
@@ -141,7 +156,8 @@ class LevelPatch : RuntimePatchPlugin {
 
 patch 的粒度是 `EventHandleKey`，不是 event type 或 topic。因为一个事件类型或一个 topic 下面通常会有多个 handler，直接按 topic
 替换会误伤其他订阅者。KSP 生成的 key 默认由 `eventHandleKey(Handler::class)` 计算；如果同一个 handler 订阅多个 topic，使用
-`eventHandleKey(Handler::class, topic)` 指定其中一个订阅 slot。
+`eventHandleKey(Handler::class, topic)` 指定其中一个订阅 slot。补丁只能覆盖已有 slot，不能引入一个全新的事件订阅；卸载补丁后会回退到下一层补丁或基础
+handler。
 
 ## KSP 注册
 

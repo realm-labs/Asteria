@@ -5,15 +5,26 @@
 ## 脚本运行时
 
 `script-core` 定义脚本资源、上下文、策略、目标和执行结果。具体引擎由 `script-engine-groovy` 或 `script-engine-jar` 提供。
+核心调用链是：
+
+1. 入口构造 `ScriptExecutionCommand`，其中 `executionId` 是幂等和审计 key，`target` 描述路由目标，`artifact` 携带脚本内容和引擎名，
+   `metadata` 携带操作者、原因、审批、权限、工单和资源引用。
+2. `ScriptRuntime` 根据目标路由命令。`execute` 只适合单一有效结果，`executeAll` 会收集超时前可观察到的所有结果，`dispatch`
+   是 fire-and-forget。
+3. 目标节点或 actor 把命令转换为 `ScriptExecutionRequest`，补上 `scope`、节点地址或 actor path。
+4. `ScriptRunner` 先调用 `ScriptPolicy.authorize`，拒绝时写审计并返回失败结果；允许时通过 `ScriptExecutionStore`
+   做运行中/已完成判断，再调用 `ScriptExecutor`。
+5. `ScriptExecutor` 从 `ScriptEngineRegistry` 找到引擎，按 `artifact.engine` 编译并执行。脚本拿到的 `ScriptContext` 包含
+   runtime、services、metadata、资源读取和可选取消 token。
 
 ```kotlin
 val command = ScriptExecutionCommand(
     executionId = "gm-20260505-001",
-    target = ScriptTarget.Entity(kind = "world", ids = listOf("1001")),
-    resource = ScriptResource.Inline(
+  target = ScriptTarget.Entity(kind = EntityKind("world"), ids = listOf("1001")),
+  artifact = ScriptArtifact(
         name = "fix-world",
-        language = "groovy",
-        content = "world.rebuildIndex()",
+    engine = "groovy",
+    body = "world.rebuildIndex()".encodeToByteArray(),
     ),
     metadata = ScriptExecutionMetadata(requester = "gm:alice"),
 )
@@ -21,7 +32,28 @@ val command = ScriptExecutionCommand(
 val result = scriptRuntime.execute(command)
 ```
 
-脚本策略应该由项目按风险定义，例如允许的语言、超时、目标范围、审批状态和可调用函数。
+`ScriptPolicy` 是执行前的硬边界。默认策略可以限制 node/actor scope、允许的 engine、允许的 target type、artifact
+大小、审批、签名、模板、engine/target 权限和明显危险的 API token。默认权限检查只读
+`metadata.attributes["script.permissions"]`，生产系统通常应接入自己的 permission authorizer、signature verifier、template
+catalog 和 audit sink。
+
+`ScriptTarget` 只描述“脚本要去哪里”，不表达权限。当前目标包括 `AllNodes`、`Role`、`Node`、`ActorPath`、`Entity` 和
+`Singleton`；具体能否路由、是否 fan-out、是否需要 actor 配合由 runtime 实现决定。
+
+## Groovy 和 jar artifact
+
+`ScriptArtifact` 的 `engine` 必须匹配已注册的脚本引擎。Groovy 引擎把 artifact body 当作 Groovy class 源码编译；jar 引擎把
+body 当作
+JAR 字节读取，JAR manifest 必须包含 `Script-Class`，指向可被 `toCompiledScript` 适配的类。两个引擎都会按 checksum（有则优先）或
+body
+内容生成缓存 key。
+
+上传 groovy 或 jar 只是在入口层把文件转换成 `ScriptArtifact`，不会绕过策略。文件大小还会受入口配置和
+`ScriptPolicy.maxArtifactBytes`
+共同限制；checksum、签名、模板 id、审批人、权限、工单号等都应放在 metadata attributes 中，由业务策略验证。
+
+脚本与 jar class 会在服务进程内执行，能通过 `ScriptContext.services` 调用业务注册服务。因此安全边界应放在提交入口、
+`ScriptPolicy`、代码评审/签名、审计和运行账号权限上；不要把 Groovy/JAR 执行理解成隔离沙箱。
 
 ## Pekko 脚本目标
 
@@ -33,6 +65,13 @@ val result = scriptRuntime.execute(command)
 - `ActorPath`：指定 actor path 执行。
 - `Entity`：指定 sharding entity 执行。
 - `Singleton`：指定 cluster singleton 执行。
+
+`PekkoScriptRuntime` 后面是本地 `ScriptRuntimeActor`。`AllNodes` 和 `Role` 会先在本节点执行，再通过 distributed pub-sub
+发布到其他节点；
+`Node` 只在地址匹配的节点执行；`ActorPath` 用 actor selection 逐个发送；`Entity` 通过 `EntityShardRegistry` 转到 sharding
+entity；
+`Singleton` 通过 `SingletonActorRegistry` 发送。`executeAll` 会创建临时 collector，在 timeout
+前收集返回结果；目标不存在或响应太慢时可能得到部分结果或空结果。
 
 业务 actor 需要实现脚本执行入口，通常是在 actor 内组合 `ActorScriptSupport`，并把 `ActorScriptSupport.receive()` 合并进允许执行脚本的 receive 状态。
 
@@ -57,6 +96,16 @@ scriptJobService.cancelJob(job.id, ScriptJobCancellation(requestedBy = "gm:alice
 
 `timeout` 是单个 item attempt 的超时，不是整个 job 的总 deadline。`executionId` 和 target
 会影响幂等与重放语义，重复提交同一个命令不应该被业务理解成一定重新执行。
+
+提交时会先创建 `ScriptJob`，再把 target 展开成 item：`Node` 按地址拆分，`ActorPath` 按 path 拆分，`Entity` 按 id 拆分；
+`AllNodes`、`Role`、`Singleton` 保持为一个 item，让 runtime 自己 fan-out。每个 item attempt 的 execution id 会派生为
+`sourceExecutionId.itemId.attempt`，并在 metadata 中追加 `script.jobId`、`script.itemId`、`script.attempt`、
+`script.workerId` 和
+`script.sourceExecutionId`。
+
+item 状态通常是 `Pending -> Running -> Completed/Failed/Cancelled`。取消 pending item 会直接落库；取消 running item
+依赖脚本协作取消或租约恢复路径把它变为终态。retry 只允许 failed item，会新建一次 attempt 并重新调度。`summarizeResults`
+按错误聚合失败样本，`exportResults` 导出 item 级 CSV。
 
 ## 限流和租约
 
@@ -84,8 +133,10 @@ class RechargeFeature : GmFeature {
 }
 ```
 
-`GmFeatureRegistry` 会拒绝重复 feature id 和重复 permission key。可选模块通过 Java `ServiceLoader` 发布 feature，Spring
-starter 暴露 feature 列表和具体 HTTP API。
+`GmFeatureRegistry` 是不可变 feature catalog，会在启动时拒绝重复 feature id 和重复 permission key，避免扩展模块静默覆盖彼此。
+feature descriptor 只保存元数据：feature id/name/description、permission、menu 和 route。可选模块通过 Java `ServiceLoader`
+发布 feature；`gm-spring-boot-starter` 会把 ServiceLoader 发现的 feature 和 Spring bean 中的 `GmFeature` 合并后注册，并暴露
+feature、permission、menu、route 列表。具体业务 API 仍由各 starter 或业务 controller 提供。
 
 `highRisk` 只是元数据标记，不会自动触发审批、MFA 或工单流。生产系统要在 `GmPrincipalResolver`、`GmPolicyEvaluator` 或业务
 controller 中补上这些策略。
@@ -154,7 +205,17 @@ nodeLocalOpsHttp {
 ```
 
 如果不使用 starter，也可以直接安装 `NodeLocalOpsHttpModule`。模块启动时会读取 bearer token；`requireToken` 默认为 `true`，
-未配置 `token` 或 `tokenFile` 时会拒绝启动。生产环境建议 token 文件只允许运维用户或服务账号读取。
+未配置 `token` 或 `tokenFile` 时会拒绝启动。`requireOperator` 默认要求 `X-Asteria-Operator`，`requireReasonForMutations`
+默认要求变更类请求提供 `X-Asteria-Reason`。生产环境建议 token 文件只允许运维用户或服务账号读取，并优先绑定 loopback
+或受控管理网。
+
+请求链路是：Ktor 路由先校验 bearer token、operator 和 reason，再把 header 转成 `NodeLocalOpsPrincipal`；JSON body 或
+multipart form
+被转换成 `ScriptExecutionCommand`；同步入口调用 `ScriptRuntime.executeAll`，异步入口调用 `ScriptJobService.submit`
+；成功或失败都会写入
+`NodeLocalOpsAuditSink`。本地 HTTP 审计只证明本入口收到了请求，脚本级允许/拒绝和执行审计仍由 `ScriptPolicy`、
+`ScriptAuditSink` 和
+`ScriptJobAuditSink` 决定。
 
 上机器后可以先查看接口自描述：
 
@@ -171,13 +232,22 @@ curl -X POST http://127.0.0.1:17321/ops/scripts/execute \
   -F 'artifact=@./fix-player.groovy'
 ```
 
+multipart 上传中，`artifact=@./fix-player.groovy` 会从 `.groovy` 推断 engine 为 `groovy`，`artifact=@./repair.jar` 会推断为
+`jar`；
+其他文件名必须显式提供 `engine` 字段。JSON 请求可用 `bodyText` 或 `bodyBase64` 传脚本内容。入口只检查最大字节数和基本字段形状，是否允许
+groovy/jar、是否要求签名/审批/权限仍由业务安装的 `ScriptPolicy` 决定。
+
 当前接口包括：
 
 - `GET /ops`：返回认证头、限制、接口列表和请求示例。
+- `GET /ops/health`：本地入口健康检查。
 - `POST /ops/scripts/execute`：同步执行脚本并返回批量结果。
 - `POST /ops/scripts/jobs`：提交异步脚本任务。
-- `GET /ops/scripts/jobs`、`GET /ops/scripts/jobs/{jobId}`、`GET /ops/scripts/jobs/{jobId}/items`：查询任务。
-- `POST /ops/scripts/jobs/{jobId}/cancel`、`POST /ops/scripts/jobs/{jobId}/items/{itemId}/retry`：取消或重试任务。
+- `GET /ops/scripts/jobs`、`GET /ops/scripts/jobs/{jobId}`、`GET /ops/scripts/jobs/{jobId}/summary`、
+  `GET /ops/scripts/jobs/{jobId}/items`、`GET /ops/scripts/jobs/{jobId}/items/{itemId}`：查询任务、汇总和 item。
+- `POST /ops/scripts/jobs/{jobId}/cancel`、`POST /ops/scripts/jobs/{jobId}/items/{itemId}/cancel`、
+  `POST /ops/scripts/jobs/{jobId}/items/{itemId}/retry`、`POST /ops/scripts/jobs/{jobId}/failed-items/retry`：取消或重试任务。
+- `GET /ops/patches`、`GET /ops/patches/{patchId}`、`GET /ops/patches/node-results`：查询补丁 descriptor 和节点结果。
 - `POST /ops/patches/{patchId}/apply`、`POST /ops/patches/{patchId}/disable`、`POST /ops/patches/reconcile`：触发补丁应用、
   停用或本节点 desired-state reconcile。
 

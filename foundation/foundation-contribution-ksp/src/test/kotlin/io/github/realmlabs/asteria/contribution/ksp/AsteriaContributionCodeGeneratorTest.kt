@@ -61,6 +61,12 @@ class AsteriaContributionCodeGeneratorTest {
         assertContains(chunk0, "internal object GeneratedActivityServicesChunk0")
     }
 
+    @Test
+    fun contributionTypeNamePartPreservesCamelCase() {
+        assertEquals("ActivityService", "ActivityService".toContributionTypeNamePart())
+        assertEquals("ActivityService", "activity-service".toContributionTypeNamePart())
+    }
+
     private companion object {
         val ACTIVITY_SERVICE = ClassName("com.example.activity", "ActivityService")
         val SEVEN_DAY = ClassName("com.example.activity", "SevenDayActivityService")

@@ -18,6 +18,11 @@ attributes, and sampling policy.
 Metric names and tags should stay low-cardinality. `NoopMetrics` validates metric names and tag keys but does not report
 data; do not ignore production exporter cardinality costs just because local noop runs successfully.
 
+`ObservabilityModule` only registers `Observability`, `Tracer`, and `Metrics` in the `ServiceRegistry` during `install`.
+It does not start the OpenTelemetry SDK and does not own exporter lifecycle. Framework modules depend only on the
+`Tracer`/`Metrics` abstractions; without an installed module, `metricsOrNoop()` and `tracerOrNoop()` return noop
+implementations.
+
 ## Starter
 
 `starter-game-server-pekko` is startup glue for game servers:
@@ -43,12 +48,20 @@ suspend fun main() {
 }
 ```
 
-`localGameApplication` is for local development and tests; `clusterGameApplication` is for Pekko cluster runtime.
+`localGameApplication` is for local development and tests; it installs
+`PekkoRuntimeModule(LocalPekkoClusterStartup())`, runs business configuration, then installs the startup-summary module.
+`clusterGameApplication` is for Pekko cluster runtime; it installs config-center/topology provider wiring,
+`ClusterConfigModule`, `PekkoRuntimeModule(TopologyPekkoClusterStartup(...))`, and the startup-summary module.
 `LocalGameCluster` can start multiple application instances in one JVM for integration tests and topology debugging.
 
 Local multi-node startup uses the first node as the seed by default unless seeds are declared explicitly.
 `publishClusterTopology()` only writes current node records; it does not clean old nodes from the config center, so
 repeated local runs should account for stale topology.
+
+Starter only composes common modules and default ordering; it is not a replacement for production wiring. If deployment
+needs custom discovery, config-center setup, observability SDK setup, gateway modules, patch repositories, or
+persistence
+backends, install those modules explicitly or use lower-level `gameApplication`.
 
 ## RouteModule
 

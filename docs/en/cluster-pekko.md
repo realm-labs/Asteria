@@ -15,7 +15,7 @@ val app = gameApplication {
         role = RoleKey("world")
     }
 
-    install(PekkoRuntimeModule())
+    install(PekkoRuntimeModule(LocalPekkoClusterStartup()))
 }
 
 app.launch()
@@ -24,6 +24,17 @@ app.launch()
 Production projects usually read the current node host, port, roles, and seed nodes through `cluster-config`, then pass
 them to the Pekko runtime. Startup topology is process startup input; changes usually take effect through rolling
 restarts.
+
+During `install`, `PekkoRuntimeModule` calls `PekkoClusterStartup.resolve()` to get a startup plan, creates the
+`ActorSystem`, updates the concrete node roles from the plan, and registers `PekkoRuntime`, `ActorSystem`,
+`RuntimeNodeConfig`, `ClusterTopology`, `EntityShardRegistry`, and `SingletonActorRegistry`. During `start`, it reads
+the declared entity/singleton topology and starts sharding, singleton hosts, or proxies.
+
+`TopologyPekkoClusterStartup` reads the full topology from `ClusterTopologyProvider.current()`, selects the current node
+by `nodeId`, validates that declared application roles are covered by the topology, then uses
+`PekkoClusterConfig.build()` to derive Pekko host, port, roles, and seed-node config. `watch()` is available for tools
+that display topology changes, but the default Pekko startup path does not hot-apply topology into an already-created
+ActorSystem.
 
 ## Entities and Sharding
 
@@ -40,6 +51,19 @@ val extractor = PekkoShardExtractors.longId<WorldWakeupReq>(
 
 Concrete actor props, extractors, and startup wiring are owned by business modules. The framework provides topology and
 shared helper types.
+
+Startup mode decides what reference this node obtains:
+
+- `Auto`: start a shard region when the node owns the entity role; otherwise start a proxy.
+- `Region`: require the entity role and fail startup when the role is missing.
+- `Proxy`: always start a proxy.
+
+If an entity does not declare an extractor, the runtime uses the default entity-id hash extractor. Starting a region
+requires actor props; starting a proxy only needs kind, role, and extractor. The resulting reference is registered in
+`EntityShardRegistry` so downstream forwarding modules can look it up by kind.
+
+For singletons, `Auto` starts the host only on nodes with the target role, `Host` enforces that role, and `Proxy` skips
+hosting. The runtime always starts and registers a singleton proxy in `SingletonActorRegistry`, including on host nodes.
 
 ## Entity Wakeup
 

@@ -66,10 +66,34 @@
 | `observability-core` / `observability-opentelemetry`                             | metrics/tracing 抽象和 OTel 实现             | 需要接入可观测性时                      |
 | `starter-game-server-pekko`                                                      | 本地和集群启动 DSL、route module、patch starter  | 业务项目希望少写启动胶水时                  |
 
+## 内部机制速览
+
+- `foundation-core`：按模块声明顺序执行 `install` 和 `start`，按反向顺序执行 `stop` 和 `uninstall`。`ServiceRegistry`
+  是精确类型查找，不会自动按父类或接口搜索。
+- `foundation-contribution-*`：KSP 在编译期扫描 `@AsteriaContribution`，生成静态贡献清单。运行期不会扫描
+  classpath；业务侧把清单转换成
+  list、map、groupBy 或 patchable registry。
+- `foundation-event-*` 和 `foundation-message-*`：KSP 生成 handler handle、registry 和 dispatcher。生成的 registry 是
+  patchable
+  slot registry，补丁替换的是具体 handler slot，不是整个 dispatcher。
+- `config-*`：`ConfigLoader` 每次生成完整快照，validator 通过后才发布。配置中心 watch 只触发重读，不携带完整配置状态；配置表和变更
+  handler 的 KSP 只生成强类型访问和 handler 清单。
+- `cluster-pekko-*`：应用拓扑先由 `foundation-core` 声明，Pekko runtime 再按 role、entity、singleton 元数据启动 actor
+  system、
+  sharding 和 singleton。
+- `gateway-*`、`protocol-*`、`rpc-*`：协议 registry 只负责 id、类型和 parser 映射；gateway transport 只负责连接和帧；转发到
+  actor
+  runtime 由 route/forwarder 决定。
+- `persistence-*`：actor 持有自己的数据管理器。Mongo KSP 生成 tracked wrapper 和 dirty path 计划，flush 时由 repository
+  批量写回。
+- `script-*`、`gm-*`、`ops-http-ktor`：脚本执行、GM feature 和节点本地 HTTP 入口是三层能力。脚本 runtime 负责目标和策略；GM/ops
+  入口负责权限、审计和提交请求。
+- `patch-*`：补丁插件通过 `PatchInstallContext` 替换 patchable registry slot 或 service slot。基础注册项保留，卸载补丁时回退到下一层
+  patch 或 base 实现。
+
 ## 组合建议
 
 最小单进程服务只需要 `foundation-core` 加业务模块。Pekko 集群服务通常组合 `foundation-core`、`foundation-actor`、
 `cluster-pekko`、`config-core` 和某个配置中心后端。对外网关服务再加 `gateway-core`、`gateway-netty`、`protocol-protobuf`
 和协议生成插件。需要 GM 脚本时再加 `script-core`、`script-pekko`、`script-job`、对应 repository 和 `gm-script`。如果没有 GM
-节点
-但允许运维 SSH 到业务机器，可以加 `ops-http-ktor`，默认通过 loopback HTTP 和 bearer token 提供本机控制入口。
+节点但允许运维 SSH 到业务机器，可以加 `ops-http-ktor`，默认通过 loopback HTTP 和 bearer token 提供本机控制入口。

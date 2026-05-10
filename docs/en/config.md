@@ -110,6 +110,24 @@ extension properties. Generated files are chunked so large config catalogs do no
 the requested concrete type, such as `MapConfigTable<K, R>` or `OrderedMapConfigTable<K, R>`, so callers can use the
 underlying collection API.
 
+### Annotations and Generated Code
+
+`@AsteriaConfigTable` marks a config row type or marker type. KSP reads `name`, `shape`, `keyType`, `rowType`,
+`tableType`, `refName`, and `propertyName`, then generates:
+
+- `GameConfigTables`: strongly typed table references such as `GameConfigTables.Items`.
+- `ConfigSnapshot` extension properties for reading tables from a snapshot.
+- `ConfigService` extension properties for reading tables from the current snapshot.
+- `META-INF/asteria/codegen-snapshots/config/config.json`: the table and change-handler model seen by KSP.
+
+`@AsteriaConfigChangeHandler` marks a `ConfigChangeHandler<Receiver>` implementation. KSP validates the receiver type
+and generates handler lists such as `GeneratedConfigChangeHandlers.ALL`. At runtime, `ConfigChangeDispatcher` matches
+handlers by `watchedTables` and the event `changedTables`, then uses the revision tracker to avoid applying the same
+revision to the same actor twice.
+
+Config validators use the generic contribution mechanism. Use [Contribution Aggregation](contribution.md) with
+`@AsteriaContribution(contract = ConfigValidator::class)` when a generated validator list is needed.
+
 ## Hot Reload and Change Dispatch
 
 When hot reload is enabled, `ConfigHotReloadService` listens to a `ConfigReloadTrigger` and reloads a complete snapshot

@@ -11,6 +11,9 @@ and audited on one node or across a cluster.
 - `PatchRuntime`: current node patch runtime. It only executes already-selected `RuntimePatch` values.
 - `RuntimePatchRepository`: patch metadata repository. It stores descriptors and assigns increasing revisions.
 - `RuntimePatchPluginResolver`: resolves a patch artifact into an installable plugin.
+- `RuntimePatchPlugin`: the plugin entry point loaded from a patch jar.
+- `PatchInstallContext`: the context used by plugins to declare replacements that the runtime can commit and roll back.
+- `PatchableRegistry` / `PatchableServiceRegistry`: patchable handler slots or service slots.
 - `PatchApplicationService`: applies, disables, and checks compatibility on one node.
 - `PatchClusterApplicationService`: selects target nodes and records per-node results.
 
@@ -65,9 +68,6 @@ current `PatchEnvironment` are selected, converted into `RuntimePatch(id, revisi
 need to push patches again; if the repository and artifact store are durable, the node reloads enabled metadata and
 restores patch layers from the stored jars.
 
-Cluster patching should not assume that every node succeeds at the same time. `PatchClusterApplicationService` records
-each node result; GM or operations workflows decide whether to retry, roll back, or escalate.
-
 Patch precedence is defined by the repository-assigned `revision`. Business code does not need to provide an ordering
 field. `RuntimePatchRepository.save` assigns a revision for new descriptors and assigns a new revision again when an
 existing descriptor is replaced. Multiple patches that replace the same handler or service are replayed by revision, so
@@ -76,6 +76,38 @@ should use `updateStatus`, which preserves the descriptor revision.
 
 Jar resolution first checks the manifest `Patch-Class`, then falls back to `ServiceLoader<RuntimePatchPlugin>`. Artifact
 checksums use the `sha256:<hex>` format, and artifact stores must verify bytes before returning them.
+
+## Activation Flow
+
+GM or the publishing flow writes the patch jar to artifact storage, then writes the `RuntimePatchDescriptor` to the
+repository. For single-node application, `PatchApplicationService` loads the descriptor from the repository, checks
+status,
+compatible versions, and target nodes, then asks `RuntimePatchPluginResolver` to load a `RuntimePatchPlugin`.
+`PatchRuntime` receives only `RuntimePatch(id, revision)` and the plugin.
+
+Inside `RuntimePatchPlugin.install`, the plugin declares slot replacements through
+`PatchInstallContext.replace(registry, key, value)` or `replaceService<T>(registry, service)`. The runtime runs plugin
+installation and collects operations, validates that each target key currently exists, and then commits the operations.
+If a commit fails, already committed operations are rolled back in reverse order. If the patch is already applied in the
+same runtime, repeated apply is ignored.
+
+`PatchableRegistry` keeps original base entries and replacement layers ordered by `revision/id`. Business reads through
+`get`, `require`, or `snapshot` see the current view after base entries and all active layers are merged. `replace`
+writes only the current patch layer and never mutates the base entry; `remove(id)` removes only that patch layer and
+rebuilds the active view from the base and remaining layers. The fallback order is therefore: the newer revision patch,
+an older still-enabled patch, and finally the original base entry. `PatchableServiceRegistry` is the same mechanism for
+type-keyed services.
+
+When disabling a patch, `PatchApplicationService.disable` first updates repository status to `Disabled`, then calls the
+local `PatchRuntime.remove`. Remove calls the plugin's `uninstall` for side effects the framework cannot track, then
+removes replacement layers declared through `PatchInstallContext` and lets registries fall back automatically. The
+resolver may evict jar/classloader cache after disable.
+
+Cluster application is coordinated by `PatchClusterApplicationService`. It gets nodes from `PatchNodeProvider`, selects
+targets by descriptor compatibility and target rules, invokes apply or disable on each node through `PatchNodeClient`,
+and stores every attempt in the node-result repository. Cluster patching should not assume that every node succeeds at
+the same time; GM or operations workflows should use each node's `Applied`, `Removed`, `Ignored`, or `Failed` result to
+decide whether to retry, roll back, or escalate.
 
 ## ZooKeeper Storage
 

@@ -19,8 +19,30 @@ class EnterWorldHandler : MessageHandler<PlayerHandlerContext, EnterWorldReq> {
 }
 ```
 
-`MessageDispatcher` 是 exact-type dispatch：注册 `BaseMessage` 不会自动处理所有子类。handler 多时使用
-`foundation-message-ksp` 和 Gradle plugin 生成注册代码，避免启动时反射扫描。
+`MessageDispatcher` 是 exact-type dispatch：默认用消息运行时类型查找 handler，注册 `BaseMessage`
+不会自动处理所有子类；只有显式调用带 `messageType` 的 overload 时，才会按传入类型查找。缺少 handler
+或 handler 抛错都会向调用方暴露。
+
+例如只注册了 `GameCommand` 的 handler 时，直接分发 `MoveCommand` 会查 `MoveCommand::class`，因此找不到 handler。
+如果业务确实想让一组子类共用父接口 handler，需要调用显式类型版本：
+
+```kotlin
+sealed interface GameCommand
+
+data class MoveCommand(val x: Int, val y: Int) : GameCommand
+
+registry.register<GameCommand> { context, command ->
+    context.commandBus.handle(command)
+}
+
+// 查找 key 是 MoveCommand::class；上面只注册了 GameCommand，所以会失败。
+dispatcher.dispatch(context, MoveCommand(1, 2))
+
+// 查找 key 是 GameCommand::class；会命中上面的父接口 handler。
+dispatcher.dispatch(context, GameCommand::class, MoveCommand(1, 2))
+```
+
+handler 多时使用 `foundation-message-ksp` 和 Gradle plugin 生成注册代码，避免启动时反射扫描。
 
 ```kotlin
 plugins {
@@ -33,12 +55,22 @@ asteriaMessageCodegen {
 }
 ```
 
-给 handler class 添加 `@AsteriaMessageHandler` 后，KSP 会按上面的生成包和模块 ID 统一生成 catalog、handles、registry
-与 dispatcher。dispatcher 基于同名 registry 构造，例如 `GeneratedGameNodeDispatchers.PROTOBUF` 会使用
-`GeneratedGameNodeDispatchers.PROTOBUF_REGISTRY`，而 registry 基于 `GeneratedGameNodeDispatchers.PROTOBUF_HANDLES`
-构造。业务需要运行时 patch handler 时，可以把生成的 registry 传给 `replaceHandler(registry, ...)`；如果需要自定义
-`MessageHandleRegistry`，也可以复用生成的 handles 后自行构造 `MessageDispatcher`。handler 需要定义
-`handle(context, message)` 方法。
+`@AsteriaMessageHandler(dispatcher = "...")` 标记一个可生成注册代码的 handler class。handler 必须是非抽象 class，
+并定义 `handle(context, message)`；第一个参数决定 dispatcher 的 `HandlerContext` 类型，第二个参数决定要注册的消息类型。
+同一个生成模块内的 handler 必须共享同一种 context 类型。`dispatcher` 是逻辑分发器 key，用来把登录服、游戏服、内部消息等不同入口拆成不同
+registry。
+
+KSP 会按 `generatedPackage` 和 `moduleId` 生成：
+
+- `Generated<Module>NodeDispatchers`：暴露每个 dispatcher key 对应的 `*_HANDLES`、`*_REGISTRY` 和 dispatcher。
+- `Generated<Module><Dispatcher>MessageHandles` 及 chunk：保存静态 `MessageHandle` 列表。
+- 可选 `MessageCatalog`：开启 `messageCatalogEnabled` 后供工具和诊断读取，不作为运行时路由入口。
+
+生成的 registry 是 `PatchableMessageHandlerRegistry`。`MessageDispatcher` 每次分发都会从 registry 读取当前 slot：
+基础 slot 来自 KSP 生成的 handles，补丁通过 `replaceHandler(registry, ...)` 覆盖某一个消息类型的 slot。补丁不会重建
+dispatcher，
+也不会新增未注册过的消息类型；卸载补丁后会回退到下一层补丁或基础 handler。需要自定义 `MessageHandleRegistry`
+时，可以复用生成的 handles 后自行构造 `MessageDispatcher`。
 
 ## Protobuf 协议生成
 
@@ -65,8 +97,12 @@ asteriaProtobufProtocol {
 
 生成器会在协议很多时拆成 `GeneratedGatewayProtocolChunkN` / `GeneratedRpcProtocolChunkN`，主文件只负责聚合，避免单文件膨胀。
 
-Gateway protocol 会校验方向：server-only message 不能作为客户端输入解码，client-only message 不能作为服务端下发编码。message
-id 和 message type 都必须唯一；inbound message 如果需要进入业务路由，必须配置 route。
+Gateway protocol registry 只负责协议 id、protobuf 类型、parser 和方向。它会校验方向：server-only message
+不能作为客户端输入解码，client-only message 不能作为服务端下发编码。message id 和 message type 都必须唯一。
+
+进入网关的 protobuf 消息还需要 route registry：`clientMessage` 和 `bidirectionalMessage` 会同时登记协议映射和
+`RouteTarget`，`serverMessage` 只登记服务端下发协议。`ProtobufGatewayRouteResolver` 根据解码后的 envelope 查 route，
+并可通过 id resolver 生成 `GatewayRoute.entityId`；它不执行鉴权、限流或业务 handler。
 
 ## Pekko RPC
 
@@ -111,13 +147,20 @@ val transport = NettyWebSocketGatewayServerTransport(
 transport.start(handler)
 ```
 
-`GatewayTransportHandler` 接收连接、读包和断开事件。默认 TCP/WebSocket pipeline 只处理完整二进制 frame。如果项目使用内置的
-`BinaryGatewayPacket` 头和 protobuf envelope，需要在自定义 `NettyGatewayPipelineInstaller` 中组合 `PacketCodec`、
-`NettyProtobufCodec` 和 gateway message handler。网关 transport 不应该直接知道业务 actor 结构；需要转发到 actor runtime
-时使用 `gateway-pekko` 或业务自己的 adapter。
+`GatewayTransportHandler` 接收连接、读包和断开事件。默认 TCP/WebSocket pipeline 只处理完整二进制 frame；transport
+负责连接生命周期、frame 边界和 backpressure 相关的网络行为，不负责协议 id 映射、业务路由、鉴权或 actor 投递。
 
-`PekkoGatewayForwarder` 可以把 route 结果转给 entity、singleton、service actor 或本地 handler。`RouteTarget.GatewayLocal`
-必须提供本地 handler；`GatewayMessageDispatcher` 本身不解码、不重试，只做 resolve 和 forward。
+如果项目使用内置的 `BinaryGatewayPacket` 头和 protobuf envelope，需要在自定义 `NettyGatewayPipelineInstaller`
+中组合 `PacketCodec`、`NettyProtobufCodec` 和 gateway message handler。`NettyProtobufCodec` 只把 frame 与 protobuf
+envelope 互转，实际 route 由 protocol/gateway dispatcher 处理。
+
+`GatewayMessageDispatcher` 连接 route resolver 和 forwarder：它接收已经解码好的 packet，解析出 `GatewayRoute`，
+调用 forwarder，并返回 route 供日志或指标使用。它不解码、不重试、不管理 session 生命周期。
+
+`PekkoGatewayForwarder` 是 `gateway-pekko` 的 actor runtime adapter，可以把 route 结果转给 entity、singleton、
+service actor 或本地 handler。`RouteTarget.GatewayLocal` 必须提供本地 handler；`PekkoGatewayMessageFactory`
+可把原始 packet 包装成 actor 需要的消息类型。业务如果不用 Pekko，可以实现自己的 `GatewayForwarder`，保持 transport
+和 actor 拓扑解耦。
 
 ## 广播
 

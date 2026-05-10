@@ -48,10 +48,19 @@ installed and started in declaration order, then stopped and uninstalled in reve
 `AsteriaApplication` is an application definition, not the full runtime state of a node. Pekko or business runtimes can
 call `bind(runtime)` to reuse the same module lifecycle while storing services in their own `NodeRuntime.services`.
 
+`AsteriaModuleLifecycle` drives the internals. For each launch it builds a `ModuleContext`, registers the lifecycle
+itself in the `ServiceRegistry`, then runs every module's `install` and `start`. Lifecycle state is exposed through
+`NodeState`; `onState` listeners run inline during state transitions, so they should be small and should not recursively
+launch or stop the same lifecycle.
+
 Startup failure is fatal to the launch attempt. If any module fails during `install` or `start`, `launch()` stops modules
 whose `start` completed, uninstalls modules whose `install` completed, attaches cleanup failures as suppressed
 exceptions, and rethrows the original startup error. Production entry points should usually let that error terminate the
 process.
+
+Host runtimes with their own shutdown path can use `stopAfter(moduleName)` to stop modules declared after a given
+module. The Pekko runtime wires this into `CoordinatedShutdown` so ActorSystem shutdown does not recursively terminate
+itself.
 
 ## Topology Declaration
 
@@ -71,8 +80,13 @@ val app = gameApplication {
 }
 ```
 
-`role`, `entity`, and `singleton` are topology metadata. Creating an actor system, starting sharding, and hosting
-singletons is done by runtime modules such as `cluster-pekko`.
+`role`, `entity`, and `singleton` are topology metadata. `role` declares roles the application may use; `entity` records
+kind, id type, target role, shard count, message extractor, actor props, and startup mode; `singleton` records name,
+hosting role, actor props, and startup mode. Creating an actor system, starting sharding, and hosting singletons is done
+by runtime modules such as `cluster-pekko`.
+
+`@AsteriaDsl` only constrains DSL receivers so nested builders do not accidentally call the wrong method. It is not a
+runtime annotation and does not generate code.
 
 ## Service Registry
 
@@ -84,8 +98,13 @@ val service = context.services.get(MyService::class)
 val optional = context.services.find(MyOptionalService::class)
 ```
 
-Prefer registering interface types for services that may have multiple implementations, such as config centers,
-persistence, GM, scripts, and patches.
+Lookup is by exact `KClass`; the registry does not automatically search interfaces or supertypes. Registering the same
+key again replaces the previous service. Prefer registering interface types for services that may have multiple
+implementations, such as config centers, persistence, GM, scripts, and patches.
+
+`ServiceRegistry` is intentionally lightweight and does not provide concurrency synchronization. Most services should be
+registered during `install`; if a service is replaced at runtime, the application must provide its own synchronization
+and visibility rules.
 
 ## Actor Coroutines
 

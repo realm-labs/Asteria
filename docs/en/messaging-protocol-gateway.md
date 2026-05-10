@@ -21,8 +21,31 @@ class EnterWorldHandler : MessageHandler<PlayerHandlerContext, EnterWorldReq> {
 }
 ```
 
-`MessageDispatcher` uses exact-type dispatch. Registering `BaseMessage` does not automatically handle subclasses. Use
-`foundation-message-ksp` and its Gradle plugin when handler registration would otherwise become large and manual.
+`MessageDispatcher` uses exact-type dispatch. By default it looks up the handler by the message runtime type.
+Registering `BaseMessage` does not automatically handle subclasses; only the overload that receives an explicit
+`messageType` looks up that supplied type. Missing handlers and handler failures are exposed to the caller.
+
+For example, if only a `GameCommand` handler is registered, dispatching `MoveCommand` directly looks up
+`MoveCommand::class` and does not find the `GameCommand` slot. Use the explicit-type overload only when the business
+logic intentionally wants a group of subtypes to share one parent-interface handler:
+
+```kotlin
+sealed interface GameCommand
+
+data class MoveCommand(val x: Int, val y: Int) : GameCommand
+
+registry.register<GameCommand> { context, command ->
+    context.commandBus.handle(command)
+}
+
+// Lookup key is MoveCommand::class; only GameCommand was registered, so this fails.
+dispatcher.dispatch(context, MoveCommand(1, 2))
+
+// Lookup key is GameCommand::class; this hits the parent-interface handler.
+dispatcher.dispatch(context, GameCommand::class, MoveCommand(1, 2))
+```
+
+Use `foundation-message-ksp` and its Gradle plugin when handler registration would otherwise become large and manual.
 
 ```kotlin
 plugins {
@@ -35,12 +58,25 @@ asteriaMessageCodegen {
 }
 ```
 
-After a handler class is annotated with `@AsteriaMessageHandler`, KSP generates the catalog, handles, registries, and
-dispatchers under the configured package and module id. Each dispatcher is built from its generated registry; for
-example, `GeneratedGameNodeDispatchers.PROTOBUF` uses `GeneratedGameNodeDispatchers.PROTOBUF_REGISTRY`, and that registry
-is built from `GeneratedGameNodeDispatchers.PROTOBUF_HANDLES`. Runtime patches can pass the registry to
-`replaceHandler(registry, ...)`. Code that needs a custom `MessageHandleRegistry` can reuse the generated handles and
-construct its own `MessageDispatcher`. A handler must define a `handle(context, message)` method.
+`@AsteriaMessageHandler(dispatcher = "...")` marks a handler class for generated registration. The handler must be a
+non-abstract class and define `handle(context, message)`: the first parameter determines the dispatcher's
+`HandlerContext` type, and the second parameter determines the registered message type. All handlers in one generated
+module must share the same context type. `dispatcher` is a logical dispatcher key, useful for separating login-node,
+game-node, internal-message, or other entry points into different registries.
+
+KSP generates the following under `generatedPackage` and `moduleId`:
+
+- `Generated<Module>NodeDispatchers`: exposes each dispatcher key's `*_HANDLES`, `*_REGISTRY`, and dispatcher.
+- `Generated<Module><Dispatcher>MessageHandles` plus chunks: stores the static `MessageHandle` list.
+- Optional `MessageCatalog`: generated when `messageCatalogEnabled` is on, for tooling and diagnostics rather than
+  runtime routing.
+
+The generated registry is a `PatchableMessageHandlerRegistry`. `MessageDispatcher` reads the current slot from the
+registry on every dispatch: base slots come from KSP-generated handles, and patches replace one message-type slot
+through
+`replaceHandler(registry, ...)`. Patches do not rebuild the dispatcher and cannot introduce a brand-new message type;
+after removal, the slot falls back to the next patch layer or the base handler. Code that needs a custom
+`MessageHandleRegistry` can reuse the generated handles and construct its own `MessageDispatcher`.
 
 ## Protobuf Protocol Generation
 
@@ -68,9 +104,14 @@ asteriaProtobufProtocol {
 Large generated protocols are split into `GeneratedGatewayProtocolChunkN` and `GeneratedRpcProtocolChunkN`; the main
 file only aggregates chunks.
 
-Gateway protocol enforces direction: server-only messages cannot be decoded as client input, and client-only messages
-cannot be encoded as server output. Message ids and message types must be unique. Inbound messages that should reach
-business code must have a route.
+The gateway protocol registry only owns protocol ids, protobuf types, parsers, and direction metadata. It enforces
+direction: server-only messages cannot be decoded as client input, and client-only messages cannot be encoded as server
+output. Message ids and message types must be unique.
+
+Inbound protobuf messages also need a route registry. `clientMessage` and `bidirectionalMessage` register both the
+protocol mapping and a `RouteTarget`; `serverMessage` only registers server output protocol metadata.
+`ProtobufGatewayRouteResolver` resolves a decoded envelope to a route and can use an id resolver to fill
+`GatewayRoute.entityId`; it does not run auth, rate limiting, or business handlers.
 
 ## Pekko RPC
 
@@ -118,13 +159,22 @@ transport.start(handler)
 ```
 
 `GatewayTransportHandler` receives connect, frame, and disconnect events. The default TCP/WebSocket pipelines only
-handle complete binary frames. If a project uses the built-in `BinaryGatewayPacket` header and protobuf envelope,
-provide a custom `NettyGatewayPipelineInstaller` that combines `PacketCodec`, `NettyProtobufCodec`, and a gateway
-message handler.
+handle complete binary frames. Transport owns connection lifecycle, frame boundaries, and network backpressure behavior;
+it does not own protocol id mapping, business routing, auth, or actor delivery.
 
-`PekkoGatewayForwarder` can forward route results to entities, singletons, service actors, or local handlers.
-`RouteTarget.GatewayLocal` requires a local handler. `GatewayMessageDispatcher` itself does not decode or retry; it only
-resolves and forwards.
+If a project uses the built-in `BinaryGatewayPacket` header and protobuf envelope, provide a custom
+`NettyGatewayPipelineInstaller` that combines `PacketCodec`, `NettyProtobufCodec`, and a gateway message handler.
+`NettyProtobufCodec` only converts between frames and protobuf envelopes; route resolution remains in the
+protocol/gateway dispatcher layer.
+
+`GatewayMessageDispatcher` connects a route resolver with a forwarder: it receives an already decoded packet, resolves a
+`GatewayRoute`, calls the forwarder, and returns the route for logs or metrics. It does not decode, retry, or manage the
+session lifecycle.
+
+`PekkoGatewayForwarder` is the `gateway-pekko` actor-runtime adapter. It can forward route results to entities,
+singletons, service actors, or local handlers. `RouteTarget.GatewayLocal` requires a local handler, and
+`PekkoGatewayMessageFactory` can wrap the raw packet into the actor message shape an application expects. Projects that
+do not use Pekko can implement their own `GatewayForwarder` while keeping transport and actor topology decoupled.
 
 ## Broadcast
 

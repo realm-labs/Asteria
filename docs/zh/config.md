@@ -105,6 +105,23 @@ chunk 拆分大文件，配置表很多时不会把所有 accessor 放进一个 
 `tableType` 是可选字段。不配置时，keyed accessor 返回 `KeyedConfigTable<K, R>`；配置后会返回指定的具体表类型，例如
 `MapConfigTable<K, R>` 或 `OrderedMapConfigTable<K, R>`，业务代码就可以直接使用底层集合接口。
 
+### 注解和生成物
+
+`@AsteriaConfigTable` 标记一个配置表 row 类型或 marker 类型。KSP 会读取 `name`、`shape`、`keyType`、`rowType`、
+`tableType`、`refName` 和 `propertyName`，生成：
+
+- `GameConfigTables`：每张表的强类型引用，例如 `GameConfigTables.Items`。
+- `ConfigSnapshot` 扩展属性：从快照读取指定表。
+- `ConfigService` 扩展属性：从当前快照读取指定表。
+- `META-INF/asteria/codegen-snapshots/config/config.json`：记录本次扫描到的表和变更 handler 模型。
+
+`@AsteriaConfigChangeHandler` 标记一个 `ConfigChangeHandler<Receiver>` 实现。KSP 会校验 receiver 类型，生成
+`GeneratedConfigChangeHandlers.ALL` 这类 handler 清单。`ConfigChangeDispatcher` 运行时根据 handler 的 `watchedTables`
+和本次 `changedTables` 做匹配，并用 revision tracker 避免同一个 actor 重复处理同一版本。
+
+配置 validator 使用通用 contribution 机制聚合。需要生成 validator 清单时，使用 [贡献点聚合](contribution.md) 的
+`@AsteriaContribution(contract = ConfigValidator::class)`。
+
 ## 热更和变更分发
 
 开启热更时，`ConfigHotReloadService` 监听 `ConfigReloadTrigger`，收到信号后重新加载完整快照：
