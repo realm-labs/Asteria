@@ -1,5 +1,8 @@
 package io.github.realmlabs.asteria.gm.script.spring
 
+import io.github.realmlabs.asteria.gm.core.GmOperation
+import io.github.realmlabs.asteria.gm.core.GmResource
+import io.github.realmlabs.asteria.gm.core.GmRiskLevel
 import io.github.realmlabs.asteria.gm.script.*
 import io.github.realmlabs.asteria.gm.spring.GmEndpointSupport
 import io.github.realmlabs.asteria.script.ScriptExecutionCommand
@@ -31,8 +34,10 @@ class GmScriptController(
     ): ResponseEntity<GmScriptMetadata> {
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Read,
-            action = "gm.script.metadata",
+            operation = GmOperation(
+                action = GmScriptActions.Read,
+                resource = GmResource("script.metadata"),
+            ),
         ) {
             ResponseEntity.ok(metadataProvider.metadata())
         }
@@ -46,13 +51,20 @@ class GmScriptController(
     ): ScriptJob {
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Execute,
-            action = "gm.script.submit",
-            attributes = mapOf(
-                "executionId" to request.executionId,
-                "targetType" to request.target.type,
-                "scriptName" to request.artifact.name,
-                "scriptEngine" to request.artifact.engine,
+            operation = GmOperation(
+                action = GmScriptActions.Execute,
+                resource = GmResource(
+                    type = "script.target",
+                    id = request.target.type,
+                    attributes = mapOf("targetType" to request.target.type),
+                ),
+                risk = GmRiskLevel.High,
+                attributes = mapOf(
+                    "executionId" to request.executionId,
+                    "targetType" to request.target.type,
+                    "scriptName" to request.artifact.name,
+                    "scriptEngine" to request.artifact.engine,
+                ),
             ),
         ) { operation ->
             val command = request.toCommand(operation.principal.id)
@@ -75,12 +87,14 @@ class GmScriptController(
     ): ResponseEntity<ScriptJobPage> {
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Read,
-            action = "gm.script.jobs.list",
-            attributes = buildMap {
-                status?.let { put("status", it.name) }
-                requester?.let { put("requester", it) }
-            },
+            operation = GmOperation(
+                action = GmScriptActions.Read,
+                resource = GmResource("script.jobs"),
+                attributes = buildMap {
+                    status?.let { put("status", it.name) }
+                    requester?.let { put("requester", it) }
+                },
+            ),
         ) {
             ResponseEntity.ok(
                 scripts.listJobs(
@@ -102,9 +116,10 @@ class GmScriptController(
     ): ResponseEntity<ScriptJob> {
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Read,
-            action = "gm.script.find",
-            attributes = mapOf("jobId" to jobId),
+            operation = GmOperation(
+                action = GmScriptActions.Read,
+                resource = GmResource("script.job", jobId),
+            ),
         ) {
             scripts.find(ScriptJobId(jobId))
                 ?.let { ResponseEntity.ok(it) }
@@ -119,9 +134,10 @@ class GmScriptController(
     ): ResponseEntity<Any> {
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Read,
-            action = "gm.script.results.summary",
-            attributes = mapOf("jobId" to jobId),
+            operation = GmOperation(
+                action = GmScriptActions.Read,
+                resource = GmResource("script.job.results", jobId),
+            ),
         ) {
             val id = ScriptJobId(jobId)
             scripts.find(id) ?: return@execute ResponseEntity.notFound().build()
@@ -137,12 +153,13 @@ class GmScriptController(
     ): ResponseEntity<String> {
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Read,
-            action = "gm.script.results.export",
-            attributes = buildMap {
-                put("jobId", jobId)
-                status?.let { put("status", it.name) }
-            },
+            operation = GmOperation(
+                action = GmScriptActions.Read,
+                resource = GmResource("script.job.results", jobId),
+                attributes = buildMap {
+                    status?.let { put("status", it.name) }
+                },
+            ),
         ) {
             val id = ScriptJobId(jobId)
             scripts.find(id) ?: return@execute ResponseEntity.notFound().build()
@@ -164,9 +181,11 @@ class GmScriptController(
         val cancelRequest = request ?: GmScriptCancelRequest()
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Cancel,
-            action = "gm.script.cancel",
-            attributes = mapOf("jobId" to jobId),
+            operation = GmOperation(
+                action = GmScriptActions.Cancel,
+                resource = GmResource("script.job", jobId),
+                risk = GmRiskLevel.High,
+            ),
         ) { operation ->
             scripts.cancelJob(
                 jobId = ScriptJobId(jobId),
@@ -188,9 +207,10 @@ class GmScriptController(
     ): ResponseEntity<ScriptJobItemPage> {
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Read,
-            action = "gm.script.items.list",
-            attributes = mapOf("jobId" to jobId),
+            operation = GmOperation(
+                action = GmScriptActions.Read,
+                resource = GmResource("script.job.items", jobId),
+            ),
         ) {
             val id = ScriptJobId(jobId)
             scripts.find(id) ?: return@execute ResponseEntity.notFound().build()
@@ -214,11 +234,14 @@ class GmScriptController(
         val cancelRequest = request ?: GmScriptCancelRequest()
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Cancel,
-            action = "gm.script.items.cancel",
-            attributes = mapOf(
-                "jobId" to jobId,
-                "itemId" to itemId,
+            operation = GmOperation(
+                action = GmScriptActions.Cancel,
+                resource = GmResource(
+                    type = "script.job.item",
+                    id = itemId,
+                    attributes = mapOf("jobId" to jobId),
+                ),
+                risk = GmRiskLevel.High,
             ),
         ) { operation ->
             scripts.cancelItem(
@@ -240,11 +263,13 @@ class GmScriptController(
     ): ResponseEntity<ScriptJobItem> {
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Read,
-            action = "gm.script.items.find",
-            attributes = mapOf(
-                "jobId" to jobId,
-                "itemId" to itemId,
+            operation = GmOperation(
+                action = GmScriptActions.Read,
+                resource = GmResource(
+                    type = "script.job.item",
+                    id = itemId,
+                    attributes = mapOf("jobId" to jobId),
+                ),
             ),
         ) {
             scripts.findItem(ScriptJobId(jobId), ScriptJobItemId(itemId))
@@ -264,11 +289,14 @@ class GmScriptController(
         val retryRequest = request ?: GmScriptRetryItemRequest()
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Execute,
-            action = "gm.script.items.retry",
-            attributes = mapOf(
-                "jobId" to jobId,
-                "itemId" to itemId,
+            operation = GmOperation(
+                action = GmScriptActions.Execute,
+                resource = GmResource(
+                    type = "script.job.item",
+                    id = itemId,
+                    attributes = mapOf("jobId" to jobId),
+                ),
+                risk = GmRiskLevel.High,
             ),
         ) { operation ->
             val id = ScriptJobId(jobId)
@@ -298,13 +326,15 @@ class GmScriptController(
         val retryRequest = request ?: GmScriptRetryFailedItemsRequest()
         return endpoints.execute(
             request = servletRequest,
-            permission = GmScriptPermissions.Execute,
-            action = "gm.script.failed-items.retry",
-            attributes = buildMap {
-                put("jobId", jobId)
-                retryRequest.error?.let { put("error", it) }
-                put("limit", retryRequest.limit.toString())
-            },
+            operation = GmOperation(
+                action = GmScriptActions.Execute,
+                resource = GmResource("script.job.failed-items", jobId),
+                risk = GmRiskLevel.High,
+                attributes = buildMap {
+                    retryRequest.error?.let { put("error", it) }
+                    put("limit", retryRequest.limit.toString())
+                },
+            ),
         ) { operation ->
             val id = ScriptJobId(jobId)
             scripts.find(id) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "script job $jobId not found")

@@ -25,8 +25,8 @@ class GmFeatureController(
         return registry.routes()
     }
 
-    @GetMapping("/permissions")
-    fun permissions(): List<GmPermission> {
-        return registry.permissions()
+    @GetMapping("/actions")
+    fun actions(): List<GmActionDescriptor> {
+        return registry.actions()
     }
 }

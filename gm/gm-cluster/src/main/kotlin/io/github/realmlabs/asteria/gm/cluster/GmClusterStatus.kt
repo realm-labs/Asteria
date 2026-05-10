@@ -51,7 +51,7 @@ fun interface GmClusterStatusService {
  * Runtime-facing access to the raw cluster management status.
  *
  * This is intentionally separate from [GmClusterStatusService]. GM pages should prefer the normalized model, while
- * troubleshooting tools can expose the raw response from Akka/Pekko Management behind a stronger permission.
+ * troubleshooting tools can expose the raw response from Akka/Pekko Management behind a stronger action.
  */
 fun interface GmClusterRawStatusService {
     suspend fun rawStatus(): String

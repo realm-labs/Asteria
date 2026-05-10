@@ -6,6 +6,9 @@ import io.github.realmlabs.asteria.cluster.config.ClusterConfigReloadResult
 import io.github.realmlabs.asteria.cluster.config.ClusterConfigRevisionConsistency
 import io.github.realmlabs.asteria.config.ConfigTableName
 import io.github.realmlabs.asteria.gm.config.*
+import io.github.realmlabs.asteria.gm.core.GmOperation
+import io.github.realmlabs.asteria.gm.core.GmResource
+import io.github.realmlabs.asteria.gm.core.GmRiskLevel
 import io.github.realmlabs.asteria.gm.spring.GmEndpointSupport
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.ResponseEntity
@@ -25,8 +28,7 @@ class GmConfigController(
     suspend fun metadata(request: HttpServletRequest): GmConfigMetadata {
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.metadata",
+            operation = GmOperation(GmConfigActions.Read, GmResource("config.metadata")),
         ) {
             inspector.metadata()
         }
@@ -36,8 +38,7 @@ class GmConfigController(
     suspend fun reloadStatus(request: HttpServletRequest): GmConfigReloadStatus {
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.reload.status",
+            operation = GmOperation(GmConfigActions.Read, GmResource("config.reload.status")),
         ) {
             inspector.reloadStatus()
         }
@@ -50,9 +51,11 @@ class GmConfigController(
     ): List<GmConfigReloadRecord> {
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.reload.history",
-            attributes = mapOf("limit" to limit.toString()),
+            operation = GmOperation(
+                action = GmConfigActions.Read,
+                resource = GmResource("config.reload.history"),
+                attributes = mapOf("limit" to limit.toString()),
+            ),
         ) {
             inspector.reloadHistory(limit)
         }
@@ -62,8 +65,11 @@ class GmConfigController(
     suspend fun reload(request: HttpServletRequest): GmConfigReloadRecord {
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Reload,
-            action = "gm.config.reload",
+            operation = GmOperation(
+                action = GmConfigActions.Reload,
+                resource = GmResource("config.snapshot"),
+                risk = GmRiskLevel.High,
+            ),
         ) {
             inspector.reloadNow()
         }
@@ -74,8 +80,7 @@ class GmConfigController(
         val control = clusterControl ?: error("cluster config control service is not configured")
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.cluster.status",
+            operation = GmOperation(GmConfigActions.Read, GmResource("config.cluster.status")),
         ) {
             control.statuses()
         }
@@ -86,8 +91,7 @@ class GmConfigController(
         val control = clusterControl ?: error("cluster config control service is not configured")
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.cluster.consistency",
+            operation = GmOperation(GmConfigActions.Read, GmResource("config.cluster.consistency")),
         ) {
             control.checkConsistency()
         }
@@ -101,9 +105,12 @@ class GmConfigController(
         val control = clusterControl ?: error("cluster config control service is not configured")
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Reload,
-            action = "gm.config.cluster.reload",
-            attributes = mapOf("target" to body.target),
+            operation = GmOperation(
+                action = GmConfigActions.Reload,
+                resource = GmResource("config.cluster.reload", body.target),
+                risk = GmRiskLevel.High,
+                attributes = mapOf("target" to body.target),
+            ),
         ) {
             control.reload(body.reloadTarget(), body.timeout())
         }
@@ -113,8 +120,7 @@ class GmConfigController(
     suspend fun tables(request: HttpServletRequest): List<GmConfigTableSummary> {
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.tables.list",
+            operation = GmOperation(GmConfigActions.Read, GmResource("config.tables")),
         ) {
             inspector.listTables()
         }
@@ -127,9 +133,7 @@ class GmConfigController(
     ): GmConfigTableDescriptor {
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.tables.schema",
-            attributes = mapOf("table" to table),
+            operation = GmOperation(GmConfigActions.Read, GmResource("config.table.schema", table)),
         ) {
             inspector.describeTable(ConfigTableName(table))
         }
@@ -145,9 +149,7 @@ class GmConfigController(
     ): GmConfigRowPage {
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.rows.list",
-            attributes = mapOf("table" to table),
+            operation = GmOperation(GmConfigActions.Read, GmResource("config.table.rows", table)),
         ) {
             inspector.queryRows(
                 name = ConfigTableName(table),
@@ -168,9 +170,7 @@ class GmConfigController(
     ): GmConfigRowPage {
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.rows.query",
-            attributes = mapOf("table" to table),
+            operation = GmOperation(GmConfigActions.Read, GmResource("config.table.rows", table)),
         ) {
             inspector.queryRows(ConfigTableName(table), query)
         }
@@ -184,11 +184,13 @@ class GmConfigController(
     ): ResponseEntity<GmConfigRow> {
         return endpoints.execute(
             request = request,
-            permission = GmConfigPermissions.Read,
-            action = "gm.config.rows.find",
-            attributes = mapOf(
-                "table" to table,
-                "id" to id,
+            operation = GmOperation(
+                action = GmConfigActions.Read,
+                resource = GmResource(
+                    type = "config.table.row",
+                    id = id,
+                    attributes = mapOf("table" to table),
+                ),
             ),
         ) {
             inspector.findRow(ConfigTableName(table), id)

@@ -22,8 +22,8 @@ class GmSpringAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    fun gmPolicyEvaluator(): GmPolicyEvaluator {
-        return DefaultGmPolicyEvaluator()
+    fun gmAuthorizationPolicy(): GmAuthorizationPolicy {
+        return DenyAllGmAuthorizationPolicy
     }
 
     @Bean
@@ -42,11 +42,11 @@ class GmSpringAutoConfiguration {
     @ConditionalOnMissingBean
     fun gmEndpointSupport(
         principalResolver: GmPrincipalResolver,
-        policyEvaluator: GmPolicyEvaluator,
+        authorizationPolicy: GmAuthorizationPolicy,
         auditSink: GmAuditSink,
         metrics: ObjectProvider<Metrics>,
     ): GmEndpointSupport {
-        return GmEndpointSupport(principalResolver, policyEvaluator, auditSink, metrics.ifAvailable ?: NoopMetrics)
+        return GmEndpointSupport(principalResolver, authorizationPolicy, auditSink, metrics.ifAvailable ?: NoopMetrics)
     }
 
     @Bean

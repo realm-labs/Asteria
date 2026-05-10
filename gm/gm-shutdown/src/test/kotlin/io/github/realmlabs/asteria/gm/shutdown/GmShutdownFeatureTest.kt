@@ -1,6 +1,7 @@
 package io.github.realmlabs.asteria.gm.shutdown
 
 import io.github.realmlabs.asteria.gm.core.GmFeatureId
+import io.github.realmlabs.asteria.gm.core.GmRiskLevel
 import io.github.realmlabs.asteria.gm.core.discoverGmFeatures
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -15,15 +16,15 @@ class GmShutdownFeatureTest {
     }
 
     @Test
-    fun `shutdown feature exposes high risk operation permissions`() {
+    fun `shutdown feature exposes high risk operation actions`() {
         val feature = GmShutdownFeature().descriptor
-        val permissions = feature.permissions.map { it.key }.toSet()
+        val actions = feature.actions.map { it.key }.toSet()
 
-        assertContains(permissions, GmShutdownPermissions.Read)
-        assertContains(permissions, GmShutdownPermissions.Prepare)
-        assertContains(permissions, GmShutdownPermissions.Start)
-        assertContains(permissions, GmShutdownPermissions.Force)
-        assertTrue(feature.permissions.single { it.key == GmShutdownPermissions.Start }.highRisk)
-        assertTrue(feature.permissions.single { it.key == GmShutdownPermissions.Force }.highRisk)
+        assertContains(actions, GmShutdownActions.Read)
+        assertContains(actions, GmShutdownActions.Prepare)
+        assertContains(actions, GmShutdownActions.Start)
+        assertContains(actions, GmShutdownActions.Force)
+        assertTrue(feature.actions.single { it.key == GmShutdownActions.Start }.risk == GmRiskLevel.High)
+        assertTrue(feature.actions.single { it.key == GmShutdownActions.Force }.risk == GmRiskLevel.High)
     }
 }

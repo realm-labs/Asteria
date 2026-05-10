@@ -5,27 +5,20 @@ import java.util.*
 
 /**
  * Audit record for a GM operation.
- *
- * Applications can persist these events to a database, log pipeline, or security platform. High-risk permissions such
- * as script execution and actor diagnostics should always emit an audit event from the application-facing controller.
  */
 data class GmAuditEvent(
     val id: String = UUID.randomUUID().toString(),
     val occurredAt: Instant = Instant.now(),
     val operatorId: String?,
-    val permission: GmPermissionKey?,
-    val action: String,
-    val scope: GmResourceScope = GmResourceScope.Empty,
+    val operation: GmOperation,
+    val request: GmRequestContext = GmRequestContext(),
     val success: Boolean,
     val message: String? = null,
-    val attributes: Map<String, String> = emptyMap(),
 ) {
     init {
         require(id.isNotBlank()) { "GM audit id must not be blank" }
         operatorId?.let { require(it.isNotBlank()) { "GM audit operator id must not be blank" } }
-        require(action.isNotBlank()) { "GM audit action must not be blank" }
         message?.let { require(it.isNotBlank()) { "GM audit message must not be blank" } }
-        attributes.keys.forEach { require(it.isNotBlank()) { "GM audit attribute key must not be blank" } }
     }
 }
 

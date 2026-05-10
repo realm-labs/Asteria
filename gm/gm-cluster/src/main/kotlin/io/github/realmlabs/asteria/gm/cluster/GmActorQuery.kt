@@ -43,7 +43,7 @@ data class GmActorQueryResult(
  * Runtime adapter for actor diagnostics.
  *
  * Implementations should keep this operation read-only unless the application deliberately exposes a controlled
- * mutation command behind a separate high-risk permission.
+ * mutation command behind a separate high-risk action.
  */
 fun interface GmActorQueryService {
     suspend fun query(query: GmActorQuery): GmActorQueryResult

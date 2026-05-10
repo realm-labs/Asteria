@@ -18,32 +18,17 @@ value class GmFeatureId(val value: String) {
 }
 
 /**
- * Stable permission key used by backend checks and frontend route/menu guards.
+ * Action contributed by a GM feature.
  */
-@JvmInline
-value class GmPermissionKey(val value: String) {
-    init {
-        require(value.isNotBlank()) { "GM permission key must not be blank" }
-    }
-
-    override fun toString(): String = value
-}
-
-/**
- * Permission contributed by a GM feature.
- *
- * `highRisk` marks operations such as script execution, data repair, compensation, or cluster control so that
- * applications can add stronger approval, audit, or MFA policies around them.
- */
-data class GmPermission(
-    val key: GmPermissionKey,
+data class GmActionDescriptor(
+    val key: GmAction,
     val name: String,
     val description: String? = null,
-    val highRisk: Boolean = false,
+    val risk: GmRiskLevel = GmRiskLevel.Normal,
 ) {
     init {
-        require(name.isNotBlank()) { "GM permission name must not be blank" }
-        description?.let { require(it.isNotBlank()) { "GM permission description must not be blank" } }
+        require(name.isNotBlank()) { "GM action name must not be blank" }
+        description?.let { require(it.isNotBlank()) { "GM action description must not be blank" } }
     }
 }
 
@@ -54,7 +39,7 @@ data class GmMenuItem(
     val id: String,
     val title: String,
     val route: String? = null,
-    val permission: GmPermissionKey? = null,
+    val action: GmAction? = null,
     val order: Int = 0,
     val children: List<GmMenuItem> = emptyList(),
 ) {
@@ -75,7 +60,7 @@ data class GmRoute(
     val id: String,
     val path: String,
     val component: String,
-    val permission: GmPermissionKey? = null,
+    val action: GmAction? = null,
     val meta: Map<String, String> = emptyMap(),
 ) {
     init {
@@ -93,7 +78,7 @@ data class GmFeatureDescriptor(
     val id: GmFeatureId,
     val name: String,
     val description: String? = null,
-    val permissions: List<GmPermission> = emptyList(),
+    val actions: List<GmActionDescriptor> = emptyList(),
     val menus: List<GmMenuItem> = emptyList(),
     val routes: List<GmRoute> = emptyList(),
 ) {
@@ -117,7 +102,7 @@ interface GmFeature {
  * Discovers GM features published through Java's `ServiceLoader`.
  *
  * Optional modules can add a `META-INF/services/io.github.realmlabs.asteria.gm.core.GmFeature` file so applications get
- * their permissions, menus, and routes by only adding a dependency.
+ * their actions, menus, and routes by only adding a dependency.
  */
 fun discoverGmFeatures(
     classLoader: ClassLoader = Thread.currentThread().contextClassLoader ?: GmFeature::class.java.classLoader,
@@ -128,7 +113,7 @@ fun discoverGmFeatures(
 /**
  * Immutable catalog of all installed GM features.
  *
- * The registry rejects duplicate feature ids and duplicate permission keys at startup so extension modules cannot
+ * The registry rejects duplicate feature ids and duplicate action keys at startup so extension modules cannot
  * silently shadow each other.
  */
 class GmFeatureRegistry(
@@ -139,11 +124,11 @@ class GmFeatureRegistry(
         errorOf = { "duplicate GM feature ${it.descriptor.id}" },
     )
 
-    private val permissionsByKey: Map<GmPermissionKey, GmPermission> = features
-        .flatMap { it.descriptor.permissions }
+    private val actionsByKey: Map<GmAction, GmActionDescriptor> = features
+        .flatMap { it.descriptor.actions }
         .associateUniqueBy(
             keyOf = { it.key },
-            errorOf = { "duplicate GM permission ${it.key}" },
+            errorOf = { "duplicate GM action ${it.key}" },
         )
 
     fun features(): List<GmFeatureDescriptor> {
@@ -154,8 +139,8 @@ class GmFeatureRegistry(
         return featuresById[id]?.descriptor
     }
 
-    fun permissions(): List<GmPermission> {
-        return permissionsByKey.values.toList()
+    fun actions(): List<GmActionDescriptor> {
+        return actionsByKey.values.toList()
     }
 
     fun menus(): List<GmMenuItem> {

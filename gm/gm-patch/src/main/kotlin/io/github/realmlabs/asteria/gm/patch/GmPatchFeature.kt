@@ -2,12 +2,12 @@ package io.github.realmlabs.asteria.gm.patch
 
 import io.github.realmlabs.asteria.gm.core.*
 
-object GmPatchPermissions {
-    val Read: GmPermissionKey = GmPermissionKey("gm.patch.read")
-    val Create: GmPermissionKey = GmPermissionKey("gm.patch.create")
-    val Apply: GmPermissionKey = GmPermissionKey("gm.patch.apply")
-    val Expire: GmPermissionKey = GmPermissionKey("gm.patch.expire")
-    val Disable: GmPermissionKey = GmPermissionKey("gm.patch.disable")
+object GmPatchActions {
+    val Read: GmAction = GmAction("gm.patch.read")
+    val Create: GmAction = GmAction("gm.patch.create")
+    val Apply: GmAction = GmAction("gm.patch.apply")
+    val Expire: GmAction = GmAction("gm.patch.expire")
+    val Disable: GmAction = GmAction("gm.patch.disable")
 }
 
 class GmPatchFeature : GmFeature {
@@ -15,19 +15,19 @@ class GmPatchFeature : GmFeature {
         id = GmFeatureId("asteria.patch"),
         name = "Patch",
         description = "Manage runtime patches applied to game server nodes.",
-        permissions = listOf(
-            GmPermission(GmPatchPermissions.Read, "Read runtime patches"),
-            GmPermission(GmPatchPermissions.Create, "Create runtime patches", highRisk = true),
-            GmPermission(GmPatchPermissions.Apply, "Apply runtime patches", highRisk = true),
-            GmPermission(GmPatchPermissions.Expire, "Expire incompatible runtime patches", highRisk = true),
-            GmPermission(GmPatchPermissions.Disable, "Disable runtime patches", highRisk = true),
+        actions = listOf(
+            GmActionDescriptor(GmPatchActions.Read, "Read runtime patches"),
+            GmActionDescriptor(GmPatchActions.Create, "Create runtime patches", risk = GmRiskLevel.High),
+            GmActionDescriptor(GmPatchActions.Apply, "Apply runtime patches", risk = GmRiskLevel.High),
+            GmActionDescriptor(GmPatchActions.Expire, "Expire incompatible runtime patches", risk = GmRiskLevel.High),
+            GmActionDescriptor(GmPatchActions.Disable, "Disable runtime patches", risk = GmRiskLevel.High),
         ),
         menus = listOf(
             GmMenuItem(
                 id = "asteria.patch",
                 title = "Patch",
                 route = "/patches",
-                permission = GmPatchPermissions.Read,
+                action = GmPatchActions.Read,
                 order = 500,
             ),
         ),
@@ -36,7 +36,7 @@ class GmPatchFeature : GmFeature {
                 id = "asteria.patch.list",
                 path = "/patches",
                 component = "asteria/patch/PatchList",
-                permission = GmPatchPermissions.Read,
+                action = GmPatchActions.Read,
             ),
         ),
     )

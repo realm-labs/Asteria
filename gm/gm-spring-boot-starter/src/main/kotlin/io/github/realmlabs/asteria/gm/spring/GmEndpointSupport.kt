@@ -12,19 +12,15 @@ import org.slf4j.LoggerFactory
  */
 data class GmOperationContext(
     val principal: GmPrincipal,
-    val requestId: String?,
-    val remoteAddress: String?,
+    val request: GmRequestContext,
 )
 
 /**
  * Shared support for secured GM HTTP endpoints.
- *
- * Controllers should use this helper instead of repeating principal resolution, policy checks, and audit recording.
- * That keeps high-risk actions such as script execution and actor diagnostics on the same security path.
  */
 class GmEndpointSupport(
     private val principalResolver: GmPrincipalResolver,
-    private val policyEvaluator: GmPolicyEvaluator,
+    private val authorizationPolicy: GmAuthorizationPolicy,
     private val auditSink: GmAuditSink,
     private val metrics: Metrics = NoopMetrics,
 ) {
@@ -32,48 +28,51 @@ class GmEndpointSupport(
 
     suspend fun <T> execute(
         request: HttpServletRequest,
-        permission: GmPermissionKey,
-        action: String,
-        scope: GmResourceScope = GmResourceScope.Empty,
-        attributes: Map<String, String> = emptyMap(),
+        operation: GmOperation,
         block: suspend (GmOperationContext) -> T,
     ): T {
-        val tags = MetricTags.of("action" to action, "permission" to permission.value)
+        val tags = MetricTags.of(
+            "action" to operation.action.value,
+            "resource" to operation.resource.type,
+            "risk" to operation.risk.name,
+        )
         metrics.counter("asteria.gm.http.request.total", tags).increment()
         val start = System.nanoTime()
         return try {
             val httpContext = GmHttpRequestContext.from(request)
+            val requestContext = GmRequestContext(
+                requestId = httpContext.requestId,
+                remoteAddress = httpContext.remoteAddress,
+            )
             val principal = principalResolver.resolve(httpContext)
                 ?: run {
                     metrics.counter("asteria.gm.http.request.unauthenticated.total", tags).increment()
                     throw GmAuthenticationRequiredException("GM authentication required")
                 }
-            val operation = GmOperationContext(
+            val context = GmOperationContext(
                 principal = principal,
-                requestId = httpContext.requestId,
-                remoteAddress = httpContext.remoteAddress,
+                request = requestContext,
             )
-            val authorization = policyEvaluator.evaluate(
+            val authorization = authorizationPolicy.authorize(
                 GmAuthorizationRequest(
                     principal = principal,
-                    permission = permission,
-                    scope = scope,
-                    attributes = attributes,
+                    operation = operation,
+                    request = requestContext,
                 ),
             )
             if (authorization is GmAuthorizationDecision.Denied) {
                 metrics.counter("asteria.gm.http.request.denied.total", tags).increment()
-                audit(operation, permission, action, scope, false, authorization.reason, attributes)
+                audit(context, operation, false, authorization.reason)
                 throw GmAccessDeniedException(authorization.reason)
             }
             runCatching {
-                block(operation)
+                block(context)
             }.onSuccess {
-                audit(operation, permission, action, scope, true, null, attributes)
+                audit(context, operation, true, null)
             }.onFailure { error ->
                 metrics.counter("asteria.gm.http.request.failed.total", tags).increment()
-                logger.warn("GM HTTP operation failed: action={}, permission={}", action, permission.value, error)
-                audit(operation, permission, action, scope, false, error.message, attributes)
+                logger.warn("GM HTTP operation failed: action={}", operation.action.value, error)
+                audit(context, operation, false, error.message)
             }.getOrThrow()
         } finally {
             metrics.timer("asteria.gm.http.request.duration", tags)
@@ -83,25 +82,17 @@ class GmEndpointSupport(
 
     private suspend fun audit(
         context: GmOperationContext,
-        permission: GmPermissionKey,
-        action: String,
-        scope: GmResourceScope,
+        operation: GmOperation,
         success: Boolean,
         message: String?,
-        attributes: Map<String, String>,
     ) {
         auditSink.record(
             GmAuditEvent(
                 operatorId = context.principal.id,
-                permission = permission,
-                action = action,
-                scope = scope,
+                operation = operation,
+                request = context.request,
                 success = success,
                 message = message,
-                attributes = attributes + listOfNotNull(
-                    context.requestId?.let { "requestId" to it },
-                    context.remoteAddress?.let { "remoteAddress" to it },
-                ),
             ),
         )
     }

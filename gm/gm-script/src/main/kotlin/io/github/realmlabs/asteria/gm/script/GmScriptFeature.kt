@@ -3,12 +3,12 @@ package io.github.realmlabs.asteria.gm.script
 import io.github.realmlabs.asteria.gm.core.*
 
 /**
- * Permission keys contributed by the script GM feature.
+ * Action keys contributed by the script GM feature.
  */
-object GmScriptPermissions {
-    val Read: GmPermissionKey = GmPermissionKey("gm.script.read")
-    val Execute: GmPermissionKey = GmPermissionKey("gm.script.execute")
-    val Cancel: GmPermissionKey = GmPermissionKey("gm.script.cancel")
+object GmScriptActions {
+    val Read: GmAction = GmAction("gm.script.read")
+    val Execute: GmAction = GmAction("gm.script.execute")
+    val Cancel: GmAction = GmAction("gm.script.cancel")
 }
 
 /**
@@ -19,17 +19,17 @@ class GmScriptFeature : GmFeature {
         id = GmFeatureId("asteria.script"),
         name = "Script Execution",
         description = "Submit, inspect, and control GM script jobs.",
-        permissions = listOf(
-            GmPermission(GmScriptPermissions.Read, "Read script jobs"),
-            GmPermission(GmScriptPermissions.Execute, "Execute scripts", highRisk = true),
-            GmPermission(GmScriptPermissions.Cancel, "Cancel scripts", highRisk = true),
+        actions = listOf(
+            GmActionDescriptor(GmScriptActions.Read, "Read script jobs"),
+            GmActionDescriptor(GmScriptActions.Execute, "Execute scripts", risk = GmRiskLevel.High),
+            GmActionDescriptor(GmScriptActions.Cancel, "Cancel scripts", risk = GmRiskLevel.High),
         ),
         menus = listOf(
             GmMenuItem(
                 id = "asteria.script",
                 title = "Scripts",
                 route = "/scripts",
-                permission = GmScriptPermissions.Read,
+                action = GmScriptActions.Read,
                 order = 100,
             ),
         ),
@@ -38,7 +38,7 @@ class GmScriptFeature : GmFeature {
                 id = "asteria.script.jobs",
                 path = "/scripts",
                 component = "asteria/script/ScriptJobs",
-                permission = GmScriptPermissions.Read,
+                action = GmScriptActions.Read,
             ),
         ),
     )

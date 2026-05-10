@@ -1,7 +1,9 @@
 package io.github.realmlabs.asteria.gm.cluster.spring
 
 import io.github.realmlabs.asteria.gm.cluster.*
-import io.github.realmlabs.asteria.gm.core.GmResourceScope
+import io.github.realmlabs.asteria.gm.core.GmOperation
+import io.github.realmlabs.asteria.gm.core.GmResource
+import io.github.realmlabs.asteria.gm.core.GmRiskLevel
 import io.github.realmlabs.asteria.gm.spring.GmEndpointSupport
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.web.bind.annotation.*
@@ -21,8 +23,7 @@ class GmClusterController(
     suspend fun status(request: HttpServletRequest): GmClusterStatus {
         return endpoints.execute(
             request = request,
-            permission = GmClusterPermissions.Read,
-            action = "gm.cluster.status",
+            operation = GmOperation(GmClusterActions.Read, GmResource("cluster.status")),
         ) {
             statusService.current()
         }
@@ -33,8 +34,11 @@ class GmClusterController(
         val service = rawStatusService ?: error("GM cluster raw management status service is not configured")
         return endpoints.execute(
             request = request,
-            permission = GmClusterPermissions.ManagementRaw,
-            action = "gm.cluster.management.raw",
+            operation = GmOperation(
+                action = GmClusterActions.ManagementRaw,
+                resource = GmResource("cluster.management.raw"),
+                risk = GmRiskLevel.High,
+            ),
         ) {
             service.rawStatus()
         }
@@ -48,12 +52,14 @@ class GmClusterController(
         val service = controlService ?: error("GM cluster control service is not configured")
         return endpoints.execute(
             request = request,
-            permission = GmClusterPermissions.Leave,
-            action = "gm.cluster.leave",
-            scope = GmResourceScope(mapOf("clusterNode" to body.address)),
-            attributes = mapOf(
-                "targetAddress" to body.address,
-                "reason" to body.reason,
+            operation = GmOperation(
+                action = GmClusterActions.Leave,
+                resource = GmResource("cluster.node", body.address),
+                risk = GmRiskLevel.High,
+                attributes = mapOf(
+                    "targetAddress" to body.address,
+                    "reason" to body.reason,
+                ),
             ),
         ) { context ->
             service.leave(
@@ -74,13 +80,15 @@ class GmClusterController(
         val service = controlService ?: error("GM cluster control service is not configured")
         return endpoints.execute(
             request = request,
-            permission = GmClusterPermissions.Join,
-            action = "gm.cluster.join",
-            scope = GmResourceScope(mapOf("clusterNode" to body.nodeAddress)),
-            attributes = mapOf(
-                "targetAddress" to body.nodeAddress,
-                "reason" to body.reason,
-            ) + listOfNotNull(body.seedAddress?.let { "seedAddress" to it }),
+            operation = GmOperation(
+                action = GmClusterActions.Join,
+                resource = GmResource("cluster.node", body.nodeAddress),
+                risk = GmRiskLevel.High,
+                attributes = mapOf(
+                    "targetAddress" to body.nodeAddress,
+                    "reason" to body.reason,
+                ) + listOfNotNull(body.seedAddress?.let { "seedAddress" to it }),
+            ),
         ) { context ->
             service.join(
                 GmClusterJoinRequest(
@@ -101,13 +109,15 @@ class GmClusterController(
         val service = controlService ?: error("GM cluster control service is not configured")
         return endpoints.execute(
             request = request,
-            permission = GmClusterPermissions.Down,
-            action = "gm.cluster.down",
-            scope = GmResourceScope(mapOf("clusterNode" to body.address)),
-            attributes = mapOf(
-                "targetAddress" to body.address,
-                "reason" to body.reason,
-                "confirmed" to body.confirmed.toString(),
+            operation = GmOperation(
+                action = GmClusterActions.Down,
+                resource = GmResource("cluster.node", body.address),
+                risk = GmRiskLevel.High,
+                attributes = mapOf(
+                    "targetAddress" to body.address,
+                    "reason" to body.reason,
+                    "confirmed" to body.confirmed.toString(),
+                ),
             ),
         ) { context ->
             service.down(

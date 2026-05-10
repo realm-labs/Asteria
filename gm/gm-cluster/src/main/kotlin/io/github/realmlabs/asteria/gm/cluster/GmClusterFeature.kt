@@ -3,15 +3,15 @@ package io.github.realmlabs.asteria.gm.cluster
 import io.github.realmlabs.asteria.gm.core.*
 
 /**
- * Permission keys contributed by the cluster GM feature.
+ * Action keys contributed by the cluster GM feature.
  */
-object GmClusterPermissions {
-    val Read: GmPermissionKey = GmPermissionKey("gm.cluster.read")
-    val ManagementRaw: GmPermissionKey = GmPermissionKey("gm.cluster.management.raw")
-    val QueryActor: GmPermissionKey = GmPermissionKey("gm.cluster.actor.query")
-    val Leave: GmPermissionKey = GmPermissionKey("gm.cluster.control.leave")
-    val Join: GmPermissionKey = GmPermissionKey("gm.cluster.control.join")
-    val Down: GmPermissionKey = GmPermissionKey("gm.cluster.control.down")
+object GmClusterActions {
+    val Read: GmAction = GmAction("gm.cluster.read")
+    val ManagementRaw: GmAction = GmAction("gm.cluster.management.raw")
+    val QueryActor: GmAction = GmAction("gm.cluster.actor.query")
+    val Leave: GmAction = GmAction("gm.cluster.control.leave")
+    val Join: GmAction = GmAction("gm.cluster.control.join")
+    val Down: GmAction = GmAction("gm.cluster.control.down")
 }
 
 /**
@@ -25,41 +25,41 @@ class GmClusterFeature : GmFeature {
         id = GmFeatureId("cluster"),
         name = "Cluster",
         description = "Cluster status, topology, and actor inspection.",
-        permissions = listOf(
-            GmPermission(
-                key = GmClusterPermissions.Read,
+        actions = listOf(
+            GmActionDescriptor(
+                key = GmClusterActions.Read,
                 name = "Read cluster status",
                 description = "Allows reading cluster topology and runtime member status.",
             ),
-            GmPermission(
-                key = GmClusterPermissions.QueryActor,
+            GmActionDescriptor(
+                key = GmClusterActions.QueryActor,
                 name = "Query actors",
                 description = "Allows sending diagnostic queries to runtime actors.",
-                highRisk = true,
+                risk = GmRiskLevel.High,
             ),
-            GmPermission(
-                key = GmClusterPermissions.ManagementRaw,
+            GmActionDescriptor(
+                key = GmClusterActions.ManagementRaw,
                 name = "Read raw cluster management state",
                 description = "Allows reading raw cluster management responses from the runtime.",
-                highRisk = true,
+                risk = GmRiskLevel.High,
             ),
-            GmPermission(
-                key = GmClusterPermissions.Leave,
+            GmActionDescriptor(
+                key = GmClusterActions.Leave,
                 name = "Leave cluster nodes",
                 description = "Allows gracefully removing nodes from the cluster.",
-                highRisk = true,
+                risk = GmRiskLevel.High,
             ),
-            GmPermission(
-                key = GmClusterPermissions.Join,
+            GmActionDescriptor(
+                key = GmClusterActions.Join,
                 name = "Join cluster nodes",
                 description = "Allows asking a node to join an existing cluster.",
-                highRisk = true,
+                risk = GmRiskLevel.High,
             ),
-            GmPermission(
-                key = GmClusterPermissions.Down,
+            GmActionDescriptor(
+                key = GmClusterActions.Down,
                 name = "Down cluster nodes",
                 description = "Allows forcibly marking cluster nodes as down.",
-                highRisk = true,
+                risk = GmRiskLevel.High,
             ),
         ),
         menus = listOf(
@@ -67,7 +67,7 @@ class GmClusterFeature : GmFeature {
                 id = "cluster",
                 title = "Cluster",
                 route = "/cluster",
-                permission = GmClusterPermissions.Read,
+                action = GmClusterActions.Read,
                 order = 200,
             ),
         ),
@@ -76,13 +76,13 @@ class GmClusterFeature : GmFeature {
                 id = "cluster.overview",
                 path = "/cluster",
                 component = "asteria/cluster/ClusterOverview",
-                permission = GmClusterPermissions.Read,
+                action = GmClusterActions.Read,
             ),
             GmRoute(
                 id = "cluster.actor-query",
                 path = "/cluster/actor-query",
                 component = "asteria/cluster/ActorQuery",
-                permission = GmClusterPermissions.QueryActor,
+                action = GmClusterActions.QueryActor,
             ),
         ),
     )

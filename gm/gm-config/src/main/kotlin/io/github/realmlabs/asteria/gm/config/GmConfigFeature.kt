@@ -3,13 +3,13 @@ package io.github.realmlabs.asteria.gm.config
 import io.github.realmlabs.asteria.gm.core.*
 
 /**
- * Permission keys contributed by the config GM feature.
+ * Action keys contributed by the config GM feature.
  */
-object GmConfigPermissions {
-    val Read: GmPermissionKey = GmPermissionKey("gm.config.read")
-    val Reload: GmPermissionKey = GmPermissionKey("gm.config.reload")
-    val Export: GmPermissionKey = GmPermissionKey("gm.config.export")
-    val SensitiveRead: GmPermissionKey = GmPermissionKey("gm.config.sensitive-read")
+object GmConfigActions {
+    val Read: GmAction = GmAction("gm.config.read")
+    val Reload: GmAction = GmAction("gm.config.reload")
+    val Export: GmAction = GmAction("gm.config.export")
+    val SensitiveRead: GmAction = GmAction("gm.config.sensitive-read")
 }
 
 /**
@@ -20,18 +20,18 @@ class GmConfigFeature : GmFeature {
         id = GmFeatureId("asteria.config"),
         name = "Config",
         description = "Browse and diagnose loaded game config tables.",
-        permissions = listOf(
-            GmPermission(GmConfigPermissions.Read, "Read config tables"),
-            GmPermission(GmConfigPermissions.Reload, "Reload config snapshot", highRisk = true),
-            GmPermission(GmConfigPermissions.Export, "Export config data"),
-            GmPermission(GmConfigPermissions.SensitiveRead, "Read sensitive config fields", highRisk = true),
+        actions = listOf(
+            GmActionDescriptor(GmConfigActions.Read, "Read config tables"),
+            GmActionDescriptor(GmConfigActions.Reload, "Reload config snapshot", risk = GmRiskLevel.High),
+            GmActionDescriptor(GmConfigActions.Export, "Export config data"),
+            GmActionDescriptor(GmConfigActions.SensitiveRead, "Read sensitive config fields", risk = GmRiskLevel.High),
         ),
         menus = listOf(
             GmMenuItem(
                 id = "asteria.config",
                 title = "Config",
                 route = "/config",
-                permission = GmConfigPermissions.Read,
+                action = GmConfigActions.Read,
                 order = 300,
             ),
         ),
@@ -40,7 +40,7 @@ class GmConfigFeature : GmFeature {
                 id = "asteria.config.tables",
                 path = "/config",
                 component = "asteria/config/ConfigTables",
-                permission = GmConfigPermissions.Read,
+                action = GmConfigActions.Read,
             ),
         ),
     )

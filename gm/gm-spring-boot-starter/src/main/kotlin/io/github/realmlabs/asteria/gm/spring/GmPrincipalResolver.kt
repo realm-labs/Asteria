@@ -1,6 +1,5 @@
 package io.github.realmlabs.asteria.gm.spring
 
-import io.github.realmlabs.asteria.gm.core.GmPermissionKey
 import io.github.realmlabs.asteria.gm.core.GmPrincipal
 
 /**
@@ -29,32 +28,17 @@ object NoopGmPrincipalResolver : GmPrincipalResolver {
 class HeaderGmPrincipalResolver(
     private val idHeader: String = "X-GM-User",
     private val displayNameHeader: String = "X-GM-Display-Name",
-    private val rolesHeader: String = "X-GM-Roles",
-    private val permissionsHeader: String = "X-GM-Permissions",
-    private val scopeHeaderPrefix: String = "X-GM-Scope-",
+    private val attributeHeaderPrefix: String = "X-GM-Attribute-",
 ) : GmPrincipalResolver {
     override fun resolve(request: GmHttpRequestContext): GmPrincipal? {
         val id = request.firstHeader(idHeader)?.takeIf { it.isNotBlank() } ?: return null
         return GmPrincipal(
             id = id,
             displayName = request.firstHeader(displayNameHeader)?.takeIf { it.isNotBlank() },
-            roles = request.firstHeader(rolesHeader).csvValues(),
-            permissions = request.firstHeader(permissionsHeader)
-                .csvValues()
-                .mapTo(linkedSetOf(), ::GmPermissionKey),
-            scopeValues = request.headers
-                .filterKeys { it.startsWith(scopeHeaderPrefix.lowercase()) }
-                .mapKeys { (key, _) -> key.removePrefix(scopeHeaderPrefix.lowercase()) }
-                .mapValues { (_, values) -> values.flatMap { it.csvValues() }.toSet() },
+            attributes = request.headers
+                .filterKeys { it.startsWith(attributeHeaderPrefix.lowercase()) }
+                .mapKeys { (key, _) -> key.removePrefix(attributeHeaderPrefix.lowercase()) }
+                .mapValues { (_, values) -> values.joinToString(",") },
         )
-    }
-
-    private fun String?.csvValues(): Set<String> {
-        return this
-            ?.split(",")
-            ?.map { it.trim() }
-            ?.filter { it.isNotBlank() }
-            ?.toCollection(linkedSetOf())
-            ?: emptySet()
     }
 }

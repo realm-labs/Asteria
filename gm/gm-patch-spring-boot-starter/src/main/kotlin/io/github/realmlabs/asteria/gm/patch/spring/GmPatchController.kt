@@ -1,7 +1,10 @@
 package io.github.realmlabs.asteria.gm.patch.spring
 
+import io.github.realmlabs.asteria.gm.core.GmOperation
+import io.github.realmlabs.asteria.gm.core.GmResource
+import io.github.realmlabs.asteria.gm.core.GmRiskLevel
+import io.github.realmlabs.asteria.gm.patch.GmPatchActions
 import io.github.realmlabs.asteria.gm.patch.GmPatchOperations
-import io.github.realmlabs.asteria.gm.patch.GmPatchPermissions
 import io.github.realmlabs.asteria.gm.spring.GmEndpointSupport
 import io.github.realmlabs.asteria.patch.*
 import jakarta.servlet.http.HttpServletRequest
@@ -37,14 +40,16 @@ class GmPatchController(
     ): RuntimePatchDescriptor {
         return endpoints.execute(
             request = request,
-            permission = GmPatchPermissions.Create,
-            action = "gm.patch.create",
-            attributes = mapOf(
-                "patchId" to id,
-                "name" to name,
-                "appName" to appName,
-                "targetType" to targetType,
-                "status" to status.name,
+            operation = GmOperation(
+                action = GmPatchActions.Create,
+                resource = GmResource("patch", id),
+                risk = GmRiskLevel.High,
+                attributes = mapOf(
+                    "name" to name,
+                    "appName" to appName,
+                    "targetType" to targetType,
+                    "status" to status.name,
+                ),
             ),
         ) {
             val bytes = withContext(Dispatchers.IO) {
@@ -77,13 +82,15 @@ class GmPatchController(
     ): List<RuntimePatchDescriptor> {
         return endpoints.execute(
             request = request,
-            permission = GmPatchPermissions.Read,
-            action = "gm.patch.list",
-            attributes = buildMap {
-                status?.let { put("status", it.name) }
-                appName?.let { put("appName", it) }
-                version?.let { put("version", it) }
-            },
+            operation = GmOperation(
+                action = GmPatchActions.Read,
+                resource = GmResource("patches"),
+                attributes = buildMap {
+                    status?.let { put("status", it.name) }
+                    appName?.let { put("appName", it) }
+                    version?.let { put("version", it) }
+                },
+            ),
         ) {
             patches.list(GmPatchListRequest(status, appName, version).toQuery())
         }
@@ -96,9 +103,7 @@ class GmPatchController(
     ): ResponseEntity<RuntimePatchDescriptor> {
         return endpoints.execute(
             request = request,
-            permission = GmPatchPermissions.Read,
-            action = "gm.patch.find",
-            attributes = mapOf("patchId" to patchId),
+            operation = GmOperation(GmPatchActions.Read, GmResource("patch", patchId)),
         ) {
             patches.find(PatchId(patchId))
                 ?.let { ResponseEntity.ok(it) }
@@ -115,13 +120,15 @@ class GmPatchController(
     ): List<RuntimePatchNodeResult> {
         return endpoints.execute(
             request = request,
-            permission = GmPatchPermissions.Read,
-            action = "gm.patch.node-results",
-            attributes = buildMap {
-                patchId?.let { put("patchId", it) }
-                address?.let { put("address", it) }
-                status?.let { put("status", it.name) }
-            },
+            operation = GmOperation(
+                action = GmPatchActions.Read,
+                resource = GmResource("patch.node-results"),
+                attributes = buildMap {
+                    patchId?.let { put("patchId", it) }
+                    address?.let { put("address", it) }
+                    status?.let { put("status", it.name) }
+                },
+            ),
         ) {
             patches.nodeResults(GmPatchNodeResultListRequest(patchId, address, status).toQuery())
         }
@@ -134,9 +141,11 @@ class GmPatchController(
     ): PatchClusterApplyResult {
         return endpoints.execute(
             request = request,
-            permission = GmPatchPermissions.Apply,
-            action = "gm.patch.apply",
-            attributes = mapOf("patchId" to patchId),
+            operation = GmOperation(
+                action = GmPatchActions.Apply,
+                resource = GmResource("patch", patchId),
+                risk = GmRiskLevel.High,
+            ),
         ) {
             patches.apply(PatchId(patchId))
         }
@@ -148,8 +157,11 @@ class GmPatchController(
     ): List<PatchClusterApplyResult> {
         return endpoints.execute(
             request = request,
-            permission = GmPatchPermissions.Apply,
-            action = "gm.patch.apply-enabled",
+            operation = GmOperation(
+                action = GmPatchActions.Apply,
+                resource = GmResource("patches.enabled"),
+                risk = GmRiskLevel.High,
+            ),
         ) {
             patches.applyEnabled()
         }
@@ -161,8 +173,11 @@ class GmPatchController(
     ): List<RuntimePatchDescriptor> {
         return endpoints.execute(
             request = request,
-            permission = GmPatchPermissions.Expire,
-            action = "gm.patch.expire-incompatible",
+            operation = GmOperation(
+                action = GmPatchActions.Expire,
+                resource = GmResource("patches.incompatible"),
+                risk = GmRiskLevel.High,
+            ),
         ) {
             patches.expireIncompatible()
         }
@@ -175,9 +190,11 @@ class GmPatchController(
     ): ResponseEntity<Unit> {
         return endpoints.execute(
             request = request,
-            permission = GmPatchPermissions.Disable,
-            action = "gm.patch.disable",
-            attributes = mapOf("patchId" to patchId),
+            operation = GmOperation(
+                action = GmPatchActions.Disable,
+                resource = GmResource("patch", patchId),
+                risk = GmRiskLevel.High,
+            ),
         ) {
             if (patches.disable(PatchId(patchId))) {
                 ResponseEntity.accepted().build()

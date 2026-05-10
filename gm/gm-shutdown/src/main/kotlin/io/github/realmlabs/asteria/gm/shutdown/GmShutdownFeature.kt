@@ -3,13 +3,13 @@ package io.github.realmlabs.asteria.gm.shutdown
 import io.github.realmlabs.asteria.gm.core.*
 
 /**
- * Permission keys contributed by the shutdown GM feature.
+ * Action keys contributed by the shutdown GM feature.
  */
-object GmShutdownPermissions {
-    val Read: GmPermissionKey = GmPermissionKey("gm.shutdown.read")
-    val Prepare: GmPermissionKey = GmPermissionKey("gm.shutdown.prepare")
-    val Start: GmPermissionKey = GmPermissionKey("gm.shutdown.start")
-    val Force: GmPermissionKey = GmPermissionKey("gm.shutdown.force")
+object GmShutdownActions {
+    val Read: GmAction = GmAction("gm.shutdown.read")
+    val Prepare: GmAction = GmAction("gm.shutdown.prepare")
+    val Start: GmAction = GmAction("gm.shutdown.start")
+    val Force: GmAction = GmAction("gm.shutdown.force")
 }
 
 /**
@@ -20,29 +20,29 @@ class GmShutdownFeature : GmFeature {
         id = GmFeatureId("asteria.shutdown"),
         name = "Graceful Shutdown",
         description = "Prepare, run, and inspect business-side graceful shutdown plans.",
-        permissions = listOf(
-            GmPermission(
-                key = GmShutdownPermissions.Read,
+        actions = listOf(
+            GmActionDescriptor(
+                key = GmShutdownActions.Read,
                 name = "Read shutdown status",
                 description = "Allows inspecting the current graceful shutdown state.",
             ),
-            GmPermission(
-                key = GmShutdownPermissions.Prepare,
+            GmActionDescriptor(
+                key = GmShutdownActions.Prepare,
                 name = "Prepare shutdown",
                 description = "Allows putting game services into a shutdown preparation state.",
-                highRisk = true,
+                risk = GmRiskLevel.High,
             ),
-            GmPermission(
-                key = GmShutdownPermissions.Start,
+            GmActionDescriptor(
+                key = GmShutdownActions.Start,
                 name = "Start shutdown",
                 description = "Allows running the graceful shutdown plan.",
-                highRisk = true,
+                risk = GmRiskLevel.High,
             ),
-            GmPermission(
-                key = GmShutdownPermissions.Force,
+            GmActionDescriptor(
+                key = GmShutdownActions.Force,
                 name = "Force shutdown",
                 description = "Allows bypassing normal graceful shutdown checks.",
-                highRisk = true,
+                risk = GmRiskLevel.High,
             ),
         ),
         menus = listOf(
@@ -50,7 +50,7 @@ class GmShutdownFeature : GmFeature {
                 id = "asteria.shutdown",
                 title = "Shutdown",
                 route = "/shutdown",
-                permission = GmShutdownPermissions.Read,
+                action = GmShutdownActions.Read,
                 order = 900,
             ),
         ),
@@ -59,7 +59,7 @@ class GmShutdownFeature : GmFeature {
                 id = "asteria.shutdown.status",
                 path = "/shutdown",
                 component = "asteria/shutdown/ShutdownStatus",
-                permission = GmShutdownPermissions.Read,
+                action = GmShutdownActions.Read,
             ),
         ),
     )

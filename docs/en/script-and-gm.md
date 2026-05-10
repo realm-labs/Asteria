@@ -1,7 +1,8 @@
 # Script and GM
 
 Script modules are intended for operational scripts, GM repair flows, and bulk diagnostics. GM modules provide feature
-metadata, permissions, audit context, and Spring HTTP starters. They can be used separately or combined into a full
+metadata, operation authorization entry points, audit context, and Spring HTTP starters. They can be used separately or
+combined into a full
 operations backend.
 
 ## Script Runtime
@@ -185,8 +186,8 @@ class RechargeFeature : GmFeature {
     override val descriptor = GmFeatureDescriptor(
         id = GmFeatureId("recharge"),
         name = "Recharge",
-        permissions = listOf(
-            GmPermission(GmPermissionKey("recharge.grant"), "Grant Recharge", highRisk = true),
+        actions = listOf(
+            GmActionDescriptor(GmAction("recharge.grant"), "Grant Recharge", risk = GmRiskLevel.High),
         ),
         menus = listOf(
             GmMenuItem(id = "recharge", title = "Recharge", route = "/recharge"),
@@ -195,15 +196,15 @@ class RechargeFeature : GmFeature {
 }
 ```
 
-`GmFeatureRegistry` is an immutable feature catalog. It rejects duplicate feature ids and duplicate permission keys at
+`GmFeatureRegistry` is an immutable feature catalog. It rejects duplicate feature ids and duplicate action keys at
 startup so extension modules cannot silently shadow each other. A feature descriptor is metadata only: feature
-id/name/description, permissions, menus, and routes. Optional modules publish features through Java `ServiceLoader`;
+id/name/description, actions, menus, and routes. Optional modules publish features through Java `ServiceLoader`;
 `gm-spring-boot-starter` combines ServiceLoader-discovered features with `GmFeature` Spring beans, then exposes feature,
-permission, menu, and route lists. Concrete business APIs are still provided by the individual starters or business
+action, menu, and route lists. Concrete business APIs are still provided by the individual starters or business
 controllers.
 
-`highRisk` is metadata only. It does not automatically add approval, MFA, or ticket workflows. Production systems should
-implement those policies in `GmPrincipalResolver`, `GmPolicyEvaluator`, or business controllers.
+`risk` is metadata only. It does not automatically add approval, MFA, or ticket workflows. Production systems should
+implement those policies in `GmPrincipalResolver` and `GmAuthorizationPolicy`.
 
 ## GM Script Target Capabilities
 
@@ -224,7 +225,7 @@ Business rules such as player existence, active world checks, or guild validatio
 ## Shutdown Orchestration
 
 `gm-shutdown` provides a runtime-neutral framework for business-side graceful shutdown. A plan runs phases in order, and
-each phase runs its steps in order. The framework records status, timeouts, failures, and GM permission metadata. It does
+each phase runs its steps in order. The framework records status, timeouts, failures, and GM action metadata. It does
 not bind itself to player actors, world actors, gateways, or process-exit semantics.
 
 ```kotlin
@@ -268,12 +269,13 @@ only mark the node as `ready-to-exit` and let the deployment system scale down o
 - `gm-cluster-spring-boot-starter`: cluster status and actor query.
 - `gm-patch-spring-boot-starter`: patch management.
 
-Security is provided by the business Spring application. The framework provides permission keys and audit models, but
+Security is provided by the business Spring application. The framework provides action, operation, resource, and audit
+models, but
 does not decide login, approval, MFA, or ticket workflow.
 
 The default noop principal resolver does not authenticate users, so GM HTTP endpoints will reject requests. Applications
-should provide at least a `GmPrincipalResolver`, and usually a `GmAuditSink` plus a policy evaluator that matches the
-project permission model.
+should provide at least a `GmPrincipalResolver`, and usually a `GmAuditSink` plus a `GmAuthorizationPolicy` that matches
+the project permission model. The default authorization policy denies every operation.
 
 ## Node-Local Ops HTTP
 
