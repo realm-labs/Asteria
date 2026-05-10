@@ -142,8 +142,8 @@ actor 队列分发都会看到最新 handler。
 
 ```kotlin
 class LevelPatch : RuntimePatchPlugin {
-    override suspend fun install(context: PatchInstallContext) {
-        context.replaceEventTypeHandler(
+    override suspend fun install(context: RuntimePatchInstallContext) {
+        context.eventHandlers.replaceEventType(
             GeneratedGameEventDispatchers.defaultRegistry,
             PlayerLevelChanged::class,
             key = eventHandleKey(PlayerQuestLevelHandler::class),

@@ -90,14 +90,18 @@ class EventDispatcherTest {
             records += "base:${event.newLevel}"
         }
         val dispatcher = EventDispatcher(registry)
-        val runtime = PatchRuntime()
+        val runtime = PatchRuntime(TestRuntime)
 
         dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 1, newLevel = 2))
         assertIs<PatchApplyResult.Applied>(
             runtime.apply(
                 patch("level-handler-fix"),
                 plugin {
-                    replaceEventTypeHandler(registry, PlayerLevelChanged::class, key = handleKey) { _, event, _ ->
+                    eventHandlers.replaceEventType(
+                        registry,
+                        PlayerLevelChanged::class,
+                        key = handleKey
+                    ) { _, event, _ ->
                         records += "patched:${event.newLevel}"
                     }
                 },
@@ -117,20 +121,20 @@ class EventDispatcherTest {
             records += "base"
         }
         val dispatcher = EventDispatcher(registry)
-        val runtime = PatchRuntime()
+        val runtime = PatchRuntime(TestRuntime)
         val first = patch("first", revision = 1)
         val second = patch("second", revision = 2)
 
         assertIs<PatchApplyResult.Applied>(
             runtime.apply(first, plugin {
-                replaceTopicEventHandler(registry, PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
+                eventHandlers.replaceTopic(registry, PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
                     records += "first"
                 }
             }),
         )
         assertIs<PatchApplyResult.Applied>(
             runtime.apply(second, plugin {
-                replaceTopicEventHandler(registry, PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
+                eventHandlers.replaceTopic(registry, PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
                     records += "second"
                 }
             }),
@@ -331,9 +335,9 @@ class EventDispatcherTest {
         return RuntimePatch(PatchId(id), revision)
     }
 
-    private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {
+    private fun plugin(block: RuntimePatchInstallContext.() -> Unit): RuntimePatchPlugin {
         return object : RuntimePatchPlugin {
-            override suspend fun install(context: PatchInstallContext) {
+            override suspend fun install(context: RuntimePatchInstallContext) {
                 context.block()
             }
         }

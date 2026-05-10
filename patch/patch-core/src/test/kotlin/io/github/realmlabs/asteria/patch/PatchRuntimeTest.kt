@@ -1,5 +1,9 @@
 package io.github.realmlabs.asteria.patch
 
+import io.github.realmlabs.asteria.core.NodeRuntime
+import io.github.realmlabs.asteria.core.NodeState
+import io.github.realmlabs.asteria.core.RoleKey
+import io.github.realmlabs.asteria.core.ServiceRegistry
 import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 
@@ -14,7 +18,7 @@ class PatchRuntimeTest {
         val result = runtime.apply(
             patch,
             plugin {
-                replace(registry, "login", "new")
+                replaceSlot(registry, "login", "new")
             },
         )
 
@@ -30,8 +34,8 @@ class PatchRuntimeTest {
         val first = patch("first", revision = 1)
         val second = patch("second", revision = 2)
 
-        runtime.apply(first, plugin { replace(registry, "handler", "first") })
-        runtime.apply(second, plugin { replace(registry, "handler", "second") })
+        runtime.apply(first, plugin { replaceSlot(registry, "handler", "first") })
+        runtime.apply(second, plugin { replaceSlot(registry, "handler", "second") })
 
         assertEquals("second", registry.require("handler"))
 
@@ -49,8 +53,8 @@ class PatchRuntimeTest {
         val normal = patch("normal", revision = 1)
         val urgent = patch("urgent", revision = 2)
 
-        runtime.apply(normal, plugin { replace(registry, "handler", "normal") })
-        runtime.apply(urgent, plugin { replace(registry, "handler", "urgent") })
+        runtime.apply(normal, plugin { replaceSlot(registry, "handler", "normal") })
+        runtime.apply(urgent, plugin { replaceSlot(registry, "handler", "urgent") })
 
         assertEquals("urgent", registry.require("handler"))
 
@@ -68,8 +72,8 @@ class PatchRuntimeTest {
             runtime.apply(
                 patch,
                 plugin {
-                    replace(registry, "handler", "patched")
-                    replace(registry, "missing", "bad")
+                    replaceSlot(registry, "handler", "patched")
+                    replaceSlot(registry, "missing", "bad")
                 },
             )
         }
@@ -86,7 +90,7 @@ class PatchRuntimeTest {
     }
 
     private fun runtime(): PatchRuntime {
-        return PatchRuntime()
+        return PatchRuntime(TestRuntime)
     }
 
     private fun patch(
@@ -96,11 +100,18 @@ class PatchRuntimeTest {
         return RuntimePatch(PatchId(id), revision)
     }
 
-    private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {
+    private fun plugin(block: RuntimePatchInstallContext.() -> Unit): RuntimePatchPlugin {
         return object : RuntimePatchPlugin {
-            override suspend fun install(context: PatchInstallContext) {
+            override suspend fun install(context: RuntimePatchInstallContext) {
                 context.block()
             }
         }
+    }
+
+    private object TestRuntime : NodeRuntime {
+        override val name: String = "test"
+        override val roles: Set<RoleKey> = emptySet()
+        override val state: NodeState = NodeState.Started
+        override val services: ServiceRegistry = ServiceRegistry()
     }
 }

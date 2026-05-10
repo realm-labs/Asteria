@@ -67,7 +67,8 @@ KSP 会按 `generatedPackage` 和 `moduleId` 生成：
 - 可选 `MessageCatalog`：开启 `messageCatalogEnabled` 后供工具和诊断读取，不作为运行时路由入口。
 
 生成的 registry 是 `PatchableMessageHandlerRegistry`。`MessageDispatcher` 每次分发都会从 registry 读取当前 slot：
-基础 slot 来自 KSP 生成的 handles，补丁通过 `replaceHandler(registry, ...)` 覆盖某一个消息类型的 slot。补丁不会重建
+基础 slot 来自 KSP 生成的 handles，补丁通过 `context.messageHandlers.replace(registry, ...)` 覆盖某一个消息类型的
+slot。补丁不会重建
 dispatcher，
 也不会新增未注册过的消息类型；卸载补丁后会回退到下一层补丁或基础 handler。需要自定义 `MessageHandleRegistry`
 时，可以复用生成的 handles 后自行构造 `MessageDispatcher`。

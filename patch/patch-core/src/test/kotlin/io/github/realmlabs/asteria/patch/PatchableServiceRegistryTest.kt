@@ -1,5 +1,9 @@
 package io.github.realmlabs.asteria.patch
 
+import io.github.realmlabs.asteria.core.NodeRuntime
+import io.github.realmlabs.asteria.core.NodeState
+import io.github.realmlabs.asteria.core.RoleKey
+import io.github.realmlabs.asteria.core.ServiceRegistry
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,10 +20,10 @@ class PatchableServiceRegistryTest {
         val second = patch("second", revision = 2)
 
         assertIs<PatchApplyResult.Applied>(
-            runtime.apply(first, plugin { replaceService<GreetingService>(services, GreetingService("first")) }),
+            runtime.apply(first, plugin { this.services.replace(services, GreetingService("first")) }),
         )
         assertIs<PatchApplyResult.Applied>(
-            runtime.apply(second, plugin { replaceService<GreetingService>(services, GreetingService("second")) }),
+            runtime.apply(second, plugin { this.services.replace(services, GreetingService("second")) }),
         )
         assertEquals("second", services.require<GreetingService>().value)
 
@@ -38,7 +42,7 @@ class PatchableServiceRegistryTest {
         val failed = runCatching {
             runtime.apply(
                 patch("missing", revision = 1),
-                plugin { replaceService<GreetingService>(services, GreetingService("patched")) },
+                plugin { this.services.replace(services, GreetingService("patched")) },
             )
         }
 
@@ -54,7 +58,7 @@ class PatchableServiceRegistryTest {
         val result = runtime.apply(
             patch("generic-service-replace", revision = 1),
             plugin {
-                replace(services, GreetingService::class, GreetingService("patched"))
+                this.services.replace(services, GreetingService::class, GreetingService("patched"))
             },
         )
 
@@ -62,8 +66,23 @@ class PatchableServiceRegistryTest {
         assertEquals("patched", services.require<GreetingService>().value)
     }
 
+    @Test
+    fun pluginCanRecordInstallPlanWithoutCommittingReplacement() = runBlocking {
+        val services = PatchableServiceRegistry()
+        services.register(GreetingService::class, GreetingService("base"))
+        val plugin = plugin {
+            this.services.replace(services, GreetingService("planned"))
+        }
+
+        val plan = plugin.recordInstallPlan(patch("recording", revision = 1), TestRuntime)
+
+        assertEquals(listOf(GreetingService::class.toString()), plan.replacements.map { it.key })
+        assertEquals("base", services.require<GreetingService>().value)
+        plan.validate()
+    }
+
     private fun runtime(): PatchRuntime {
-        return PatchRuntime()
+        return PatchRuntime(TestRuntime)
     }
 
     private fun patch(
@@ -73,9 +92,9 @@ class PatchableServiceRegistryTest {
         return RuntimePatch(PatchId(id), revision)
     }
 
-    private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {
+    private fun plugin(block: RuntimePatchInstallContext.() -> Unit): RuntimePatchPlugin {
         return object : RuntimePatchPlugin {
-            override suspend fun install(context: PatchInstallContext) {
+            override suspend fun install(context: RuntimePatchInstallContext) {
                 context.block()
             }
         }
@@ -84,4 +103,11 @@ class PatchableServiceRegistryTest {
     private data class GreetingService(
         val value: String,
     )
+
+    private object TestRuntime : NodeRuntime {
+        override val name: String = "test"
+        override val roles: Set<RoleKey> = emptySet()
+        override val state: NodeState = NodeState.Started
+        override val services: ServiceRegistry = ServiceRegistry()
+    }
 }

@@ -138,14 +138,19 @@ val registry = PatchableRegistry(
 context.services.register(ActivityServiceRegistry::class, ActivityServiceRegistry(registry))
 ```
 
-Patches replace registry slots:
+Patch code reads the business registry from the current node `ServiceRegistry`, then replaces registry slots:
 
 ```kotlin
-context.replace(
-    registry,
-    ActivityKey("seven_day"),
-    PatchedSevenDayActivityService,
-)
+fun RuntimePatchInstallContext.replaceActivityService(
+    registry: PatchableRegistry<ActivityKey, ActivityService>,
+    key: ActivityKey,
+    service: ActivityService,
+) {
+    replaceSlot(registry, key, service)
+}
+
+val activities = context.runtime.services.get<ActivityServiceRegistry>()
+context.replaceActivityService(activities.registry, ActivityKey("seven_day"), PatchedSevenDayActivityService)
 ```
 
 The base list comes from compile-time generation, while runtime reads go through the `PatchableRegistry` active view.

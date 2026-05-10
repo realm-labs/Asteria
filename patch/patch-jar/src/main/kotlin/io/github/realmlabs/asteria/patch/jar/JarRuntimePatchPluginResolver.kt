@@ -19,8 +19,9 @@ import kotlin.io.path.outputStream
  * Loads runtime patch plugins from patch artifact JARs.
  *
  * The resolver first looks for a `Patch-Class` manifest attribute and falls back to a `ServiceLoader` provider for
- * [RuntimePatchPlugin]. The loaded class and its classloader are cached by patch id, but each [resolve] call returns a
- * fresh plugin instance. Call [evict] when a patch version is no longer active so its cached classloader can be closed.
+ * [RuntimePatchPlugin]. The loaded class and its classloader are cached by patch id plus artifact identity, but each
+ * [resolve] call returns a fresh plugin instance. Call [evict] when a patch version is no longer active so its cached
+ * classloader can be closed.
  */
 class JarRuntimePatchPluginResolver(
     private val artifacts: PatchArtifactStore,
@@ -30,10 +31,10 @@ class JarRuntimePatchPluginResolver(
     private val metrics: Metrics = NoopMetrics,
 ) : RuntimePatchPluginResolver {
     private val logger = LoggerFactory.getLogger(JarRuntimePatchPluginResolver::class.java)
-    private val cache: MutableMap<PatchId, LoadedPatchPlugin> = ConcurrentHashMap()
+    private val cache: MutableMap<PatchJarCacheKey, LoadedPatchPlugin> = ConcurrentHashMap()
 
     override suspend fun resolve(patch: RuntimePatchDescriptor): RuntimePatchPlugin {
-        val key = patch.id
+        val key = PatchJarCacheKey(patch)
         val tags = patch.metricTags()
         metrics.counter("asteria.patch.jar.resolve.total", tags).increment()
         val cached = cache[key]
@@ -46,7 +47,7 @@ class JarRuntimePatchPluginResolver(
     }
 
     override suspend fun evict(patch: RuntimePatchDescriptor) {
-        cache.remove(patch.id)?.close()
+        cache.remove(PatchJarCacheKey(patch))?.close()
         metrics.counter("asteria.patch.jar.cache.evict.total", patch.metricTags()).increment()
     }
 
@@ -66,20 +67,26 @@ class JarRuntimePatchPluginResolver(
                 file.toFile().deleteOnExit()
                 file
             }
-            val className = withContext(Dispatchers.IO) {
+            val manifestAttributes = withContext(Dispatchers.IO) {
                 JarFile(jar.toFile()).use { jarFile ->
-                    jarFile.manifest?.mainAttributes?.getValue(PATCH_CLASS_NAME)
+                    jarFile.manifest?.mainAttributes
                 }
             }
             val loader = URLClassLoader(arrayOf(jar.toUri().toURL()), parentClassLoader)
-            return if (className != null) {
-                LoadedPatchPlugin(patch.allowed(loader.loadClass(className)), loader)
-            } else {
-                val pluginClass = ServiceLoader.load(RuntimePatchPlugin::class.java, loader)
-                    .firstOrNull()
-                    ?.javaClass
-                    ?: error("patch jar ${patch.artifact.name} must declare $PATCH_CLASS_NAME or service provider")
-                LoadedPatchPlugin(patch.allowed(pluginClass), loader)
+            val pluginClassName = manifestAttributes?.getValue(PATCH_CLASS_NAME)
+            return when {
+                pluginClassName != null -> LoadedPatchPlugin.plugin(
+                    patch.allowedPlugin(loader.loadClass(pluginClassName)),
+                    loader,
+                )
+
+                else -> {
+                    val pluginClass = ServiceLoader.load(RuntimePatchPlugin::class.java, loader)
+                        .firstOrNull()
+                        ?.javaClass
+                        ?: error("patch jar ${patch.artifact.name} must declare $PATCH_CLASS_NAME or service provider")
+                    LoadedPatchPlugin.plugin(patch.allowedPlugin(pluginClass), loader)
+                }
             }
         } catch (error: Throwable) {
             metrics.counter("asteria.patch.jar.load.failed.total", tags).increment()
@@ -89,6 +96,13 @@ class JarRuntimePatchPluginResolver(
             metrics.timer("asteria.patch.jar.load.duration", tags)
                 .record((System.nanoTime() - startedAt) / 1_000_000)
         }
+    }
+
+    private fun RuntimePatchDescriptor.allowedPlugin(type: Class<*>): Class<*> {
+        require(RuntimePatchPlugin::class.java.isAssignableFrom(type)) {
+            "$PATCH_CLASS_NAME class ${type.name} must implement ${RuntimePatchPlugin::class.java.name}"
+        }
+        return allowed(type)
     }
 
     private fun RuntimePatchDescriptor.allowed(type: Class<*>): Class<*> {
@@ -101,6 +115,20 @@ class JarRuntimePatchPluginResolver(
     companion object {
         const val PATCH_CLASS_NAME: String = "Patch-Class"
     }
+}
+
+private data class PatchJarCacheKey(
+    val id: PatchId,
+    val artifactName: String,
+    val artifactChecksum: String,
+    val artifactVersion: String?,
+) {
+    constructor(patch: RuntimePatchDescriptor) : this(
+        id = patch.id,
+        artifactName = patch.artifact.name,
+        artifactChecksum = patch.artifact.checksum,
+        artifactVersion = patch.artifact.version,
+    )
 }
 
 private fun RuntimePatchDescriptor.metricTags(): MetricTags {
@@ -133,14 +161,26 @@ fun interface RuntimePatchPluginLoadPolicy {
 }
 
 private class LoadedPatchPlugin(
-    private val type: Class<*>,
+    private val factory: () -> RuntimePatchPlugin,
     private val loader: URLClassLoader?,
 ) {
     fun newInstance(): RuntimePatchPlugin {
-        return type.getDeclaredConstructor().newInstance() as RuntimePatchPlugin
+        return factory()
     }
 
     fun close() {
         loader?.close()
+    }
+
+    companion object {
+        fun plugin(
+            type: Class<*>,
+            loader: URLClassLoader?,
+        ): LoadedPatchPlugin {
+            return LoadedPatchPlugin(
+                factory = { type.getDeclaredConstructor().newInstance() as RuntimePatchPlugin },
+                loader = loader,
+            )
+        }
     }
 }

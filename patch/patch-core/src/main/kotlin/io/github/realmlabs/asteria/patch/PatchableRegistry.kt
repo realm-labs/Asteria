@@ -7,7 +7,8 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * This abstraction is intentionally smaller than the public read API of a registry. Patch installation only needs to
  * validate that a key exists, install one ordered layer, and remove that layer during rollback/uninstall. Concrete
- * registries can expose richer business-facing APIs without forcing [PatchInstallContext] to know each registry shape.
+ * registries can expose richer business-facing APIs without forcing [RuntimePatchInstallContext] to know each registry
+ * shape.
  */
 interface PatchSlotRegistry<K : Any, V : Any> {
     /**
@@ -20,14 +21,33 @@ interface PatchSlotRegistry<K : Any, V : Any> {
 
     /**
      * Installs [value] as the replacement for [key] in the patch layer represented by [order].
+     *
+     * The [scope] is created by [PatchRuntime]. Business patch code cannot construct it, so runtime replacement writes
+     * go through [RuntimePatchInstallContext] and remain part of the normal patch lifecycle.
      */
-    fun replace(key: K, value: V, order: PatchOrder)
+    fun replace(
+        key: K,
+        value: V,
+        order: PatchOrder,
+        scope: PatchRegistryMutationScope,
+    )
 
     /**
      * Removes every replacement layer owned by [id].
      */
-    fun remove(id: PatchId)
+    fun remove(
+        id: PatchId,
+        scope: PatchRegistryMutationScope,
+    )
 }
+
+/**
+ * Capability required to mutate patch registry layers.
+ *
+ * The constructor is internal to the patch module. External code can implement [PatchSlotRegistry], but it cannot call
+ * registry mutation methods unless the patch runtime passes this scope.
+ */
+class PatchRegistryMutationScope internal constructor()
 
 /**
  * Copy-on-write registry for runtime patchable dispatch points.
@@ -105,7 +125,12 @@ class PatchableRegistry<K : Any, V : Any>(
      * This never mutates the base entry. Instead it stores [value] inside the patch layer identified by [order], then
      * rebuilds the active view by replaying all layers in order. The key must already exist in the base registry.
      */
-    override fun replace(key: K, value: V, order: PatchOrder) {
+    override fun replace(
+        key: K,
+        value: V,
+        order: PatchOrder,
+        scope: PatchRegistryMutationScope,
+    ) {
         state.updateAndGet { old ->
             check(key in old.base) { "patchable registry key $key does not exist" }
             old.withReplacement(key, value, order).rebuild()
@@ -118,7 +143,10 @@ class PatchableRegistry<K : Any, V : Any>(
      * Base entries are untouched. After removal, each affected key falls back to the next remaining layer or to its
      * base value when no replacement layer remains.
      */
-    override fun remove(id: PatchId) {
+    override fun remove(
+        id: PatchId,
+        scope: PatchRegistryMutationScope,
+    ) {
         state.updateAndGet { old ->
             old.copy(layers = old.layers.filterNot { it.order.id == id }).rebuild()
         }

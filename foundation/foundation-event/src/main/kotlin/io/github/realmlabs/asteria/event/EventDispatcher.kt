@@ -1,11 +1,7 @@
 package io.github.realmlabs.asteria.event
 
 import io.github.realmlabs.asteria.message.HandlerContext
-import io.github.realmlabs.asteria.patch.PatchId
-import io.github.realmlabs.asteria.patch.PatchInstallContext
-import io.github.realmlabs.asteria.patch.PatchOrder
-import io.github.realmlabs.asteria.patch.PatchSlotRegistry
-import io.github.realmlabs.asteria.patch.PatchableRegistry
+import io.github.realmlabs.asteria.patch.*
 import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 
@@ -163,12 +159,20 @@ class PatchableEventHandleRegistry<C : HandlerContext>(
         return registry.current(key)
     }
 
-    override fun replace(key: EventHandleKey, value: EventHandle<C>, order: PatchOrder) {
-        registry.replace(key, value, order)
+    override fun replace(
+        key: EventHandleKey,
+        value: EventHandle<C>,
+        order: PatchOrder,
+        scope: PatchRegistryMutationScope,
+    ) {
+        registry.replace(key, value, order, scope)
     }
 
-    override fun remove(id: PatchId) {
-        registry.remove(id)
+    override fun remove(
+        id: PatchId,
+        scope: PatchRegistryMutationScope,
+    ) {
+        registry.remove(id, scope)
     }
 }
 
@@ -212,40 +216,38 @@ fun <C : HandlerContext> eventHandlers(
     return EventHandleRegistryBuilder<C>().apply(configure).build()
 }
 
-fun <C : HandlerContext> PatchInstallContext.replaceEventHandle(
-    registry: PatchableEventHandleRegistry<C>,
-    handle: EventHandle<C>,
-) {
-    replace(registry, handle.key, handle)
-}
+val RuntimePatchInstallContext.eventHandlers: RuntimePatchEventHandlerReplacements
+    get() = RuntimePatchEventHandlerReplacements(this)
 
-fun <C : HandlerContext, E : GameEvent> PatchInstallContext.replaceEventTypeHandler(
-    registry: PatchableEventHandleRegistry<C>,
-    eventType: KClass<E>,
-    order: Int = 0,
-    key: EventHandleKey = EventHandleKey("event:${eventType.qualifiedName ?: eventType.simpleName}:$order"),
-    handler: EventHandler<C, E>,
+class RuntimePatchEventHandlerReplacements internal constructor(
+    private val context: RuntimePatchInstallContext,
 ) {
-    replaceEventHandle(registry, EventHandle.forEventType(eventType, order, key, handler))
-}
+    fun <C : HandlerContext> replace(
+        registry: PatchableEventHandleRegistry<C>,
+        handle: EventHandle<C>,
+    ) {
+        context.replaceSlot(registry, handle.key, handle)
+    }
 
-inline fun <C : HandlerContext, reified E : GameEvent> PatchInstallContext.replaceEventTypeHandler(
-    registry: PatchableEventHandleRegistry<C>,
-    order: Int = 0,
-    key: EventHandleKey = EventHandleKey("event:${E::class.qualifiedName ?: E::class.simpleName}:$order"),
-    handler: EventHandler<C, E>,
-) {
-    replaceEventTypeHandler(registry, E::class, order, key, handler)
-}
+    fun <C : HandlerContext, E : GameEvent> replaceEventType(
+        registry: PatchableEventHandleRegistry<C>,
+        eventType: KClass<E>,
+        order: Int = 0,
+        key: EventHandleKey = EventHandleKey("event:${eventType.qualifiedName ?: eventType.simpleName}:$order"),
+        handler: EventHandler<C, E>,
+    ) {
+        replace(registry, EventHandle.forEventType(eventType, order, key, handler))
+    }
 
-fun <C : HandlerContext> PatchInstallContext.replaceTopicEventHandler(
-    registry: PatchableEventHandleRegistry<C>,
-    topic: EventTopic,
-    order: Int = 0,
-    key: EventHandleKey = EventHandleKey("topic:${topic.path}:$order"),
-    handler: EventHandler<C, GameEvent>,
-) {
-    replaceEventHandle(registry, EventHandle.forTopic(topic, order, key, handler))
+    fun <C : HandlerContext> replaceTopic(
+        registry: PatchableEventHandleRegistry<C>,
+        topic: EventTopic,
+        order: Int = 0,
+        key: EventHandleKey = EventHandleKey("topic:${topic.path}:$order"),
+        handler: EventHandler<C, GameEvent>,
+    ) {
+        replace(registry, EventHandle.forTopic(topic, order, key, handler))
+    }
 }
 
 enum class EventDispatchFailurePolicy {

@@ -134,7 +134,7 @@ fun <A : Any, M : Any> MessageDispatcher<ActorHandlerContext<A>, M>.dispatchActo
  *
  * The registry is still useful without installing the patch module: reads are lock-free and the registry simply serves
  * the base handlers registered by business code or generated route code. When patch runtime is installed,
- * [PatchInstallContext.replace] can replace one message slot and later rollback to the previous layer.
+ * [RuntimePatchInstallContext.messageHandlers] can replace one message slot and later rollback to the previous layer.
  */
 class PatchableMessageHandlerRegistry<C : HandlerContext, M : Any>(
     handles: Iterable<MessageHandle<C, M>> = emptyList(),
@@ -211,8 +211,13 @@ class PatchableMessageHandlerRegistry<C : HandlerContext, M : Any>(
      * The key must already exist in the base registry; patches can replace an existing slot but cannot introduce a
      * brand-new message type.
      */
-    override fun replace(key: KClass<out M>, value: MessageHandle<C, M>, order: PatchOrder) {
-        registry.replace(key, value, order)
+    override fun replace(
+        key: KClass<out M>,
+        value: MessageHandle<C, M>,
+        order: PatchOrder,
+        scope: PatchRegistryMutationScope,
+    ) {
+        registry.replace(key, value, order, scope)
     }
 
     /**
@@ -221,8 +226,11 @@ class PatchableMessageHandlerRegistry<C : HandlerContext, M : Any>(
      * Base registrations added through [register] are untouched. After removal, the effective handler for each affected
      * key falls back to the next remaining patch layer or to the base handler when no patch layer is left.
      */
-    override fun remove(id: PatchId) {
-        registry.remove(id)
+    override fun remove(
+        id: PatchId,
+        scope: PatchRegistryMutationScope,
+    ) {
+        registry.remove(id, scope)
     }
 }
 
@@ -232,17 +240,25 @@ class PatchableMessageHandlerRegistry<C : HandlerContext, M : Any>(
  * Replacement is scoped to one message type and composes with the patch ordering rules of the underlying patch
  * runtime.
  */
-fun <C : HandlerContext, M : Any, T : M> PatchInstallContext.replaceHandler(
-    registry: PatchableMessageHandlerRegistry<C, M>,
-    messageType: KClass<T>,
-    handler: MessageHandler<C, T>,
+val RuntimePatchInstallContext.messageHandlers: RuntimePatchMessageHandlerReplacements
+    get() = RuntimePatchMessageHandlerReplacements(this)
+
+class RuntimePatchMessageHandlerReplacements internal constructor(
+    private val context: RuntimePatchInstallContext,
 ) {
-    replace(registry, messageType, MessageHandle.of(messageType, handler))
+    fun <C : HandlerContext, M : Any, T : M> replace(
+        registry: PatchableMessageHandlerRegistry<C, M>,
+        messageType: KClass<T>,
+        handler: MessageHandler<C, T>,
+    ) {
+        context.replaceSlot(registry, messageType, MessageHandle.of(messageType, handler))
+    }
+
 }
 
-inline fun <C : HandlerContext, M : Any, reified T : M> PatchInstallContext.replaceHandler(
+inline fun <C : HandlerContext, M : Any, reified T : M> RuntimePatchMessageHandlerReplacements.replace(
     registry: PatchableMessageHandlerRegistry<C, M>,
     handler: MessageHandler<C, T>,
 ) {
-    replaceHandler(registry, T::class, handler)
+    replace(registry, T::class, handler)
 }

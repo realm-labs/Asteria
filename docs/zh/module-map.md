@@ -88,8 +88,8 @@
   批量写回。
 - `script-*`、`gm-*`、`ops-http-ktor`：脚本执行、GM feature 和节点本地 HTTP 入口是三层能力。脚本 runtime 负责目标和策略；GM/ops
   入口负责权限、审计和提交请求。
-- `patch-*`：补丁插件通过 `PatchInstallContext` 替换 patchable registry slot 或 service slot。基础注册项保留，卸载补丁时回退到下一层
-  patch 或 base 实现。
+- `patch-*`：补丁插件通过 `RuntimePatchInstallContext` 声明 service、message handler 或 event handler 替换。基础注册项保留，
+  卸载补丁时回退到下一层 patch 或 base 实现。
 
 ## 组合建议
 

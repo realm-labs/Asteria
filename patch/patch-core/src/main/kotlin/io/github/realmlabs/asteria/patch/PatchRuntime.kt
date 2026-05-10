@@ -1,49 +1,53 @@
 package io.github.realmlabs.asteria.patch
 
+import io.github.realmlabs.asteria.core.NodeRuntime
 import io.github.realmlabs.asteria.observability.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import java.io.Serializable
+import kotlin.reflect.KClass
 
 /**
  * Runtime patch plugin loaded and applied by a node.
  *
- * Implementations should prefer declaring changes through [PatchInstallContext], especially
- * [PatchInstallContext.replace]. Replacement operations are tracked by the framework as ordered patch layers. When a
- * newer patch is disabled, the registry is rebuilt from the remaining layers, so the active implementation falls back
- * to the previous patch instead of the original base entry.
+ * Implementations declare runtime replacements through [RuntimePatchInstallContext]. Replacement operations are tracked
+ * by the framework as ordered patch layers. When a newer patch is disabled, the registry is rebuilt from the remaining
+ * layers, so the active implementation falls back to the previous patch instead of the original base entry.
  *
- * For type-keyed business services, use [PatchableServiceRegistry] and [PatchInstallContext.replace]. This gives
- * service patches the same ordered rollback behavior without requiring mutable static service variables.
+ * For type-keyed business services, use [RuntimePatchInstallContext.services]. This gives service patches the same
+ * ordered rollback behavior without requiring mutable static service variables.
  *
  * Keep patch instances small and deterministic. A patch may be applied during node startup replay or by a live GM
- * operation, so [install] should be safe to run once for the patch id on each target node and should fail before
- * creating irreversible side effects whenever possible.
+ * operation, so [install] must be repeatable for the same patch id on each target node. Prefer pure replacement patches
+ * that only declare registry changes.
  */
 interface RuntimePatchPlugin {
     /**
-     * Declares and initializes the patch.
+     * Declares the runtime replacements owned by this patch.
      *
-     * Use [PatchInstallContext.replace] for handler/service replacements. Those operations are committed only after
-     * every operation validates successfully, and committed operations are rolled back if a later operation fails.
+     * Use [RuntimePatchInstallContext.services] or module-specific replacement APIs for handler/service replacements.
+     * Those operations are committed only after every operation validates successfully, and committed operations are
+     * rolled back if a later operation fails.
      *
-     * Code that changes state outside [PatchInstallContext], such as registering listeners, starting background jobs,
-     * or opening resources, is not automatically tracked. Such side effects should either happen after all replacement
-     * declarations or be cleaned up by [uninstall].
+     * The normal patch model is replacement-only: [install] should declare service, message handler, event handler, or
+     * custom registry replacements and avoid business state changes. If a specialized patch must create resources that
+     * the framework cannot track, [install] may do so only when the resource is idempotent for this patch id and
+     * [uninstall] releases it explicitly.
      */
-    suspend fun install(context: PatchInstallContext)
+    suspend fun install(context: RuntimePatchInstallContext)
 
     /**
-     * Cleans up side effects that the framework cannot track.
+     * Cleans up resources that [install] created outside framework-managed replacement registries.
      *
      * Most pure replacement patches do not need to override this method. Registry replacements declared through
-     * [PatchInstallContext.replace] are removed by the framework after [uninstall] returns. The registry then falls
-     * back to the previous patch layer, or to the original base entry when no previous layer exists.
+     * [RuntimePatchInstallContext] are removed by the framework after [uninstall] returns. The registry then falls back
+     * to the previous patch layer, or to the original base entry when no previous layer exists.
      *
-     * Override this method for resources such as event subscriptions, scheduled tasks, metrics, temporary caches, file
-     * handles, or background jobs created by [install]. Do not manually restore handler/service replacements here unless
-     * they were changed outside [PatchInstallContext].
+     * Override this method only for specialized patches that create resources outside framework-managed replacement
+     * registries, such as event subscriptions, scheduled tasks, temporary caches, file handles, or background jobs.
+     * Do not manually restore handler/service replacements here unless they were changed outside
+     * [RuntimePatchInstallContext].
      */
     suspend fun uninstall(context: PatchUninstallContext) {
     }
@@ -52,25 +56,62 @@ interface RuntimePatchPlugin {
 /**
  * Records framework-managed operations for one patch installation.
  */
-class PatchInstallContext internal constructor(
-    private val order: PatchOrder,
+class RuntimePatchInstallContext internal constructor(
+    /**
+     * Patch metadata for the patch being installed.
+     */
+    val patch: RuntimePatch,
+    /**
+     * Runtime view of the current node. Patch code can use [runtime.services] to locate application-provided
+     * patch bindings and registries.
+     */
+    val runtime: NodeRuntime,
 ) {
     private val operations: MutableList<PatchOperation> = mutableListOf()
 
     /**
-     * Replaces one entry in [registry] for this patch layer.
-     *
-     * The replacement is ordered by the patch's [PatchOrder]. Disabling the patch removes only this layer and rebuilds
-     * the registry from the remaining layers, preserving earlier patches.
+     * Type-keyed service replacements declared by this patch.
      */
-    fun <K : Any, V : Any> replace(registry: PatchSlotRegistry<K, V>, key: K, value: V) {
-        operations.add(TargetReplacementOperation(registry, key, value, order))
-    }
+    val services: RuntimePatchServiceReplacements = RuntimePatchServiceReplacements(this)
 
     /**
      * Returns the operations declared so far as an immutable snapshot.
      */
     internal fun operations(): List<PatchOperation> = operations.toList()
+
+    internal fun plan(): RuntimePatchInstallPlan {
+        return RuntimePatchInstallPlan(patch, operations())
+    }
+
+    /**
+     * Records one framework-managed registry slot replacement.
+     *
+     * Business patch code should prefer [services] or module-specific APIs such as message/event handler replacement
+     * helpers. Framework modules use this method to adapt their own patchable registries to the common runtime plan.
+     */
+    fun <K : Any, V : Any> replaceSlot(
+        registry: PatchSlotRegistry<K, V>,
+        key: K,
+        value: V,
+    ) {
+        operations.add(TargetReplacementOperation(registry, key, value, patch.order))
+    }
+
+}
+
+class RuntimePatchServiceReplacements internal constructor(
+    private val context: RuntimePatchInstallContext,
+) {
+    /**
+     * Replaces one service in an explicit [registry].
+     */
+    fun <T : Any> replace(
+        registry: PatchableServiceRegistry,
+        type: KClass<T>,
+        service: T,
+    ) {
+        context.replaceSlot(registry, type, service)
+    }
 }
 
 /**
@@ -84,11 +125,13 @@ class PatchUninstallContext internal constructor(
 )
 
 class PatchRuntime(
+    val runtime: NodeRuntime,
     private val tracer: Tracer = NoopTracer,
     private val metrics: Metrics = NoopMetrics,
 ) {
     private val logger = LoggerFactory.getLogger(PatchRuntime::class.java)
     private val lock = Mutex()
+    private val mutationScope = PatchRegistryMutationScope()
     private val applied: MutableMap<PatchId, AppliedRuntimePatch> = linkedMapOf()
 
     /**
@@ -150,7 +193,7 @@ class PatchRuntime(
                     this@span.error(error)
                     logger.error("patch {} uninstall failed", id.value, error)
                 }
-                appliedPatch.operations.asReversed().forEach { it.rollback() }
+                appliedPatch.operations.asReversed().forEach { it.rollback(mutationScope) }
                 metrics.counter("asteria.patch.remove.applied.total", appliedPatch.patch.metricTags()).increment()
                 logger.info("patch removed id={}", id.value)
                 true
@@ -166,15 +209,16 @@ class PatchRuntime(
     }
 
     private suspend fun applyEnabled(patch: RuntimePatch, plugin: RuntimePatchPlugin): PatchApplyResult {
-        val context = PatchInstallContext(patch.order)
+        val context = RuntimePatchInstallContext(patch, runtime)
         try {
             plugin.install(context)
-            val operations = context.operations()
+            val plan = context.plan()
+            val operations = plan.operations
             operations.forEach { it.validate() }
             val committed = mutableListOf<PatchOperation>()
             try {
                 operations.forEach { operation ->
-                    operation.commit()
+                    operation.commit(mutationScope)
                     committed.add(operation)
                 }
                 applied[patch.id] = AppliedRuntimePatch(patch, plugin, operations)
@@ -186,7 +230,7 @@ class PatchRuntime(
                 )
                 return PatchApplyResult.Applied(patch.id, operations.size)
             } catch (error: Throwable) {
-                committed.asReversed().forEach { it.rollback() }
+                committed.asReversed().forEach { it.rollback(mutationScope) }
                 throw error
             }
         } catch (error: Throwable) {
@@ -245,11 +289,13 @@ private data class AppliedRuntimePatch(
 )
 
 internal interface PatchOperation {
+    val target: RuntimePatchReplacementTarget
+
     fun validate()
 
-    fun commit()
+    fun commit(scope: PatchRegistryMutationScope)
 
-    fun rollback()
+    fun rollback(scope: PatchRegistryMutationScope)
 }
 
 private data class TargetReplacementOperation<K : Any, V : Any>(
@@ -258,6 +304,11 @@ private data class TargetReplacementOperation<K : Any, V : Any>(
     val value: V,
     val order: PatchOrder,
 ) : PatchOperation {
+    override val target: RuntimePatchReplacementTarget = RuntimePatchReplacementTarget(
+        registryType = registry::class.qualifiedName ?: registry::class.toString(),
+        key = key.toString(),
+    )
+
     /**
      * Ensures the target key already exists in the registry's active view.
      */
@@ -268,24 +319,49 @@ private data class TargetReplacementOperation<K : Any, V : Any>(
     /**
      * Commits this patch layer replacement.
      */
-    override fun commit() {
-        registry.replace(key, value, order)
+    override fun commit(scope: PatchRegistryMutationScope) {
+        registry.replace(key, value, order, scope)
     }
 
     /**
      * Removes the whole replacement layer owned by this operation's patch id.
      */
-    override fun rollback() {
-        registry.remove(order.id)
+    override fun rollback(scope: PatchRegistryMutationScope) {
+        registry.remove(order.id, scope)
     }
 }
 
 /**
- * Replaces one service in [registry] using the reified service type.
+ * Replaces one service in an explicit [registry].
  */
-inline fun <reified T : Any> PatchInstallContext.replaceService(
+inline fun <reified T : Any> RuntimePatchServiceReplacements.replace(
     registry: PatchableServiceRegistry,
     service: T,
 ) {
     replace(registry, T::class, service)
+}
+
+class RuntimePatchInstallPlan internal constructor(
+    val patch: RuntimePatch,
+    internal val operations: List<PatchOperation>,
+) {
+    val replacements: List<RuntimePatchReplacementTarget> = operations.map { it.target }
+
+    fun validate() {
+        operations.forEach { it.validate() }
+    }
+}
+
+data class RuntimePatchReplacementTarget(
+    val registryType: String,
+    val key: String,
+)
+
+suspend fun RuntimePatchPlugin.recordInstallPlan(
+    patch: RuntimePatch,
+    runtime: NodeRuntime,
+): RuntimePatchInstallPlan {
+    val context = RuntimePatchInstallContext(patch, runtime)
+    install(context)
+    return context.plan()
 }

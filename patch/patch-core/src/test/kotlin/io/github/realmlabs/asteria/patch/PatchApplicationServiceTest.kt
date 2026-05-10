@@ -1,6 +1,6 @@
 package io.github.realmlabs.asteria.patch
 
-import io.github.realmlabs.asteria.core.gameApplication
+import io.github.realmlabs.asteria.core.*
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,8 +16,8 @@ class PatchApplicationServiceTest {
         val repository = InMemoryRuntimePatchRepository(listOf(second, first))
         val resolver = StaticRuntimePatchPluginResolver(
             mapOf(
-                first.id to plugin { replace(registry, "handler", "first") },
-                second.id to plugin { replace(registry, "handler", "second") },
+                first.id to plugin { replaceSlot(registry, "handler", "first") },
+                second.id to plugin { replaceSlot(registry, "handler", "second") },
             ),
         )
         val service = PatchApplicationService(
@@ -41,7 +41,7 @@ class PatchApplicationServiceTest {
         val enabled = patch("enabled", revision = 3)
         val repository = InMemoryRuntimePatchRepository(listOf(disabled, incompatible, enabled))
         val resolver = StaticRuntimePatchPluginResolver(
-            mapOf(enabled.id to plugin { replace(registry, "handler", "enabled") }),
+            mapOf(enabled.id to plugin { replaceSlot(registry, "handler", "enabled") }),
         )
 
         val report = PatchApplicationService(runtime(), environment(), repository, resolver).applyEnabledPatches()
@@ -62,7 +62,7 @@ class PatchApplicationServiceTest {
                     repository(InMemoryRuntimePatchRepository(listOf(patch)))
                     resolver(
                         StaticRuntimePatchPluginResolver(
-                            mapOf(patch.id to plugin { replace(registry, "handler", "startup") }),
+                            mapOf(patch.id to plugin { replaceSlot(registry, "handler", "startup") }),
                         ),
                     )
                 },
@@ -92,7 +92,7 @@ class PatchApplicationServiceTest {
             environment = environment(),
             repository = repository,
             resolver = StaticRuntimePatchPluginResolver(
-                mapOf(patch.id to plugin { replace(registry, "handler", "patched") }),
+                mapOf(patch.id to plugin { replaceSlot(registry, "handler", "patched") }),
             ),
         )
 
@@ -118,7 +118,7 @@ class PatchApplicationServiceTest {
             environment = environment(),
             repository = repository,
             resolver = StaticRuntimePatchPluginResolver(
-                mapOf(patch.id to plugin { replace(registry, "handler", "patched") }),
+                mapOf(patch.id to plugin { replaceSlot(registry, "handler", "patched") }),
             ),
         )
 
@@ -145,7 +145,7 @@ class PatchApplicationServiceTest {
             repository = repository,
             resolver = object : RuntimePatchPluginResolver {
                 override suspend fun resolve(patch: RuntimePatchDescriptor): RuntimePatchPlugin {
-                    return plugin { replace(registry, "handler", patch.artifact.checksum) }
+                    return plugin { replaceSlot(registry, "handler", patch.artifact.checksum) }
                 }
             },
         )
@@ -182,7 +182,7 @@ class PatchApplicationServiceTest {
     }
 
     private fun runtime(): PatchRuntime {
-        return PatchRuntime()
+        return PatchRuntime(TestRuntime)
     }
 
     private fun environment(): PatchEnvironment {
@@ -209,11 +209,18 @@ class PatchApplicationServiceTest {
         )
     }
 
-    private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {
+    private fun plugin(block: RuntimePatchInstallContext.() -> Unit): RuntimePatchPlugin {
         return object : RuntimePatchPlugin {
-            override suspend fun install(context: PatchInstallContext) {
+            override suspend fun install(context: RuntimePatchInstallContext) {
                 context.block()
             }
         }
+    }
+
+    private object TestRuntime : NodeRuntime {
+        override val name: String = "test"
+        override val roles: Set<RoleKey> = emptySet()
+        override val state: NodeState = NodeState.Started
+        override val services: ServiceRegistry = ServiceRegistry()
     }
 }

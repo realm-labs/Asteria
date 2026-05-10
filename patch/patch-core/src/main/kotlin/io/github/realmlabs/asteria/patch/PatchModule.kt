@@ -11,7 +11,7 @@ class PatchModule private constructor(
     override val name: String = "patch"
 
     override suspend fun install(context: ModuleContext) {
-        val runtime = PatchRuntime(context.tracerOrNoop(), context.metricsOrNoop())
+        val runtime = PatchRuntime(context.runtime, context.tracerOrNoop(), context.metricsOrNoop())
         val repository = options.repository ?: InMemoryRuntimePatchRepository()
         val resolver = options.resolver ?: StaticRuntimePatchPluginResolver()
         val service =

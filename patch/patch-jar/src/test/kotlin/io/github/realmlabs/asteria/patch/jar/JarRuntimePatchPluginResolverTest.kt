@@ -9,6 +9,7 @@ import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import java.util.jar.Manifest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
@@ -59,7 +60,33 @@ class JarRuntimePatchPluginResolverTest {
         resolver.evict(patch)
         resolver.resolve(patch)
 
-        kotlin.test.assertEquals(2, store.loadCount)
+        assertEquals(2, store.loadCount)
+    }
+
+    @Test
+    fun resolverReloadsWhenSamePatchIdUsesDifferentArtifact() = runBlocking {
+        val firstJar = jarWithPluginClass(TestPatchPlugin::class.java)
+        val secondJar = jarWithPluginClass(OtherPatchPlugin::class.java)
+        val firstArtifact = PatchArtifact(
+            name = "test-patch.jar",
+            checksum = "sha256:${firstJar.sha256Hex()}",
+        )
+        val secondArtifact = PatchArtifact(
+            name = "test-patch.jar",
+            checksum = "sha256:${secondJar.sha256Hex()}",
+        )
+        val store = CountingPatchArtifactStore(
+            mapOf(
+                firstArtifact to firstJar,
+                secondArtifact to secondJar,
+            ),
+        )
+        val resolver = JarRuntimePatchPluginResolver(store)
+
+        assertIs<TestPatchPlugin>(resolver.resolve(patch(firstArtifact)))
+        assertIs<OtherPatchPlugin>(resolver.resolve(patch(secondArtifact)))
+
+        assertEquals(2, store.loadCount)
     }
 
     @Test
@@ -81,14 +108,26 @@ class JarRuntimePatchPluginResolverTest {
     }
 
     class TestPatchPlugin : RuntimePatchPlugin {
-        override suspend fun install(context: PatchInstallContext) {
+        override suspend fun install(context: RuntimePatchInstallContext) {
+        }
+    }
+
+    class OtherPatchPlugin : RuntimePatchPlugin {
+        override suspend fun install(context: RuntimePatchInstallContext) {
         }
     }
 
     private fun jarWithPluginClass(type: Class<*>): ByteArray {
+        return jarWithManifestClass(type, JarRuntimePatchPluginResolver.PATCH_CLASS_NAME)
+    }
+
+    private fun jarWithManifestClass(
+        type: Class<*>,
+        attributeName: String,
+    ): ByteArray {
         val manifest = Manifest().apply {
             mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0"
-            mainAttributes.putValue(JarRuntimePatchPluginResolver.PATCH_CLASS_NAME, type.name)
+            mainAttributes.putValue(attributeName, type.name)
         }
         val classEntry = type.name.replace('.', '/') + ".class"
         val classBytes = requireNotNull(type.classLoader.getResourceAsStream(classEntry)) {
@@ -120,16 +159,19 @@ class JarRuntimePatchPluginResolverTest {
     }
 
     private class CountingPatchArtifactStore(
-        private val artifact: PatchArtifact,
-        private val bytes: ByteArray,
+        private val artifacts: Map<PatchArtifact, ByteArray>,
     ) : io.github.realmlabs.asteria.patch.PatchArtifactStore {
+        constructor(
+            artifact: PatchArtifact,
+            bytes: ByteArray,
+        ) : this(mapOf(artifact to bytes))
+
         var loadCount: Int = 0
             private set
 
         override suspend fun load(artifact: PatchArtifact): ByteArray {
-            require(artifact == this.artifact)
             loadCount += 1
-            return bytes
+            return requireNotNull(artifacts[artifact]) { "test artifact $artifact not found" }
         }
     }
 }

@@ -86,8 +86,9 @@
   flush dirty state in batches.
 - `script-*`, `gm-*`, and `ops-http-ktor`: script runtime, GM features, and node-local HTTP control are separate layers.
   Script runtime owns targets and policy; GM/ops entry points own authorization, audit context, and request submission.
-- `patch-*`: patch plugins replace patchable registry slots or service slots through `PatchInstallContext`. Base entries
-  remain registered, so uninstall falls back to the next patch layer or the base implementation.
+- `patch-*`: patch plugins declare service, message handler, or event handler replacements through
+  `RuntimePatchInstallContext`. Base entries remain registered, so uninstall falls back to the next patch layer or the
+  base implementation.
 
 ## Suggested Combinations
 

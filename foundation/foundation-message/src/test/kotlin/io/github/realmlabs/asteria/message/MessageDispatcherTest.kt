@@ -14,14 +14,14 @@ class MessageDispatcherTest {
         val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
         registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
-        val runtime = PatchRuntime()
+        val runtime = PatchRuntime(TestRuntime)
 
         dispatcher.dispatch(context(), LoginReq("p1"))
         assertIs<PatchApplyResult.Applied>(
             runtime.apply(
                 patch("login-fix"),
                 plugin {
-                    replaceHandler(registry, LoginHandler(events, "patched"))
+                    messageHandlers.replace(registry, LoginHandler(events, "patched"))
                 },
             ),
         )
@@ -36,15 +36,15 @@ class MessageDispatcherTest {
         val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
         registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
-        val runtime = PatchRuntime()
+        val runtime = PatchRuntime(TestRuntime)
         val first = patch("first", revision = 1)
         val second = patch("second", revision = 2)
 
         assertIs<PatchApplyResult.Applied>(
-            runtime.apply(first, plugin { replaceHandler(registry, LoginHandler(events, "first")) }),
+            runtime.apply(first, plugin { messageHandlers.replace(registry, LoginHandler(events, "first")) }),
         )
         assertIs<PatchApplyResult.Applied>(
-            runtime.apply(second, plugin { replaceHandler(registry, LoginHandler(events, "second")) }),
+            runtime.apply(second, plugin { messageHandlers.replace(registry, LoginHandler(events, "second")) }),
         )
         dispatcher.dispatch(context(), LoginReq("p1"))
 
@@ -103,9 +103,9 @@ class MessageDispatcherTest {
         return RuntimePatch(PatchId(id), revision)
     }
 
-    private fun plugin(block: PatchInstallContext.() -> Unit): RuntimePatchPlugin {
+    private fun plugin(block: RuntimePatchInstallContext.() -> Unit): RuntimePatchPlugin {
         return object : RuntimePatchPlugin {
-            override suspend fun install(context: PatchInstallContext) {
+            override suspend fun install(context: RuntimePatchInstallContext) {
                 context.block()
             }
         }

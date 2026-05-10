@@ -10,9 +10,11 @@ and audited on one node or across a cluster.
 - `RuntimePatch`: node-local execution identity, containing only patch id and repository-assigned revision.
 - `PatchRuntime`: current node patch runtime. It only executes already-selected `RuntimePatch` values.
 - `RuntimePatchRepository`: patch metadata repository. It stores descriptors and assigns increasing revisions.
-- `RuntimePatchPluginResolver`: resolves a patch artifact into an installable plugin.
-- `RuntimePatchPlugin`: the plugin entry point loaded from a patch jar.
-- `PatchInstallContext`: the context used by plugins to declare replacements that the runtime can commit and roll back.
+- `RuntimePatchPluginResolver`: resolves a patch artifact into an installable `RuntimePatchPlugin`.
+- `RuntimePatchPlugin`: the patch lifecycle entry point that declares install and uninstall logic.
+- `RuntimePatchInstallContext`: the context used by plugins to declare replacements that the runtime can commit and
+  roll back. It also exposes the current node `NodeRuntime`, so business registries can be read from
+  `context.runtime.services`.
 - `PatchableRegistry` / `PatchableServiceRegistry`: patchable handler slots or service slots.
 - `PatchApplicationService`: applies, disables, and checks compatibility on one node.
 - `PatchClusterApplicationService`: selects target nodes and records per-node results.
@@ -64,7 +66,8 @@ runtimePatches(
 Patch descriptors declare compatible applications, versions, and targets. A node can expire incompatible descriptors
 during startup, then run a desired-state reconciliation: descriptors that are `Enabled` in the repository and match the
 current `PatchEnvironment` are selected, converted into `RuntimePatch(id, revision)`, and handed to the local
-`PatchRuntime`. The execution layer does not check app/version/target/status again. After a node restart, GM does not
+`PatchRuntime`. `PatchRuntime` only handles patch executions that have already been selected for this node. After a node
+restart, GM does not
 need to push patches again; if the repository and artifact store are durable, the node reloads enabled metadata and
 restores patch layers from the stored jars.
 
@@ -85,11 +88,66 @@ status,
 compatible versions, and target nodes, then asks `RuntimePatchPluginResolver` to load a `RuntimePatchPlugin`.
 `PatchRuntime` receives only `RuntimePatch(id, revision)` and the plugin.
 
-Inside `RuntimePatchPlugin.install`, the plugin declares slot replacements through
-`PatchInstallContext.replace(registry, key, value)` or `replaceService<T>(registry, service)`. The runtime runs plugin
-installation and collects operations, validates that each target key currently exists, and then commits the operations.
-If a commit fails, already committed operations are rolled back in reverse order. If the patch is already applied in the
-same runtime, repeated apply is ignored.
+Inside `RuntimePatchPlugin.install`, the plugin declares replacement relationships. Registry-layer mutations require a
+`PatchRegistryMutationScope`, which is created by `PatchRuntime` and passed only while committing or rolling back a
+recorded operation. Business patch code declares replacements through the install context instead of writing registry
+layers directly.
+
+Business code usually exposes patchable targets through a binding object and registers it in the node
+`ServiceRegistry` during startup:
+
+```kotlin
+class GamePatchBindings(
+    val playerServices: PatchableServiceRegistry,
+    val playerMessageRegistry: PatchableMessageHandlerRegistry<PlayerContext, PlayerMessage>,
+    val playerEventRegistry: PatchableEventHandleRegistry<PlayerContext>,
+)
+
+context.services.register(GamePatchBindings::class, GamePatchBindings(...))
+```
+
+Patch plugin examples:
+
+```kotlin
+class PlayerServicePatch : RuntimePatchPlugin {
+    override suspend fun install(context: RuntimePatchInstallContext) {
+        val bindings = context.runtime.services.get<GamePatchBindings>()
+        context.services.replace(
+            bindings.playerServices,
+            PlayerActivityService::class,
+            PatchedPlayerActivityService(),
+        )
+    }
+}
+
+class LoginPatch : RuntimePatchPlugin {
+    override suspend fun install(context: RuntimePatchInstallContext) {
+        val bindings = context.runtime.services.get<GamePatchBindings>()
+        context.messageHandlers.replace(
+            bindings.playerMessageRegistry,
+            LoginReq::class,
+            PatchedLoginHandler(),
+        )
+    }
+}
+
+class LevelPatch : RuntimePatchPlugin {
+    override suspend fun install(context: RuntimePatchInstallContext) {
+        val bindings = context.runtime.services.get<GamePatchBindings>()
+        context.eventHandlers.replaceEventType(
+            bindings.playerEventRegistry,
+            PlayerLevelChanged::class,
+            key = eventHandleKey(PlayerLevelChangedHandler::class),
+        ) { handlerContext, event, publisher ->
+            handlerContext.player.quest.onLevelChanged(event.newLevel)
+        }
+    }
+}
+```
+
+The runtime runs patch installation to record an install plan, validates that each target key currently exists, and
+then commits the operations. If a commit fails, already committed operations are rolled back in reverse order. If the
+patch is already applied in the same runtime, repeated apply is ignored.
 
 `PatchableRegistry` keeps original base entries and replacement layers ordered by `revision/id`. Business reads through
 `get`, `require`, or `snapshot` see the current view after base entries and all active layers are merged. `replace`
@@ -100,7 +158,8 @@ type-keyed services.
 
 When disabling a patch, `PatchApplicationService.disable` first updates repository status to `Disabled`, then calls the
 local `PatchRuntime.remove`. Remove calls the plugin's `uninstall` for side effects the framework cannot track, then
-removes replacement layers declared through `PatchInstallContext` and lets registries fall back automatically. The
+removes replacement layers declared through `RuntimePatchInstallContext` and lets registries fall back automatically.
+The
 resolver may evict jar/classloader cache after disable.
 
 Cluster application is coordinated by `PatchClusterApplicationService`. It gets nodes from `PatchNodeProvider`, selects
@@ -143,8 +202,20 @@ Runtime patches are suitable for small logic repairs and temporary operational c
 normal releases. Patch code must be repeatable or able to detect already-applied state so node restarts do not register
 duplicate hooks.
 
-Only replacements made through `PatchInstallContext.replace` / `replaceService` are tracked and rolled back
-automatically. Threads, external hooks, or global state changed by a plugin must be cleaned up in `uninstall`.
+Only replacements made through `RuntimePatchInstallContext` entry points such as `services`, `messageHandlers`, and
+`eventHandlers` are tracked and rolled back automatically. Threads, external hooks, or global state changed by a plugin
+must be cleaned up in `uninstall`.
+
+Use a recording context when an operator or validation step needs to inspect the slots a patch would touch before
+committing it:
+
+```kotlin
+val plan = plugin.recordInstallPlan(RuntimePatch(PatchId("fix-login"), revision), runtime)
+plan.validate()
+println(plan.replacements)
+```
+
+`recordInstallPlan` runs `install` and records replacement declarations without committing replacement layers.
 
 Batch apply is not a transaction. If one patch fails, earlier successfully applied patches remain active. When disabling
 a patch, repository state may already be updated; a runtime remove result of `false` only means the current runtime did

@@ -74,7 +74,8 @@ KSP generates the following under `generatedPackage` and `moduleId`:
 The generated registry is a `PatchableMessageHandlerRegistry`. `MessageDispatcher` reads the current slot from the
 registry on every dispatch: base slots come from KSP-generated handles, and patches replace one message-type slot
 through
-`replaceHandler(registry, ...)`. Patches do not rebuild the dispatcher and cannot introduce a brand-new message type;
+`context.messageHandlers.replace(registry, ...)`. Patches do not rebuild the dispatcher and cannot introduce a brand-new
+message type;
 after removal, the slot falls back to the next patch layer or the base handler. Code that needs a custom
 `MessageHandleRegistry` can reuse the generated handles and construct its own `MessageDispatcher`.
 

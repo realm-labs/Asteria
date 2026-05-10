@@ -8,9 +8,10 @@
 - `RuntimePatch`：节点执行层的补丁身份，只包含 patch id 和 repository 分配的 revision。
 - `PatchRuntime`：当前节点已安装的补丁运行态，只执行已经筛选过的 `RuntimePatch`。
 - `RuntimePatchRepository`：补丁元数据仓库，保存 descriptor 并分配递增 revision。
-- `RuntimePatchPluginResolver`：把补丁 artifact 解析成可安装 plugin。
-- `RuntimePatchPlugin`：补丁 jar 中真正执行安装/卸载的插件入口。
-- `PatchInstallContext`：插件声明替换操作的上下文，负责把替换交给 runtime 统一提交和回滚。
+- `RuntimePatchPluginResolver`：把补丁 artifact 解析成可安装的 `RuntimePatchPlugin`。
+- `RuntimePatchPlugin`：补丁生命周期入口，负责声明安装和卸载逻辑。
+- `RuntimePatchInstallContext`：补丁声明替换操作的上下文，同时暴露当前节点的 `NodeRuntime`，业务 registry 可以从
+  `context.runtime.services` 获取。
 - `PatchableRegistry` / `PatchableServiceRegistry`：可被补丁替换的 handler slot 或 service slot。
 - `PatchApplicationService`：单节点应用补丁、停用补丁、处理兼容性。
 - `PatchClusterApplicationService`：选择目标节点并记录每个节点的应用结果。
@@ -60,7 +61,8 @@ runtimePatches(
 
 补丁 descriptor 声明自己兼容的应用、版本和目标节点。节点启动时可以自动过期不兼容 descriptor，再对本节点执行一次
 desired-state reconcile：repository 中 `Enabled` 且匹配当前 `PatchEnvironment` 的 descriptor 会先被筛选出来，再转换成只含
-`id/revision` 的 `RuntimePatch` 交给节点本地 `PatchRuntime` 执行。执行层不再判断 app/version/target/status。节点重启后不依赖
+`id/revision` 的 `RuntimePatch` 交给节点本地 `PatchRuntime` 执行。`PatchRuntime` 只处理已经筛选过的 patch
+execution。节点重启后不依赖
 GM 推送，只要 repository 和 artifact store 是持久化的，就能从 enabled metadata 重新加载 jar 并恢复 patch layer。
 
 补丁覆盖顺序由 repository 分配的 `revision` 决定。业务创建 descriptor 时不需要填写顺序字段；保存新 descriptor 或替换已有
@@ -76,9 +78,59 @@ GM 或发布流程先把补丁 jar 写入 artifact store，再把 `RuntimePatchD
 `PatchApplicationService` 从 repository 读取 descriptor，检查状态、兼容版本和目标节点，然后交给
 `RuntimePatchPluginResolver` 加载 `RuntimePatchPlugin`。`PatchRuntime` 只接收 `RuntimePatch(id, revision)` 和 plugin。
 
-插件在 `RuntimePatchPlugin.install` 中通过 `PatchInstallContext.replace(registry, key, value)`，或
-`replaceService<T>(registry, service)` 声明要替换的 slot。runtime 会先执行插件安装并收集操作，再统一校验目标 key 当前存在，
-然后按操作提交；如果提交过程中失败，已经提交的操作会按反序回滚。补丁已经应用过时，同一个 runtime 会忽略重复 apply。
+插件在 `RuntimePatchPlugin.install` 中声明替换关系。底层 `PatchSlotRegistry` 的写操作需要
+`PatchRegistryMutationScope`，这个 scope 由 `PatchRuntime` 创建并在提交/回滚时传入；业务 patch 代码通过 install context
+声明替换，不直接写 registry layer。
+
+业务侧通常把可替换入口集中到一个 binding 对象里，并在节点启动时注册到 `ServiceRegistry`：
+
+```kotlin
+class GamePatchBindings(
+    val playerServices: PatchableServiceRegistry,
+    val playerMessageRegistry: PatchableMessageHandlerRegistry<PlayerContext, PlayerMessage>,
+    val playerEventRegistry: PatchableEventHandleRegistry<PlayerContext>,
+)
+
+context.services.register(GamePatchBindings::class, GamePatchBindings(...))
+```
+
+补丁插件示例：
+
+```kotlin
+class PlayerServicePatch : RuntimePatchPlugin {
+    override suspend fun install(context: RuntimePatchInstallContext) {
+        val bindings = context.runtime.services.get<GamePatchBindings>()
+        context.services.replace(
+            bindings.playerServices,
+            PlayerActivityService::class,
+            PatchedPlayerActivityService(),
+        )
+    }
+}
+
+class LoginPatch : RuntimePatchPlugin {
+    override suspend fun install(context: RuntimePatchInstallContext) {
+        val bindings = context.runtime.services.get<GamePatchBindings>()
+        context.messageHandlers.replace(bindings.playerMessageRegistry, LoginReq::class, PatchedLoginHandler())
+    }
+}
+
+class LevelPatch : RuntimePatchPlugin {
+    override suspend fun install(context: RuntimePatchInstallContext) {
+        val bindings = context.runtime.services.get<GamePatchBindings>()
+        context.eventHandlers.replaceEventType(
+            bindings.playerEventRegistry,
+            PlayerLevelChanged::class,
+            key = eventHandleKey(PlayerLevelChangedHandler::class),
+        ) { handlerContext, event, publisher ->
+            handlerContext.player.quest.onLevelChanged(event.newLevel)
+        }
+    }
+}
+```
+
+runtime 会先执行补丁安装并记录 install plan，再统一校验目标 key 当前存在，然后按操作提交；如果提交过程中失败，已经提交的操作会按反序回滚。补丁已经应用过时，
+同一个 runtime 会忽略重复 apply。
 
 `PatchableRegistry` 保存原始 base entry 和按 `revision/id` 排序的 replacement layer。业务读取 `get`、`require` 或
 `snapshot` 时看到的是 base 加所有有效 layer 之后的当前视图。`replace` 只写入当前 patch 的 layer，不修改 base；`remove(id)`
@@ -86,9 +138,8 @@ GM 或发布流程先把补丁 jar 写入 artifact store，再把 `RuntimePatchD
 最后才是原始 base entry。`PatchableServiceRegistry` 是同一机制的类型键 service 版本。
 
 禁用补丁时，`PatchApplicationService.disable` 先把 repository 状态更新为 `Disabled`，再调用本节点 `PatchRuntime.remove`。
-remove 会调用插件的 `uninstall` 清理框架无法追踪的副作用，随后删除通过 `PatchInstallContext` 声明的替换 layer，并让
-registry
-自动回退到下一层。resolver 可以在禁用后清理 jar/classloader 缓存。
+remove 会调用 `uninstall` 清理框架无法追踪的副作用，随后删除通过 `RuntimePatchInstallContext` 声明的替换 layer，并让
+registry 自动回退到下一层。resolver 可以在禁用后清理 jar/classloader 缓存。
 
 集群应用通过 `PatchClusterApplicationService` 完成。它从 `PatchNodeProvider` 获取节点，按 descriptor 的兼容性和 target
 筛选目标，再通过 `PatchNodeClient` 对每个节点发起 apply 或 disable，并把每次尝试写入 node-result
@@ -126,8 +177,18 @@ ZooKeeper，artifact bytes 放 GridFS、对象存储或 HTTP store。
 运行时补丁适合小范围逻辑修复和临时运维能力，不适合替代正常版本发布。补丁代码必须可重复应用或能在 repository
 状态中识别已应用版本，避免节点重启后重复注册同一个 hook。
 
-`RuntimePatchPlugin.install` 里只有通过 `PatchInstallContext.replace` / `replaceService`
-这类框架入口做的替换会被自动追踪并回滚。插件自己启动的线程、注册的外部 hook 或修改的全局状态，必须在 `uninstall` 中清理。
+只有通过 `RuntimePatchInstallContext` 的 `services`、`messageHandlers`、`eventHandlers`
+这类入口做的替换会被自动追踪并回滚。补丁自己启动的线程、注册的外部 hook 或修改的全局状态，必须在 `uninstall` 中清理。
+
+安装前需要检查补丁会触碰哪些 slot 时，可以用 recording context：
+
+```kotlin
+val plan = plugin.recordInstallPlan(RuntimePatch(PatchId("fix-login"), revision), runtime)
+plan.validate()
+println(plan.replacements)
+```
+
+`recordInstallPlan` 只执行 install 并记录替换声明，不会提交替换 layer。
 
 批量 apply 不是整体事务。某个 patch 失败时，之前已经成功应用的 patch 会保持生效。禁用补丁时，repository 状态可能已经更新，而本节点
 runtime remove 返回 false 只表示当前 runtime 没有该 patch 或已经移除。

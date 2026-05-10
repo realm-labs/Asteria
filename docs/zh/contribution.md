@@ -127,14 +127,19 @@ val registry = PatchableRegistry(
 context.services.register(ActivityServiceRegistry::class, ActivityServiceRegistry(registry))
 ```
 
-补丁替换的是 registry slot：
+补丁代码从当前节点的 `ServiceRegistry` 取出业务 registry，再替换 registry slot：
 
 ```kotlin
-context.replace(
-    registry,
-    ActivityKey("seven_day"),
-    PatchedSevenDayActivityService,
-)
+fun RuntimePatchInstallContext.replaceActivityService(
+    registry: PatchableRegistry<ActivityKey, ActivityService>,
+    key: ActivityKey,
+    service: ActivityService,
+) {
+    replaceSlot(registry, key, service)
+}
+
+val activities = context.runtime.services.get<ActivityServiceRegistry>()
+context.replaceActivityService(activities.registry, ActivityKey("seven_day"), PatchedSevenDayActivityService)
 ```
 
 这样基础清单来自编译期生成，运行期读的是 `PatchableRegistry` 的当前视图。是否允许新增 key、是否只允许替换已有 key、是否需要多索引同步，都由业务 registry 定义。

@@ -155,8 +155,8 @@ routing, so both synchronous dispatch and actor queued dispatch see the latest h
 
 ```kotlin
 class LevelPatch : RuntimePatchPlugin {
-    override suspend fun install(context: PatchInstallContext) {
-        context.replaceEventTypeHandler(
+    override suspend fun install(context: RuntimePatchInstallContext) {
+        context.eventHandlers.replaceEventType(
             GeneratedGameEventDispatchers.defaultRegistry,
             PlayerLevelChanged::class,
             key = eventHandleKey(PlayerQuestLevelHandler::class),
