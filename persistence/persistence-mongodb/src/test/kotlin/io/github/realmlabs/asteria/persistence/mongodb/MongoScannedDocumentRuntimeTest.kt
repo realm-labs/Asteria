@@ -38,6 +38,38 @@ class MongoScannedDocumentRuntimeTest {
     }
 
     @Test
+    fun `repeated scans merge to latest sets and remaining unsets`() {
+        val runtime = runtimeFor(1)
+        val entity = TestEntity(1, "alice", mapOf("a" to 1, "b" to 2))
+        runtime.attachLoaded(entity)
+
+        entity.bag = linkedMapOf("a" to 3, "c" to 4)
+        runtime.scan(entity)
+        entity.bag = linkedMapOf("a" to 5, "d" to 6)
+        runtime.scan(entity)
+
+        val write = runtime.pendingWrites().single()
+        assertEquals(mapOf("bag.a" to 5, "bag.d" to 6), write.sets)
+        assertEquals(setOf("bag.b", "bag.c"), write.unsets)
+    }
+
+    @Test
+    fun `create and later scan merge into one upsert with latest values`() {
+        val runtime = runtimeFor(1)
+        val entity = TestEntity(1, "alice", linkedMapOf("a" to 1, "b" to 2))
+
+        runtime.enqueueCreated(entity)
+        entity.name = "bob"
+        entity.bag = linkedMapOf("a" to 3, "c" to 4)
+        runtime.scan(entity)
+
+        val write = runtime.pendingWrites().single()
+        assertEquals(mapOf("name" to "bob", "bag.a" to 3, "bag.c" to 4), write.sets)
+        assertEquals(setOf("bag.b"), write.unsets)
+        assertTrue(write.upsert)
+    }
+
+    @Test
     fun `delete overrides pending scanned updates`() {
         val runtime = runtimeFor(1)
         val entity = TestEntity(1, "alice", mapOf("a" to 1))
@@ -50,6 +82,37 @@ class MongoScannedDocumentRuntimeTest {
         val write = runtime.pendingWrites().single()
         assertTrue(write.delete)
         assertTrue(write.sets.isEmpty())
+        assertTrue(write.unsets.isEmpty())
+    }
+
+    @Test
+    fun `delete suppresses later scanned updates`() {
+        val runtime = runtimeFor(1)
+        val entity = TestEntity(1, "alice", mapOf("a" to 1))
+        runtime.attachLoaded(entity)
+
+        runtime.enqueueDelete()
+        entity.name = "bob"
+        entity.bag = mapOf("a" to 2)
+        runtime.scan(entity)
+
+        val write = runtime.pendingWrites().single()
+        assertTrue(write.delete)
+        assertTrue(write.sets.isEmpty())
+        assertTrue(write.unsets.isEmpty())
+    }
+
+    @Test
+    fun `created child fields are replaced by latest scanned child values before first flush`() {
+        val runtime = runtimeFor(1)
+        val entity = TestEntity(1, "alice", linkedMapOf("a" to 1))
+
+        runtime.enqueueCreated(entity)
+        entity.bag = linkedMapOf("a" to 2)
+        runtime.scan(entity)
+
+        val write = runtime.pendingWrites().single()
+        assertEquals(mapOf("name" to "alice", "bag.a" to 2), write.sets)
         assertTrue(write.unsets.isEmpty())
     }
 

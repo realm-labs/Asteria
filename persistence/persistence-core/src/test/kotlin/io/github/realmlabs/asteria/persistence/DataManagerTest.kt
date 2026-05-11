@@ -281,9 +281,141 @@ class DataManagerTest {
             manager.loadEager()
         }
     }
+
+    @Test
+    fun `manager rejects duplicate data module types`() {
+        assertFailsWith<IllegalStateException> {
+            DataManager(
+                scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+                modules = listOf(
+                    dataModule { TestData() },
+                    dataModule { TestData() },
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `unregistered data access fails fast`(): Unit = runBlocking {
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = emptyList(),
+        )
+
+        assertFailsWith<IllegalStateException> {
+            manager.getOrLoad<NamedData>()
+        }
+        assertFailsWith<IllegalStateException> {
+            manager.requireLoaded<NamedData>()
+        }
+    }
+
+    @Test
+    fun `failed load is not cached`(): Unit = runBlocking {
+        var attempts = 0
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.lazy()) {
+                    attempts += 1
+                    FailableLoadData(failLoad = attempts == 1)
+                },
+            ),
+        )
+
+        assertFailsWith<IllegalStateException> {
+            manager.getOrLoad<FailableLoadData>()
+        }
+
+        val loaded = manager.getOrLoad<FailableLoadData>()
+
+        assertTrue(loaded.loaded)
+        assertEquals(2, attempts)
+    }
+
+    @Test
+    fun `flush and drain continue after one data returns false`(): Unit = runBlocking {
+        val first = TestData(flushResult = false, drainResult = false)
+        val second = OtherAutoFlushData()
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule { first },
+                dataModule { second },
+            ),
+        )
+
+        manager.loadEager()
+
+        assertFalse(manager.flush())
+        assertEquals(1, first.flushes)
+        assertEquals(1, second.flushes)
+
+        assertFalse(manager.drain())
+        assertEquals(1, first.drains)
+        assertEquals(1, second.drains)
+    }
+
+    @Test
+    fun `unloadable data must be lease aware`(): Unit = runBlocking {
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.unloadableLazy("broken", 10.seconds)) { NotLeaseAwareFlushData() },
+            ),
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            manager.use<NotLeaseAwareFlushData, Unit> { }
+        }
+    }
+
+    @Test
+    fun `multi use refreshes access time when block fails`(): Unit = runBlocking {
+        val clock = MutableClock()
+        val first = GuardedData()
+        val second = OtherGuardedData()
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { first },
+                dataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { second },
+            ),
+            clock = clock,
+        )
+
+        manager.use { mail: GuardedData, activity: OtherGuardedData ->
+            mail.touch()
+            activity.touch()
+        }
+        clock.advanceSeconds(9)
+        assertFailsWith<IllegalStateException> {
+            manager.use { mail: GuardedData, activity: OtherGuardedData ->
+                mail.touch()
+                activity.touch()
+                error("business failure")
+            }
+        }
+        clock.advanceSeconds(9)
+        manager.tick()
+
+        first.touch()
+        second.touch()
+        assertEquals(0, first.drains)
+        assertEquals(0, second.drains)
+
+        clock.advanceSeconds(1)
+        manager.tick()
+
+        assertEquals(1, first.drains)
+        assertEquals(1, second.drains)
+    }
 }
 
-private class TestData : AutoFlushMemData {
+private class TestData(
+    private val flushResult: Boolean = true,
+    private val drainResult: Boolean = true,
+) : AutoFlushMemData {
     var loaded: Boolean = false
     var flushes: Int = 0
     var drains: Int = 0
@@ -298,12 +430,12 @@ private class TestData : AutoFlushMemData {
 
     override suspend fun flush(): Boolean {
         flushes += 1
-        return true
+        return flushResult
     }
 
     override suspend fun drain(): Boolean {
         drains += 1
-        return true
+        return drainResult
     }
 }
 
@@ -365,6 +497,46 @@ private class OtherGuardedData : LeaseGuardedMemData(), AutoFlushMemData {
         drains += 1
         return true
     }
+}
+
+private class OtherAutoFlushData : AutoFlushMemData {
+    var flushes: Int = 0
+    var drains: Int = 0
+
+    override suspend fun load() = Unit
+
+    override suspend fun tick() = Unit
+
+    override suspend fun flush(): Boolean {
+        flushes += 1
+        return true
+    }
+
+    override suspend fun drain(): Boolean {
+        drains += 1
+        return true
+    }
+}
+
+private class FailableLoadData(
+    private val failLoad: Boolean,
+) : MemData {
+    var loaded: Boolean = false
+
+    override suspend fun load() {
+        check(!failLoad) { "load failed" }
+        loaded = true
+    }
+}
+
+private class NotLeaseAwareFlushData : AutoFlushMemData {
+    override suspend fun load() = Unit
+
+    override suspend fun tick() = Unit
+
+    override suspend fun flush(): Boolean = true
+
+    override suspend fun drain(): Boolean = true
 }
 
 private class SecondData : MemData {

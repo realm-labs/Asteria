@@ -162,6 +162,26 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
     }
 
     @Test
+    fun `flushSome respects budget and drain flushes all scanned dirty rows`() = withDatabase { database ->
+        val table = table(database)
+        table.createLoaded(TestEntity(1, "alice", linkedMapOf("a" to 1)))
+        table.createLoaded(TestEntity(2, "bob", linkedMapOf("b" to 2)))
+        table.createLoaded(TestEntity(3, "carol", linkedMapOf("c" to 3)))
+
+        val progress = table.flushSome(MongoFlushBudget(maxRows = 1, maxDuration = 1.minutes))
+
+        assertEquals(MongoFlushProgress(attemptedRows = 1, flushedRows = 1, failedRows = 0), progress)
+        assertEquals("alice", findPlayer(database, 1).getString("name"))
+        assertNull(findPlayerOrNull(database, 2))
+        assertNull(findPlayerOrNull(database, 3))
+
+        assertTrue(table.drain())
+
+        assertEquals("bob", findPlayer(database, 2).getString("name"))
+        assertEquals("carol", findPlayer(database, 3).getString("name"))
+    }
+
+    @Test
     fun `journal recovery is idempotent when Mongo already has the same write`() = withDatabase { database ->
         val directory = createTempDirectory("asteria-mongo-journal-idempotent")
         val policy = MongoJournalPolicy(enabled = true, directory = directory, forceOnAppend = true)
@@ -248,7 +268,11 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
     }
 
     private suspend fun findPlayer(database: MongoDatabase, id: Int): Document {
-        return assertNotNull(database.getCollection<Document>(COLLECTION).find(eq("_id", id)).firstOrNull())
+        return assertNotNull(findPlayerOrNull(database, id))
+    }
+
+    private suspend fun findPlayerOrNull(database: MongoDatabase, id: Int): Document? {
+        return database.getCollection<Document>(COLLECTION).find(eq("_id", id)).firstOrNull()
     }
 
     data class TestEntity(

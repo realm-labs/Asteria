@@ -73,6 +73,29 @@ class MongoTrackedDocumentIntegrationTest {
     }
 
     @Test
+    fun `tracked and scanned runtimes persist the same complex document changes`() = withDatabase { database ->
+        val trackedRuntime = runtimeFor(1, database)
+        val trackedPlayer = TrackedPlayer(trackedRuntime.context(), initialPlayer(id = 1))
+        val scannedRuntime = scannedRuntimeFor(2, database)
+        val scannedPlayer = initialScannedPlayer(id = 2)
+
+        trackedRuntime.enqueueCreated(trackedPlayer)
+        scannedRuntime.enqueueCreated(scannedPlayer)
+        assertTrue(trackedRuntime.flushSafely())
+        assertTrue(scannedRuntime.flushSafely())
+
+        applyComplexChanges(trackedPlayer)
+        applyComplexChanges(scannedPlayer)
+        scannedRuntime.scan(scannedPlayer)
+        assertTrue(trackedRuntime.flushSafely())
+        assertTrue(scannedRuntime.flushSafely())
+
+        val trackedDocument = withoutId(findPlayer(database, 1))
+        val scannedDocument = withoutId(findPlayer(database, 2))
+        assertEquals(trackedDocument, scannedDocument)
+    }
+
+    @Test
     fun `tracked wrapper delete removes Mongo document`() = withDatabase { database ->
         val runtime = runtimeFor(1, database)
         val player = TrackedPlayer(
@@ -199,6 +222,28 @@ class MongoTrackedDocumentIntegrationTest {
         return MongoTrackedDocumentRuntime(COLLECTION, id, database)
     }
 
+    private fun scannedRuntimeFor(
+        id: Int,
+        database: MongoDatabase,
+    ): MongoScannedDocumentRuntime<Int, ScannedPlayerEntity> {
+        return MongoScannedDocumentRuntime(
+            collectionName = COLLECTION,
+            documentId = id,
+            scanPlan = mongoScanPlan(
+                mongoScannedField<ScannedPlayerEntity>("name") { entity -> entity.name },
+                mongoScannedField<ScannedPlayerEntity>("profile") { entity -> entity.profile.toDocument() },
+                mongoScannedMapField<ScannedPlayerEntity>("bag") { entity ->
+                    entity.bag.mapValues { (_, value) -> value.toDocument() }
+                },
+                mongoScannedField<ScannedPlayerEntity>("quests") { entity ->
+                    entity.quests.map { value -> value.toDocument() }
+                },
+                mongoScannedField<ScannedPlayerEntity>("tags") { entity -> entity.tags.toList() },
+            ),
+            database = database,
+        )
+    }
+
     private fun trackedPlayer(
         queue: MongoPendingWriteQueue,
         bag: MutableMap<String, ItemStack> = linkedMapOf("sword" to ItemStack(1001, 1)),
@@ -217,6 +262,55 @@ class MongoTrackedDocumentIntegrationTest {
         )
     }
 
+    private fun initialPlayer(id: Int): PlayerEntity {
+        return PlayerEntity(
+            id = id,
+            name = "alice",
+            profile = Profile("alice", 1),
+            bag = linkedMapOf("sword" to ItemStack(1001, 1), "potion" to ItemStack(2001, 2)),
+            quests = mutableListOf(QuestState(10, "open")),
+            tags = linkedSetOf("newbie", "vip"),
+        )
+    }
+
+    private fun initialScannedPlayer(id: Int): ScannedPlayerEntity {
+        return ScannedPlayerEntity(
+            id = id,
+            name = "alice",
+            profile = Profile("alice", 1),
+            bag = linkedMapOf("sword" to ItemStack(1001, 1), "potion" to ItemStack(2001, 2)),
+            quests = mutableListOf(QuestState(10, "open")),
+            tags = linkedSetOf("newbie", "vip"),
+        )
+    }
+
+    private fun applyComplexChanges(player: TrackedPlayer) {
+        player.name = "bob"
+        player.profile.nickname = "bobby"
+        player.bag.getValue("potion").count = 7
+        player.bag.remove("sword")
+        player.bag["shield"] = ItemStack(3001, 1)
+        player.bag["shield"]!!.count = 2
+        player.quests[0].status = "done"
+        player.quests.add(QuestState(20, "open"))
+        player.quests[1].status = "done"
+        player.tags.remove("newbie")
+        player.tags.add("returning")
+    }
+
+    private fun applyComplexChanges(player: ScannedPlayerEntity) {
+        player.name = "bob"
+        player.profile = player.profile.copy(nickname = "bobby")
+        player.bag["potion"] = player.bag.getValue("potion").copy(count = 7)
+        player.bag.remove("sword")
+        player.bag["shield"] = ItemStack(3001, 2)
+        player.quests[0] = player.quests[0].copy(status = "done")
+        player.quests.add(QuestState(20, "open"))
+        player.quests[1] = player.quests[1].copy(status = "done")
+        player.tags.remove("newbie")
+        player.tags.add("returning")
+    }
+
     private fun withDatabase(block: suspend (MongoDatabase) -> Unit) = runBlocking {
         MongoClient.create(mongo().connectionString).use { client ->
             val database = client.getDatabase("asteria_${UUID.randomUUID().toString().replace("-", "")}")
@@ -232,10 +326,35 @@ class MongoTrackedDocumentIntegrationTest {
         return assertNotNull(database.getCollection<Document>(COLLECTION).find(eq("_id", id)).firstOrNull())
     }
 
+    private fun withoutId(document: Document): Document {
+        return Document(document).apply { remove("_id") }
+    }
+
+    private fun Profile.toDocument(): Document {
+        return Document(mapOf("nickname" to nickname, "avatar" to avatar))
+    }
+
+    private fun ItemStack.toDocument(): Document {
+        return Document(mapOf("itemId" to itemId, "count" to count))
+    }
+
+    private fun QuestState.toDocument(): Document {
+        return Document(mapOf("questId" to questId, "status" to status))
+    }
+
     private data class PlayerEntity(
         override val id: Int,
         val name: String,
         val profile: Profile,
+        val bag: MutableMap<String, ItemStack>,
+        val quests: MutableList<QuestState>,
+        val tags: MutableSet<String>,
+    ) : Entity<Int>
+
+    private data class ScannedPlayerEntity(
+        override val id: Int,
+        var name: String,
+        var profile: Profile,
         val bag: MutableMap<String, ItemStack>,
         val quests: MutableList<QuestState>,
         val tags: MutableSet<String>,

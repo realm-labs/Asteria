@@ -239,6 +239,59 @@ class AsteriaMongoEntityCodeGeneratorTest {
         assertContains(error.message.orEmpty(), "Nullable Mongo collection properties are not supported")
     }
 
+    @Test
+    fun `scan ignored properties are omitted from generated scan plan`() {
+        val file = AsteriaMongoEntityCodeGenerator.buildFile(
+            MongoEntityCodegenModel(
+                packageName = "com.example.player",
+                entityType = PLAYER_ENTITY,
+                wrapperName = "TrackedPlayerEntity",
+                helperName = "PlayerEntityMongo",
+                collectionName = "players",
+                id = MongoEntityPropertyModel("id", "_id", LONG),
+                properties = listOf(
+                    MongoEntityPropertyModel("id", "_id", LONG),
+                    MongoEntityPropertyModel("name", "name", STRING),
+                    MongoEntityPropertyModel("runtimeOnly", "runtimeOnly", STRING, scanIgnored = true),
+                ),
+            ),
+        )
+
+        val code = file.toString()
+
+        assertContains(code, "mongoScannedField(\"name\") { entity: PlayerEntity -> entity.name }")
+        assertFalse("runtimeOnly\") { entity: PlayerEntity -> entity.runtimeOnly" in code)
+    }
+
+    @Test
+    fun `scan whole field map uses field scan instead of map child scan`() {
+        val file = AsteriaMongoEntityCodeGenerator.buildFile(
+            MongoEntityCodegenModel(
+                packageName = "com.example.player",
+                entityType = PLAYER_ENTITY,
+                wrapperName = "TrackedPlayerEntity",
+                helperName = "PlayerEntityMongo",
+                collectionName = "players",
+                id = MongoEntityPropertyModel("id", "_id", LONG),
+                properties = listOf(
+                    MongoEntityPropertyModel("id", "_id", LONG),
+                    MongoEntityPropertyModel(
+                        "bag",
+                        "bag",
+                        MUTABLE_MAP.parameterizedBy(STRING, INT),
+                        MongoEntityPropertyKind.Map,
+                        scanWholeField = true,
+                    ),
+                ),
+            ),
+        )
+
+        val code = file.toString()
+
+        assertContains(code, "mongoScannedField(\"bag\") { entity: PlayerEntity -> entity.bag }")
+        assertFalse("mongoScannedMapField(\"bag\")" in code)
+    }
+
     private companion object {
         val INT = ClassName("kotlin", "Int")
         val LONG = ClassName("kotlin", "Long")
