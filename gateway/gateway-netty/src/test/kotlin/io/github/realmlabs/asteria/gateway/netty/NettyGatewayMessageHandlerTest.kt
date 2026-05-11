@@ -7,10 +7,11 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.milliseconds
 
 class NettyGatewayMessageHandlerTest {
     @Test
-    fun `message handler delivers decoded netty message with gateway session`() = runBlocking {
+    fun `message handler delivers decoded netty message with gateway session`(): Unit = runBlocking {
         val received = CompletableDeferred<Pair<String, String>>()
         val transportHandler = object : GatewayTransportHandler {
             override suspend fun connected(connection: GatewayConnection): GatewaySession {
@@ -37,7 +38,7 @@ class NettyGatewayMessageHandlerTest {
         channel.pipeline().fireChannelActive()
         channel.writeInbound("hello")
 
-        assertEquals("s1" to "hello", withTimeout(1_000) { received.await() })
+        assertEquals("s1" to "hello", withTimeout(1_000.milliseconds) { received.await() })
         channel.close()
     }
 }

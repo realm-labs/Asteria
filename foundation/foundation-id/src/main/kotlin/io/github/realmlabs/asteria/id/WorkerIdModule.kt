@@ -101,7 +101,7 @@ class WorkerIdModule(
                     current.expiresAt,
                     error,
                 )
-                delay(retryDelayMillis(now, current).milliseconds)
+                delay(retryDelay(now, current))
             }
         }
         return null
@@ -124,16 +124,16 @@ class WorkerIdModule(
         )
     }
 
-    private fun retryDelayMillis(
+    private fun retryDelay(
         now: Instant,
         current: WorkerIdLease,
-    ): Long {
-        val untilExpiry = (current.expiresAt - now).inWholeMilliseconds
+    ): Duration {
+        val untilExpiry = current.expiresAt - now
         return minOf(
-            DEFAULT_RENEW_RETRY_DELAY.inWholeMilliseconds,
-            options.renewInterval.inWholeMilliseconds,
+            DEFAULT_RENEW_RETRY_DELAY,
+            options.renewInterval,
             untilExpiry,
-        ).coerceAtLeast(1)
+        ).coerceAtLeast(1.milliseconds)
     }
 
     override suspend fun stop(context: ModuleContext) {

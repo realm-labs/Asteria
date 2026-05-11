@@ -239,11 +239,18 @@ class RepositoryScriptJobExecutionLimiter(
                 if (now >= leaseUntilMillis) {
                     throw ScriptJobPermitLeaseLostException(lease, error)
                 }
-                delay(minOf(retryDelay.inWholeMilliseconds, leaseUntilMillis - now).coerceAtLeast(1).milliseconds)
+                delay(retryDelayBeforeLeaseExpiry(now, leaseUntilMillis))
                 now = System.currentTimeMillis()
             }
         }
         throw CancellationException("script job permit heartbeat was cancelled")
+    }
+
+    private fun retryDelayBeforeLeaseExpiry(
+        nowMillis: Long,
+        leaseUntilMillis: Long,
+    ): Duration {
+        return minOf(retryDelay, (leaseUntilMillis - nowMillis).milliseconds).coerceAtLeast(1.milliseconds)
     }
 }
 

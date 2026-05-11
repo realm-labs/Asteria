@@ -14,7 +14,7 @@ import kotlin.test.assertIs
 
 class PekkoScriptSerializerTest {
     @Test
-    fun serializerRoundTripsScriptMessages() = runBlocking {
+    fun serializerRoundTripsScriptMessages(): Unit = runBlocking {
         val system = ActorSystem.create("script-serializer-direct-${System.nanoTime()}")
         val serializer = PekkoScriptSerializer(system as ExtendedActorSystem)
 
@@ -50,7 +50,7 @@ class PekkoScriptSerializerTest {
     }
 
     @Test
-    fun referenceConfigBindsScriptMessagesToSerializer() = runBlocking {
+    fun referenceConfigBindsScriptMessagesToSerializer(): Unit = runBlocking {
         val system = ActorSystem.create("script-serializer-${System.nanoTime()}")
         try {
             val serializer = SerializationExtension.get(system).findSerializerFor(

@@ -3,8 +3,10 @@ package io.github.realmlabs.asteria.script.job
 import io.github.realmlabs.asteria.observability.*
 import io.github.realmlabs.asteria.script.*
 import kotlinx.coroutines.*
+import org.slf4j.LoggerFactory
 import java.util.*
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -27,6 +29,8 @@ class ScriptJobService(
     private val executionLimiter: ScriptJobExecutionLimiter = SemaphoreScriptJobExecutionLimiter(),
     private val auditSink: ScriptJobAuditSink = NoopScriptJobAuditSink,
 ) {
+    private val logger = LoggerFactory.getLogger(ScriptJobService::class.java)
+
     init {
         require(workerId.isNotBlank()) { "script job worker id must not be blank" }
         require(claimBatchSize > 0) { "script job claim batch size must be positive" }
@@ -462,7 +466,7 @@ class ScriptJobService(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                error(error)
+                logger.error("script job item execution failed executionId={}", command.executionId, error)
                 ScriptExecutionBatchResult(
                     executionId = command.executionId,
                     results = listOf(
@@ -564,10 +568,9 @@ class ScriptJobService(
         timeout: Duration,
         currentLeaseUntilMillis: Long,
     ): Long {
-        val leaseUntilMillis = currentLeaseUntilMillis
         while (currentCoroutineContext().isActive) {
             val now = System.currentTimeMillis()
-            if (now >= leaseUntilMillis) {
+            if (now >= currentLeaseUntilMillis) {
                 throw ScriptJobItemLeaseLostException(jobId, itemId, attempt)
             }
             try {
@@ -589,20 +592,23 @@ class ScriptJobService(
                 throw error
             } catch (error: Throwable) {
                 val now = System.currentTimeMillis()
-                if (now >= leaseUntilMillis) {
+                if (now >= currentLeaseUntilMillis) {
                     throw ScriptJobItemLeaseLostException(jobId, itemId, attempt, error)
                 }
-                delay(retryLeaseDelayMillis(now, leaseUntilMillis))
+                delay(retryLeaseDelay(now, currentLeaseUntilMillis))
             }
         }
         throw CancellationException("script job item heartbeat was cancelled")
     }
 
-    private fun retryLeaseDelayMillis(
+    private fun retryLeaseDelay(
         nowMillis: Long,
         leaseUntilMillis: Long,
-    ): Long {
-        return minOf(DEFAULT_LEASE_RETRY_DELAY.inWholeMilliseconds, leaseUntilMillis - nowMillis).coerceAtLeast(1)
+    ): Duration {
+        return minOf(
+            DEFAULT_LEASE_RETRY_DELAY,
+            (leaseUntilMillis - nowMillis).milliseconds,
+        ).coerceAtLeast(1.milliseconds)
     }
 
     private fun ScriptExecutionBatchResult.itemStatus(): ScriptJobItemStatus {

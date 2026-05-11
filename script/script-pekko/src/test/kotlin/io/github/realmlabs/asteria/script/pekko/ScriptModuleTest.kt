@@ -21,7 +21,7 @@ import kotlin.time.Duration.Companion.seconds
 
 class ScriptModuleTest {
     @Test
-    fun nodeScriptExecutesWhenModuleIsInstalled() = runBlocking {
+    fun nodeScriptExecutesWhenModuleIsInstalled(): Unit = runBlocking {
         val auditSink = RecordingScriptAuditSink()
         val app = gameApplication {
             name = "asteria-script-test-${System.nanoTime()}"
@@ -64,7 +64,7 @@ class ScriptModuleTest {
     }
 
     @Test
-    fun nodeScriptCanCollectBatchResults() = runBlocking {
+    fun nodeScriptCanCollectBatchResults(): Unit = runBlocking {
         val app = gameApplication {
             name = "asteria-script-batch-test-${System.nanoTime()}"
             role("script-test")
@@ -108,7 +108,7 @@ class ScriptModuleTest {
     }
 
     @Test
-    fun batchResultReportsMissingClusterViewTargets() = runBlocking {
+    fun batchResultReportsMissingClusterViewTargets(): Unit = runBlocking {
         val clusterView = MutableClusterViewService()
         val app = gameApplication {
             name = "asteria-script-missing-target-test-${System.nanoTime()}"
@@ -174,7 +174,7 @@ class ScriptModuleTest {
     }
 
     @Test
-    fun completedNodeScriptIsReplayedByExecutionIdAndTarget() = runBlocking {
+    fun completedNodeScriptIsReplayedByExecutionIdAndTarget(): Unit = runBlocking {
         val auditSink = RecordingScriptAuditSink()
         val engine = CountingScriptEngine()
         val app = gameApplication {
@@ -219,7 +219,7 @@ class ScriptModuleTest {
     }
 
     @Test
-    fun nodeScriptIsRejectedWhenNodeScriptsAreDisabled() = runBlocking {
+    fun nodeScriptIsRejectedWhenNodeScriptsAreDisabled(): Unit = runBlocking {
         val auditSink = RecordingScriptAuditSink()
         val app = gameApplication {
             name = "asteria-script-denied-test-${System.nanoTime()}"
@@ -254,7 +254,7 @@ class ScriptModuleTest {
     }
 
     @Test
-    fun scriptModuleRegistersConfiguredResourceResolver() = runBlocking {
+    fun scriptModuleRegistersConfiguredResourceResolver(): Unit = runBlocking {
         val cacheDirectory = createTempDirectory("asteria-script-resource-cache")
         val app = gameApplication {
             name = "asteria-script-resource-test-${System.nanoTime()}"

@@ -51,6 +51,23 @@ class ScriptJobServiceTest {
     }
 
     @Test
+    fun runtimeFailureMarksItemFailed() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val repository = InMemoryScriptJobRepository()
+        val service = ScriptJobService(FakeScriptRuntime(), repository, scope)
+
+        try {
+            service.submit(command("job-1", listOf("node-1")))
+            val item = awaitItem(repository, ScriptJobId("job-1"), ScriptJobItemId("1"), ScriptJobItemStatus.Failed)
+
+            assertEquals(ScriptJobItemStatus.Failed, item.status)
+            assertEquals("script execution result for job-1.1.1 not found", item.results.single().error)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun repositoryListsItemsWithPagination() = runBlocking {
         val repository = InMemoryScriptJobRepository()
         val jobId = ScriptJobId("job-1")
@@ -434,7 +451,7 @@ class ScriptJobServiceTest {
     fun executionLimiterCapsConcurrentItems() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val repository = InMemoryScriptJobRepository()
-        val runtime = MeasuringScriptRuntime(delayMillis = 50)
+        val runtime = MeasuringScriptRuntime(delay = 50.milliseconds)
         val service = ScriptJobService(
             runtime = runtime,
             repository = repository,
@@ -458,7 +475,7 @@ class ScriptJobServiceTest {
         val scope2 = CoroutineScope(SupervisorJob())
         val repository = InMemoryScriptJobRepository()
         val permitRepository = InMemoryScriptJobPermitRepository()
-        val runtime = MeasuringScriptRuntime(delayMillis = 50)
+        val runtime = MeasuringScriptRuntime(delay = 50.milliseconds)
         val service1 = ScriptJobService(
             runtime = runtime,
             repository = repository,
@@ -566,7 +583,7 @@ class ScriptJobServiceTest {
         val scope = CoroutineScope(SupervisorJob())
         val repository = InMemoryScriptJobRepository()
         val permitRepository = InMemoryScriptJobPermitRepository()
-        val runtime = MeasuringScriptRuntime(delayMillis = 50)
+        val runtime = MeasuringScriptRuntime(delay = 50.milliseconds)
         val service = ScriptJobService(
             runtime = runtime,
             repository = repository,
@@ -948,7 +965,7 @@ private class CancellableScriptRuntime : ScriptRuntime {
 }
 
 private class MeasuringScriptRuntime(
-    private val delayMillis: Long,
+    private val delay: Duration,
 ) : ScriptRuntime {
     private val active = AtomicInteger()
     val maxActive = AtomicInteger()
@@ -961,7 +978,7 @@ private class MeasuringScriptRuntime(
         val current = active.incrementAndGet()
         maxActive.updateAndGet { maxOf(it, current) }
         try {
-            delay(delayMillis)
+            delay(delay)
             return ScriptExecutionBatchResult(
                 executionId = command.executionId,
                 results = listOf(ScriptExecutionResult(command.executionId, success = true)),

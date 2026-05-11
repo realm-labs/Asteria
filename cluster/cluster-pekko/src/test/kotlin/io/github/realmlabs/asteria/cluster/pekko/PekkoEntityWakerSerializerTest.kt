@@ -12,7 +12,7 @@ import kotlin.test.assertIs
 
 class PekkoEntityWakerSerializerTest {
     @Test
-    fun serializerRoundTripsControlAndStatusMessages() = runBlocking {
+    fun serializerRoundTripsControlAndStatusMessages(): Unit = runBlocking {
         val system = ActorSystem.create("entity-waker-serializer-direct-${System.nanoTime()}")
         val serializer = PekkoEntityWakerSerializer(system as ExtendedActorSystem)
 
@@ -28,7 +28,7 @@ class PekkoEntityWakerSerializerTest {
     }
 
     @Test
-    fun referenceConfigBindsWakerMessagesToSerializer() = runBlocking {
+    fun referenceConfigBindsWakerMessagesToSerializer(): Unit = runBlocking {
         val system = ActorSystem.create("entity-waker-serializer-${System.nanoTime()}")
         try {
             val commandSerializer = SerializationExtension.get(system).findSerializerFor(

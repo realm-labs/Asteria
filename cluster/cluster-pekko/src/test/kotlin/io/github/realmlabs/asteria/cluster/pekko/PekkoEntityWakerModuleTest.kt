@@ -242,7 +242,9 @@ private data class WakeEntityRejected(
     val id: Long,
 ) : Serializable
 
-private data object StopWakeEntity : Serializable
+private data object StopWakeEntity : Serializable {
+    private fun readResolve(): Any = StopWakeEntity
+}
 
 private class WakeEntityActor(
     private val awakened: MutableSet<Long>,

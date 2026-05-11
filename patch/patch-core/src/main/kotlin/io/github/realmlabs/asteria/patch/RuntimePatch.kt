@@ -138,6 +138,8 @@ sealed interface PatchTarget : Serializable {
 
     data object AllNodes : PatchTarget {
         override fun matches(environment: PatchEnvironment): Boolean = true
+
+        private fun readResolve(): Any = AllNodes
     }
 
     data class Roles(val roles: Set<RoleKey>) : PatchTarget {

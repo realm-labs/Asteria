@@ -53,7 +53,7 @@ class ConfigCenterRuntimePatchNodeResultRepository(
             val patch = patchMetadata(patchId) ?: return@flatMap emptyList()
             patch.compatibility.versions.flatMap { version ->
                 client.children(paths.nodeResultsPath(patch.compatibility.appName, version))
-                    .mapNotNull { entry -> codec.decodeNodeResult(entry.bytes) }
+                    .map { entry -> codec.decodeNodeResult(entry.bytes) }
             }
         }
     }

@@ -11,10 +11,11 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.time.Instant
 import kotlin.test.*
+import kotlin.time.Duration.Companion.milliseconds
 
 class ConfigCenterRuntimePatchStoreTest {
     @Test
-    fun `repository stores patch metadata under each compatible app version`() = runBlocking {
+    fun `repository stores patch metadata under each compatible app version`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val root = "/asteria/test/runtime-patches"
         val paths = ConfigCenterPatchPaths(root)
@@ -36,7 +37,7 @@ class ConfigCenterRuntimePatchStoreTest {
     }
 
     @Test
-    fun `repository moves metadata when compatible versions change`() = runBlocking {
+    fun `repository moves metadata when compatible versions change`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val root = "/asteria/test/runtime-patches"
         val paths = ConfigCenterPatchPaths(root)
@@ -51,7 +52,7 @@ class ConfigCenterRuntimePatchStoreTest {
     }
 
     @Test
-    fun `artifact store keeps jar bytes under configured app version`() = runBlocking {
+    fun `artifact store keeps jar bytes under configured app version`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val root = "/asteria/test/runtime-patches"
         val paths = ConfigCenterPatchPaths(root)
@@ -71,7 +72,7 @@ class ConfigCenterRuntimePatchStoreTest {
     }
 
     @Test
-    fun `node result repository stores attempts under app version path`() = runBlocking {
+    fun `node result repository stores attempts under app version path`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val root = "/asteria/test/runtime-patches"
         val paths = ConfigCenterPatchPaths(root)
@@ -101,7 +102,7 @@ class ConfigCenterRuntimePatchStoreTest {
     }
 
     @Test
-    fun `reconcile trigger emits when patch metadata changes`() = runBlocking {
+    fun `reconcile trigger emits when patch metadata changes`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val root = "/asteria/test/runtime-patches"
         val repository = ConfigCenterRuntimePatchRepository(store, root)
@@ -109,11 +110,11 @@ class ConfigCenterRuntimePatchStoreTest {
         val environment = PatchEnvironment("game", "1.0.0")
 
         val signal = async {
-            withTimeout(1_000) {
+            withTimeout(1_000.milliseconds) {
                 trigger.signals(environment).drop(1).first()
             }
         }
-        delay(50)
+        delay(50.milliseconds)
         repository.save(runtimePatch())
 
         signal.await()

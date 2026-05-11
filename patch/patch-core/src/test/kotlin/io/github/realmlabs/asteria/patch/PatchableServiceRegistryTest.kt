@@ -11,7 +11,7 @@ import kotlin.test.assertIs
 
 class PatchableServiceRegistryTest {
     @Test
-    fun servicePatchFallsBackToPreviousPatchWhenLatestPatchIsRemoved() = runBlocking {
+    fun servicePatchFallsBackToPreviousPatchWhenLatestPatchIsRemoved(): Unit = runBlocking {
         val services = PatchableServiceRegistry()
         services.register(GreetingService::class, GreetingService("base"))
         val runtime = runtime()
@@ -34,7 +34,7 @@ class PatchableServiceRegistryTest {
     }
 
     @Test
-    fun serviceReplacementRequiresExistingBaseService() = runBlocking {
+    fun serviceReplacementRequiresExistingBaseService(): Unit = runBlocking {
         val services = PatchableServiceRegistry()
         val runtime = runtime()
 
@@ -47,7 +47,7 @@ class PatchableServiceRegistryTest {
     }
 
     @Test
-    fun serviceRegistryCanUseGenericPatchReplacementPath() = runBlocking {
+    fun serviceRegistryCanUseGenericPatchReplacementPath(): Unit = runBlocking {
         val services = PatchableServiceRegistry()
         services.register(GreetingService::class, GreetingService("base"))
         val runtime = runtime()
@@ -64,7 +64,7 @@ class PatchableServiceRegistryTest {
     }
 
     @Test
-    fun pluginCanRecordInstallPlanWithoutCommittingReplacement() = runBlocking {
+    fun pluginCanRecordInstallPlanWithoutCommittingReplacement(): Unit = runBlocking {
         val services = PatchableServiceRegistry()
         services.register(GreetingService::class, GreetingService("base"))
         val plugin = plugin {

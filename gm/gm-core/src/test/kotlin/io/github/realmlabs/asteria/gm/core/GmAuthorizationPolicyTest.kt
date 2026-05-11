@@ -15,14 +15,14 @@ class GmAuthorizationPolicyTest {
     )
 
     @Test
-    fun `deny all policy rejects operations`() = runBlocking {
+    fun `deny all policy rejects operations`(): Unit = runBlocking {
         val decision = DenyAllGmAuthorizationPolicy.authorize(request)
 
         assertIs<GmAuthorizationDecision.Denied>(decision)
     }
 
     @Test
-    fun `allow all policy allows operations`() = runBlocking {
+    fun `allow all policy allows operations`(): Unit = runBlocking {
         val decision = AllowAllGmAuthorizationPolicy.authorize(request)
 
         assertEquals(GmAuthorizationDecision.Allowed, decision)

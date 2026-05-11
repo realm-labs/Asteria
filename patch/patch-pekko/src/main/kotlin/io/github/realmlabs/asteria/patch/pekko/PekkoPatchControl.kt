@@ -281,7 +281,9 @@ private class PekkoPatchControlActor(
 }
 
 sealed interface PekkoPatchControlMessage : Serializable {
-    data object GetStatus : PekkoPatchControlMessage
+    data object GetStatus : PekkoPatchControlMessage {
+        private fun readResolve(): Any = GetStatus
+    }
 
     data class Apply(val patchId: PatchId) : PekkoPatchControlMessage
 

@@ -8,7 +8,7 @@ import kotlin.test.assertNotNull
 
 class ObservabilityModuleTest {
     @Test
-    fun moduleRegistersObservabilityServices() = runBlocking {
+    fun moduleRegistersObservabilityServices(): Unit = runBlocking {
         val app = gameApplication {
             install(ObservabilityModule())
         }
@@ -24,7 +24,7 @@ class ObservabilityModuleTest {
     }
 
     @Test
-    fun noopImplementationsPreserveReturnValues() = runBlocking {
+    fun noopImplementationsPreserveReturnValues(): Unit = runBlocking {
         val spanResult = NoopTracer.span("test-span") {
             event("test-event")
             42

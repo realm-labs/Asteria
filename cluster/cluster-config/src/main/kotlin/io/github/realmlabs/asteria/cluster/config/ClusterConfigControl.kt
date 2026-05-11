@@ -30,7 +30,9 @@ interface ClusterConfigControlService {
  * Target selection for a cluster config reload request.
  */
 sealed interface ClusterConfigReloadTarget : Serializable {
-    data object All : ClusterConfigReloadTarget
+    data object All : ClusterConfigReloadTarget {
+        private fun readResolve(): Any = All
+    }
 
     data class Role(val role: String) : ClusterConfigReloadTarget {
         init {

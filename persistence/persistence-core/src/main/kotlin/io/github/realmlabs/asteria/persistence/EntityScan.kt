@@ -79,10 +79,7 @@ data class ScannedField<E : Any>(
 ) {
     fun capture(entity: E): Map<FieldPath, Long> {
         val value = value(entity)
-        val children = children
-        if (children == null) {
-            return mapOf(path to hash(value))
-        }
+        val children = children ?: return mapOf(path to hash(value))
         return children(value).mapKeys { (key, _) -> path.child(key) }
             .mapValues { (_, childValue) -> hash(childValue) }
     }

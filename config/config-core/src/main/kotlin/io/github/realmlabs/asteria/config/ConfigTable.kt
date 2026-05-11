@@ -170,12 +170,18 @@ open class ListConfigTable<R : Any> private constructor(
     override val name: ConfigTableName,
     override val rowType: KClass<R>,
     private val rows: List<R>,
-) : ConfigTable<R>, List<R> by rows {
+) : AbstractList<R>(), ConfigTable<R> {
     constructor(
         name: ConfigTableName,
         rowType: KClass<R>,
         rows: Iterable<R>,
     ) : this(name, rowType, rows.toList())
+
+    override val size: Int get() = rows.size
+
+    override fun get(index: Int): R {
+        return rows[index]
+    }
 
     override fun all(): Collection<R> {
         return rows

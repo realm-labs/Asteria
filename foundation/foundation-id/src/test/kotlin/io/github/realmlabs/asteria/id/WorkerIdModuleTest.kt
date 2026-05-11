@@ -84,12 +84,12 @@ class WorkerIdModuleTest {
         val runtime = app.services.get<WorkerIdRuntime>()
         val oldExpiresAt = runtime.lease.expiresAt
 
-        kotlinx.coroutines.delay(120)
+        delay(120.milliseconds)
 
         val newExpiresAt = runtime.lease.expiresAt
         app.stop()
 
-        kotlin.test.assertTrue(newExpiresAt > oldExpiresAt)
+        assertTrue(newExpiresAt > oldExpiresAt)
     }
 
     @Test
@@ -112,7 +112,7 @@ class WorkerIdModuleTest {
         val runtime = app.services.get<WorkerIdRuntime>()
         val oldExpiresAt = runtime.lease.expiresAt
 
-        delay(220)
+        delay(220.milliseconds)
 
         assertFalse(runtime.lost)
         assertTrue(runtime.lease.expiresAt > oldExpiresAt)
@@ -141,7 +141,7 @@ class WorkerIdModuleTest {
         val runtime = app.services.get<WorkerIdRuntime>()
         val generator = app.services.get<IdGenerator>()
 
-        delay(100)
+        delay(100.milliseconds)
 
         assertTrue(runtime.lost)
         assertFailsWith<WorkerIdLeaseLostException> {

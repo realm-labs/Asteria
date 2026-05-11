@@ -243,8 +243,13 @@ private class PekkoClusterConfigControlActor(
 }
 
 private sealed interface PekkoClusterConfigControlMessage : Serializable {
-    data object GetStatus : PekkoClusterConfigControlMessage
-    data object Reload : PekkoClusterConfigControlMessage
+    data object GetStatus : PekkoClusterConfigControlMessage {
+        private fun readResolve(): Any = GetStatus
+    }
+
+    data object Reload : PekkoClusterConfigControlMessage {
+        private fun readResolve(): Any = Reload
+    }
 }
 
 private const val PEKKO_CLUSTER_CONFIG_CONTROL_ACTOR_NAME: String = "asteriaConfigControl"

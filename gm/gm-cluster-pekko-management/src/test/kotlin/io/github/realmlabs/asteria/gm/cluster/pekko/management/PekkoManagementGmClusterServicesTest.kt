@@ -8,7 +8,7 @@ import kotlin.test.*
 
 class PekkoManagementGmClusterServicesTest {
     @Test
-    fun `status service maps management members to gm status`() = runBlocking {
+    fun `status service maps management members to gm status`(): Unit = runBlocking {
         val transport = RecordingTransport {
             PekkoManagementHttpResponse(
                 statusCode = 200,
@@ -55,7 +55,7 @@ class PekkoManagementGmClusterServicesTest {
     }
 
     @Test
-    fun `control service sends leave down and join to management endpoints`() = runBlocking {
+    fun `control service sends leave down and join to management endpoints`(): Unit = runBlocking {
         val transport = RecordingTransport {
             PekkoManagementHttpResponse(statusCode = 200, body = "accepted")
         }
@@ -103,7 +103,7 @@ class PekkoManagementGmClusterServicesTest {
     }
 
     @Test
-    fun `down requires explicit confirmation`() = runBlocking {
+    fun `down requires explicit confirmation`(): Unit = runBlocking {
         val control = PekkoManagementGmClusterControlService(
             client = PekkoManagementHttpClient(RecordingTransport { PekkoManagementHttpResponse(200, "accepted") }),
             endpoints = PekkoManagementEndpointResolver(

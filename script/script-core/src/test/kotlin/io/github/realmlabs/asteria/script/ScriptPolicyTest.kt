@@ -6,7 +6,7 @@ import kotlin.test.assertIs
 
 class ScriptPolicyTest {
     @Test
-    fun defaultPolicyRejectsForbiddenApiTokens() = runBlocking {
+    fun defaultPolicyRejectsForbiddenApiTokens(): Unit = runBlocking {
         val policy = DefaultScriptPolicy(
             allowNodeScripts = true,
             allowedEngines = setOf("groovy"),
@@ -18,7 +18,7 @@ class ScriptPolicyTest {
     }
 
     @Test
-    fun defaultPolicyRequiresApprovalSignatureTemplateAndPermissionsWhenConfigured() = runBlocking {
+    fun defaultPolicyRequiresApprovalSignatureTemplateAndPermissionsWhenConfigured(): Unit = runBlocking {
         val policy = DefaultScriptPolicy(
             allowActorScripts = true,
             allowedEngines = setOf("groovy"),

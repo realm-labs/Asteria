@@ -25,7 +25,7 @@ import kotlin.test.assertNotNull
 
 class ConfigPublisherTest {
     @Test
-    fun `publishes validated artifacts manifest and current pointer`() = runBlocking {
+    fun `publishes validated artifacts manifest and current pointer`(): Unit = runBlocking {
         val dir = Files.createTempDirectory("asteria-config-publisher-test")
         dir.resolve("items.bytes").writeText("items")
         dir.resolve("activity").createDirectories()
@@ -84,7 +84,7 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `consumer loads current publication as luban memory source`() = runBlocking {
+    fun `consumer loads current publication as luban memory source`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val revision = ConfigRevision("2026.05.02", "checksum-1")
@@ -95,7 +95,7 @@ class ConfigPublisherTest {
                     tables = listOf(mapConfigTable("items", mapOf(1 to ItemConfig(1)))),
                 )
             },
-            artifactSource = ConfigArtifactSource {
+            artifactSource = {
                 listOf(ConfigPublicationArtifact("item_tbitem.bytes", "1:Sword\n2:Potion".toByteArray()))
             },
             store = store,
@@ -115,7 +115,7 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `publication luban loader uses published revision`() = runBlocking {
+    fun `publication luban loader uses published revision`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val revision = ConfigRevision("2026.05.02", "published-revision")
@@ -126,7 +126,7 @@ class ConfigPublisherTest {
                     tables = listOf(mapConfigTable("items", mapOf(1 to ItemConfig(1)))),
                 )
             },
-            artifactSource = ConfigArtifactSource {
+            artifactSource = {
                 listOf(ConfigPublicationArtifact("item_tbitem.bytes", "1:Sword".toByteArray()))
             },
             store = store,
@@ -144,7 +144,7 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `publication reload trigger emits after current pointer moves`() = runBlocking {
+    fun `publication reload trigger emits after current pointer moves`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val revision = ConfigRevision("2026.05.02", "checksum-1")
@@ -157,7 +157,7 @@ class ConfigPublisherTest {
 
         ConfigPublisher(
             loader = { DefaultConfigSnapshot(revision = revision) },
-            artifactSource = ConfigArtifactSource {
+            artifactSource = {
                 listOf(ConfigPublicationArtifact("items.bytes", "items".toByteArray()))
             },
             store = store,
@@ -170,7 +170,7 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `publication operations list history and promote previous revision`() = runBlocking {
+    fun `publication operations list history and promote previous revision`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val first = ConfigRevision("2026.05.02", "checksum-1")
@@ -194,7 +194,7 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `publication operations prune old non current revisions`() = runBlocking {
+    fun `publication operations prune old non current revisions`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val first = ConfigRevision("2026.05.02", "checksum-1")
@@ -219,13 +219,13 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `consumer rejects corrupted artifact checksum`() = runBlocking {
+    fun `consumer rejects corrupted artifact checksum`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val revision = ConfigRevision("2026.05.02", "checksum-1")
         ConfigPublisher(
             loader = { DefaultConfigSnapshot(revision = revision) },
-            artifactSource = ConfigArtifactSource {
+            artifactSource = {
                 listOf(ConfigPublicationArtifact("items.bytes", "items".toByteArray()))
             },
             store = store,
@@ -239,13 +239,13 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `consumer rejects missing artifact`() = runBlocking {
+    fun `consumer rejects missing artifact`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val revision = ConfigRevision("2026.05.02", "checksum-1")
         ConfigPublisher(
             loader = { DefaultConfigSnapshot(revision = revision) },
-            artifactSource = ConfigArtifactSource {
+            artifactSource = {
                 listOf(ConfigPublicationArtifact("items.bytes", "items".toByteArray()))
             },
             store = store,
@@ -259,7 +259,7 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `consumer rejects current pointer with different manifest revision`() = runBlocking {
+    fun `consumer rejects current pointer with different manifest revision`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val revision = ConfigRevision("2026.05.02", "checksum-1")
@@ -289,7 +289,7 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `consumer rejects component dependency missing from manifest tables`() = runBlocking {
+    fun `consumer rejects component dependency missing from manifest tables`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val revision = ConfigRevision("2026.05.02", "checksum-1")
@@ -330,7 +330,7 @@ class ConfigPublisherTest {
     }
 
     @Test
-    fun `does not publish when validation fails`() = runBlocking {
+    fun `does not publish when validation fails`(): Unit = runBlocking {
         val store = InMemoryConfigStore()
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val publisher = ConfigPublisher(
@@ -340,7 +340,7 @@ class ConfigPublisherTest {
                     tables = emptyList(),
                 )
             },
-            artifactSource = ConfigArtifactSource { listOf(ConfigPublicationArtifact("items.bytes", byteArrayOf(1))) },
+            artifactSource = { listOf(ConfigPublicationArtifact("items.bytes", byteArrayOf(1))) },
             store = store,
             layout = layout,
             validators = listOf(

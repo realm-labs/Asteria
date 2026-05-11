@@ -2,8 +2,6 @@ package io.github.realmlabs.asteria.gm.config
 
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
-import java.math.BigDecimal
-import java.math.BigInteger
 import kotlin.reflect.KClass
 
 /**
@@ -108,9 +106,7 @@ class ReflectionConfigRowProjector(
         return this is String ||
                 this is Number ||
                 this is Boolean ||
-                this is Char ||
-                this is BigInteger ||
-                this is BigDecimal
+                this is Char
     }
 }
 

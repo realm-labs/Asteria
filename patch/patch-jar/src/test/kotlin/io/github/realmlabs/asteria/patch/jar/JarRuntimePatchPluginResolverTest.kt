@@ -15,7 +15,7 @@ import kotlin.test.assertIs
 
 class JarRuntimePatchPluginResolverTest {
     @Test
-    fun resolverLoadsPluginFromManifestClass() = runBlocking {
+    fun resolverLoadsPluginFromManifestClass(): Unit = runBlocking {
         val jar = jarWithPluginClass(TestPatchPlugin::class.java)
         val artifact = PatchArtifact(
             name = "test-patch.jar",
@@ -39,7 +39,7 @@ class JarRuntimePatchPluginResolverTest {
     }
 
     @Test
-    fun evictDropsLoadedPluginCache() = runBlocking {
+    fun evictDropsLoadedPluginCache(): Unit = runBlocking {
         val jar = jarWithPluginClass(TestPatchPlugin::class.java)
         val artifact = PatchArtifact(
             name = "test-patch.jar",
@@ -64,7 +64,7 @@ class JarRuntimePatchPluginResolverTest {
     }
 
     @Test
-    fun resolverReloadsWhenSamePatchIdUsesDifferentArtifact() = runBlocking {
+    fun resolverReloadsWhenSamePatchIdUsesDifferentArtifact(): Unit = runBlocking {
         val firstJar = jarWithPluginClass(TestPatchPlugin::class.java)
         val secondJar = jarWithPluginClass(OtherPatchPlugin::class.java)
         val firstArtifact = PatchArtifact(
@@ -90,7 +90,7 @@ class JarRuntimePatchPluginResolverTest {
     }
 
     @Test
-    fun loadPolicyCanRejectPluginClass() = runBlocking {
+    fun loadPolicyCanRejectPluginClass(): Unit = runBlocking {
         val jar = jarWithPluginClass(TestPatchPlugin::class.java)
         val artifact = PatchArtifact(
             name = "test-patch.jar",
