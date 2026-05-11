@@ -99,10 +99,25 @@ class DataManager<ID : Any>(
     }
 
     suspend fun flush(): Boolean = measured("flush", baseTags()) {
+        var success = true
         loadedDataByType.values
             .map { it.data }
             .filterIsInstance<AutoFlushMemData>()
-            .all { it.flush() }
+            .forEach { data ->
+                success = data.flush() && success
+            }
+        success
+    }
+
+    suspend fun drain(): Boolean = measured("drain", baseTags()) {
+        var success = true
+        loadedDataByType.values
+            .map { it.data }
+            .filterIsInstance<AutoFlushMemData>()
+            .forEach { data ->
+                success = data.drain() && success
+            }
+        success
     }
 
     /**
@@ -160,7 +175,7 @@ class DataManager<ID : Any>(
     private suspend fun unload(loadedData: LoadedData<ID, out MemData>) =
         measured("unload", dataTags(loadedData.module)) {
             val data = loadedData.data
-            if (data is AutoFlushMemData && !data.flush()) {
+            if (data is AutoFlushMemData && !data.drain()) {
                 metrics.counter("asteria.persistence.data.unload.skipped.total", dataTags(loadedData.module))
                     .increment()
                 loadedData.lastAccessMillis = clock.now().toEpochMilliseconds()

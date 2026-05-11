@@ -28,6 +28,8 @@ class DataManagerTest {
         assertEquals(eagerData, manager.requireLoaded<TestData>())
         assertTrue(manager.flush())
         assertEquals(1, eagerData.flushes)
+        assertTrue(manager.drain())
+        assertEquals(1, eagerData.drains)
     }
 
     @Test
@@ -82,7 +84,7 @@ class DataManagerTest {
         clock.advanceSeconds(10)
         manager.tick()
 
-        assertEquals(1, leaked?.flushes)
+        assertEquals(1, leaked?.drains)
         assertFailsWith<IllegalStateException> {
             leaked?.touch()
         }
@@ -106,7 +108,7 @@ class DataManagerTest {
         manager.tick()
 
         data.touch()
-        assertEquals(1, data.flushes)
+        assertEquals(1, data.drains)
     }
 
     @Test
@@ -128,12 +130,12 @@ class DataManagerTest {
         manager.tick()
 
         data.touch()
-        assertEquals(0, data.flushes)
+        assertEquals(0, data.drains)
 
         clock.advanceSeconds(1)
         manager.tick()
 
-        assertEquals(1, data.flushes)
+        assertEquals(1, data.drains)
         assertFailsWith<IllegalStateException> {
             data.touch()
         }
@@ -159,8 +161,8 @@ class DataManagerTest {
         clock.advanceSeconds(5)
         manager.tick()
 
-        assertEquals(1, expired.flushes)
-        assertEquals(0, active.flushes)
+        assertEquals(1, expired.drains)
+        assertEquals(0, active.drains)
         active.touch()
         assertFailsWith<IllegalStateException> {
             expired.touch()
@@ -214,6 +216,7 @@ class DataManagerTest {
 private class TestData : AutoFlushMemData {
     var loaded: Boolean = false
     var flushes: Int = 0
+    var drains: Int = 0
 
     override suspend fun load() {
         loaded = true
@@ -225,6 +228,11 @@ private class TestData : AutoFlushMemData {
 
     override suspend fun flush(): Boolean {
         flushes += 1
+        return true
+    }
+
+    override suspend fun drain(): Boolean {
+        drains += 1
         return true
     }
 }
@@ -243,7 +251,7 @@ private class GuardedData(
     private val flushResult: Boolean = true,
 ) : LeaseGuardedMemData(), AutoFlushMemData {
     var loaded: Boolean = false
-    var flushes: Int = 0
+    var drains: Int = 0
 
     override suspend fun load() {
         loaded = true
@@ -256,14 +264,18 @@ private class GuardedData(
     override suspend fun tick() = Unit
 
     override suspend fun flush(): Boolean {
-        flushes += 1
+        return flushResult
+    }
+
+    override suspend fun drain(): Boolean {
+        drains += 1
         return flushResult
     }
 }
 
 private class OtherGuardedData : LeaseGuardedMemData(), AutoFlushMemData {
     var loaded: Boolean = false
-    var flushes: Int = 0
+    var drains: Int = 0
 
     override suspend fun load() {
         loaded = true
@@ -276,7 +288,11 @@ private class OtherGuardedData : LeaseGuardedMemData(), AutoFlushMemData {
     override suspend fun tick() = Unit
 
     override suspend fun flush(): Boolean {
-        flushes += 1
+        return true
+    }
+
+    override suspend fun drain(): Boolean {
+        drains += 1
         return true
     }
 }

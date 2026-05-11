@@ -67,4 +67,8 @@ abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrack
     override suspend fun flush(): Boolean {
         return runtime.flushSafely()
     }
+
+    override suspend fun drain(): Boolean {
+        return flush()
+    }
 }

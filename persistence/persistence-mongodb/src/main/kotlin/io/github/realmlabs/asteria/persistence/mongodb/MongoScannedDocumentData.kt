@@ -71,4 +71,8 @@ abstract class MongoScannedDocumentData<ID : Any, E : Entity<ID>>(
         value?.let { entity -> runtime.scan(entity) }
         return runtime.flushSafely()
     }
+
+    override suspend fun drain(): Boolean {
+        return flush()
+    }
 }

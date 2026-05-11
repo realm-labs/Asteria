@@ -22,8 +22,8 @@ class ActorLifecycleGateTest {
         val system = ActorSystem.create("actor-lifecycle-load-${System.nanoTime()}")
         try {
             val loaded = CompletableDeferred<Unit>()
-            val flushed = CompletableDeferred<Boolean>().also { it.complete(true) }
-            val actor = system.actorOf(GatedActor.props(TestRuntime(), loaded, flushed))
+            val drained = CompletableDeferred<Boolean>().also { it.complete(true) }
+            val actor = system.actorOf(GatedActor.props(TestRuntime(), loaded, drained))
 
             val response = async { actor.askAny("ping") }
             delay(100.milliseconds)
@@ -42,15 +42,15 @@ class ActorLifecycleGateTest {
         val system = ActorSystem.create("actor-lifecycle-stop-${System.nanoTime()}")
         try {
             val loaded = CompletableDeferred<Unit>().also { it.complete(Unit) }
-            val flushed = CompletableDeferred<Boolean>()
-            val actor = system.actorOf(GatedActor.props(TestRuntime(), loaded, flushed))
+            val drained = CompletableDeferred<Boolean>()
+            val actor = system.actorOf(GatedActor.props(TestRuntime(), loaded, drained))
 
             assertEquals("pong", actor.askAny("ping"))
             val stop = async { actor.askAny(ActorGracefulStop) }
             delay(100.milliseconds)
 
             assertEquals(false, stop.isCompleted)
-            flushed.complete(true)
+            drained.complete(true)
             assertEquals(ActorGracefulStopSucceeded, stop.await())
         } finally {
             FutureConverters.asJava(system.terminate()).await()
@@ -61,12 +61,12 @@ class ActorLifecycleGateTest {
 private class GatedActor(
     runtime: TestRuntime,
     private val loaded: CompletableDeferred<Unit>,
-    private val flushed: CompletableDeferred<Boolean>,
+    private val drained: CompletableDeferred<Boolean>,
 ) : AsteriaActor<TestRuntime>(runtime) {
     private val gate = ActorLifecycleGate(
         owner = this,
         load = { loaded.await() },
-        flush = { flushed.await() },
+        drain = { drained.await() },
     )
 
     override fun preStart() {
@@ -93,10 +93,10 @@ private class GatedActor(
         fun props(
             runtime: TestRuntime,
             loaded: CompletableDeferred<Unit>,
-            flushed: CompletableDeferred<Boolean>,
+            drained: CompletableDeferred<Boolean>,
         ): Props {
             return Props.create(GatedActor::class.java) {
-                GatedActor(runtime, loaded, flushed)
+                GatedActor(runtime, loaded, drained)
             }
         }
     }

@@ -8,14 +8,15 @@ import io.github.realmlabs.asteria.persistence.AutoFlushMemData
 interface MongoScannedTable {
     suspend fun tick(policy: MongoScanFlushPolicy): MongoScanFlushProgress
 
-    suspend fun flushAllScanned(): Boolean
+    suspend fun drain(): Boolean
 }
 
 /**
  * Convenience mix-in for mem data that owns one or more scan-based Mongo tables.
  *
- * [io.github.realmlabs.asteria.persistence.DataManager] already calls [AutoFlushMemData.tick] and [AutoFlushMemData.flush],
- * so business data can implement this interface to make scan + flush scheduling part of the normal data lifecycle.
+ * [io.github.realmlabs.asteria.persistence.DataManager] calls [AutoFlushMemData.tick], [AutoFlushMemData.flush], and
+ * [AutoFlushMemData.drain], so business data can implement this interface to make scan + flush scheduling part of the
+ * normal data lifecycle.
  */
 interface MongoScannedTableData : AutoFlushMemData {
     val scanFlushPolicy: MongoScanFlushPolicy
@@ -29,7 +30,16 @@ interface MongoScannedTableData : AutoFlushMemData {
     override suspend fun flush(): Boolean {
         var success = true
         scannedTables.forEach { table ->
-            success = table.flushAllScanned() && success
+            val progress = table.tick(scanFlushPolicy)
+            success = progress.flush.failedRows == 0 && success
+        }
+        return success
+    }
+
+    override suspend fun drain(): Boolean {
+        var success = true
+        scannedTables.forEach { table ->
+            success = table.drain() && success
         }
         return success
     }

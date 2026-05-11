@@ -19,7 +19,7 @@ import kotlin.time.Duration.Companion.seconds
  * private val gate = ActorLifecycleGate(
  *     owner = this,
  *     load = { data.loadEager() },
- *     flush = { data.flush() },
+ *     drain = { data.drain() },
  * )
  *
  * override fun preStart() {
@@ -38,7 +38,7 @@ import kotlin.time.Duration.Companion.seconds
 class ActorLifecycleGate(
     private val owner: AsteriaActor<*>,
     private val load: suspend () -> Unit,
-    private val flush: suspend () -> Boolean = { true },
+    private val drain: suspend () -> Boolean = { true },
     private val options: ActorLifecycleGateOptions = ActorLifecycleGateOptions(),
 ) {
     private var state: ActorLifecycleState = ActorLifecycleState.New
@@ -85,11 +85,11 @@ class ActorLifecycleGate(
         owner.launch(timeout = null) {
             runCatching {
                 withTimeout(options.stopTimeout) {
-                    check(flush()) { "actor flush returned false" }
+                    check(drain()) { "actor drain returned false" }
                 }
             }.fold(
-                onSuccess = { owner.self.tell(ActorLifecycleFlushed(replyTo), owner.self) },
-                onFailure = { owner.self.tell(ActorLifecycleFlushFailed(it, replyTo), owner.self) },
+                onSuccess = { owner.self.tell(ActorLifecycleDrained(replyTo), owner.self) },
+                onFailure = { owner.self.tell(ActorLifecycleDrainFailed(it, replyTo), owner.self) },
             )
         }
         return true
@@ -97,15 +97,15 @@ class ActorLifecycleGate(
 
     fun stoppingReceive(): AbstractActor.Receive {
         return owner.receiveBuilder()
-            .match(ActorLifecycleFlushed::class.java) {
+            .match(ActorLifecycleDrained::class.java) {
                 state = ActorLifecycleState.Stopped
                 it.replyTo.tellIfPresent(ActorGracefulStopSucceeded, owner.self)
                 owner.context.stop(owner.self)
             }
-            .match(ActorLifecycleFlushFailed::class.java) {
+            .match(ActorLifecycleDrainFailed::class.java) {
                 state = ActorLifecycleState.Failed
                 it.replyTo.tellIfPresent(ActorGracefulStopFailed(it.cause), owner.self)
-                options.onFlushFailed(owner, it.cause)
+                options.onDrainFailed(owner, it.cause)
             }
             .matchAny {
                 when (options.stoppingMessageStrategy) {
@@ -140,8 +140,8 @@ data class ActorLifecycleGateOptions(
         actor.logger.error(error, "actor {} failed to load", actor.self)
         actor.context.stop(actor.self)
     },
-    val onFlushFailed: (AsteriaActor<*>, Throwable) -> Unit = { actor, error ->
-        actor.logger.error(error, "actor {} failed to flush before stop", actor.self)
+    val onDrainFailed: (AsteriaActor<*>, Throwable) -> Unit = { actor, error ->
+        actor.logger.error(error, "actor {} failed to drain before stop", actor.self)
         actor.context.stop(actor.self)
     },
 )
@@ -174,11 +174,11 @@ private data class ActorLifecycleLoadFailed(
     val cause: Throwable,
 )
 
-private data class ActorLifecycleFlushed(
+private data class ActorLifecycleDrained(
     val replyTo: ActorRef,
 )
 
-private data class ActorLifecycleFlushFailed(
+private data class ActorLifecycleDrainFailed(
     val cause: Throwable,
     val replyTo: ActorRef,
 )

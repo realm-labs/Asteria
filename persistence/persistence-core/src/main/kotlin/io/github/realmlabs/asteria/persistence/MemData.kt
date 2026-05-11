@@ -20,7 +20,12 @@ interface AutoFlushMemData : MemData {
     suspend fun tick()
 
     /**
-     * Flushes pending writes and returns whether the flush completed successfully.
+     * Performs ordinary write flushing and returns whether it completed successfully.
      */
     suspend fun flush(): Boolean
+
+    /**
+     * Drains all writes required before unload or shutdown and returns whether the data is clean.
+     */
+    suspend fun drain(): Boolean
 }

@@ -134,9 +134,9 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         }
     }
 
-    override suspend fun flushAllScanned(): Boolean {
+    override suspend fun drain(): Boolean {
         scanLoaded()
-        return flush()
+        return drainDirtyRows()
     }
 
     suspend fun flushSome(budget: MongoFlushBudget): MongoFlushProgress {
@@ -162,6 +162,26 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
             }
         }
         return MongoFlushProgress(attemptedRows, flushedRows, failedRows)
+    }
+
+    private suspend fun drainDirtyRows(): Boolean {
+        var success = true
+        val maxAttempts = dirtyRows.size
+        repeat(maxAttempts) {
+            val id = dirtyRows.next() ?: return@repeat
+            val row = rowsById[id]
+            if (row == null) {
+                dirtyRows.markClean(id)
+                return@repeat
+            }
+            if (runtime(row).flushSafely()) {
+                dirtyRows.markClean(id)
+            } else {
+                dirtyRows.markDirty(id)
+                success = false
+            }
+        }
+        return success && dirtyRows.size == 0
     }
 
     /**
