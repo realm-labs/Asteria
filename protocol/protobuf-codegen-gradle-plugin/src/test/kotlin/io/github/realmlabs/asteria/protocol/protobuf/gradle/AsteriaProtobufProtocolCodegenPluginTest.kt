@@ -3,10 +3,7 @@ package io.github.realmlabs.asteria.protocol.protobuf.gradle
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 import kotlin.io.path.*
-import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class AsteriaProtobufProtocolCodegenPluginTest {
     @Test
@@ -146,6 +143,68 @@ class AsteriaProtobufProtocolCodegenPluginTest {
             assertContains(result.output, ":generateProto SKIPPED")
             assertContains(result.output, ":$taskName SKIPPED")
         }
+    }
+
+    @Test
+    fun `registers gateway and rpc output directories as kotlin source roots`() {
+        val projectDir = createTempDirectory("asteria-protobuf-protocol-source-roots")
+        projectDir.resolve("settings.gradle.kts").writeText(
+            """
+            pluginManagement {
+                repositories {
+                    mavenCentral()
+                    gradlePluginPortal()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "protocol-plugin-source-roots-test"
+            """.trimIndent(),
+        )
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                kotlin("jvm") version "2.3.21"
+                id("io.github.realm-labs.asteria.protobuf-protocol-codegen")
+            }
+
+            asteriaProtobufProtocol {
+                addDependencies.set(false)
+            }
+
+            tasks.register("printKotlinSourceRoots") {
+                doLast {
+                    val extension = project.extensions.getByType<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension>()
+                    extension.sourceSets.getByName("main").kotlin.srcDirs
+                        .map { projectDir.toPath().relativize(it.toPath()).toString().replace('\\', '/') }
+                        .sorted()
+                        .forEach { println("KOTLIN_SRC=${'$'}it") }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("printKotlinSourceRoots", "--stacktrace")
+            .build()
+
+        assertContains(
+            result.output,
+            "KOTLIN_SRC=build/generated/asteria/protobufProtocol/kotlin/gateway",
+        )
+        assertContains(
+            result.output,
+            "KOTLIN_SRC=build/generated/asteria/protobufProtocol/kotlin/rpc",
+        )
+        assertFalse(
+            result.output.lines().any { it == "KOTLIN_SRC=build/generated/asteria/protobufProtocol/kotlin" },
+        )
     }
 
     @Test

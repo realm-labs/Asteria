@@ -14,14 +14,17 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
 
         project.pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
             val generatedKotlin = project.layout.buildDirectory.dir("generated/asteria/protobufProtocol/kotlin")
+            val generatedGatewayKotlin = generatedKotlin.map { directory -> directory.dir("gateway") }
+            val generatedRpcKotlin = generatedKotlin.map { directory -> directory.dir("rpc") }
             val generatedResources = project.layout.buildDirectory.dir("generated/asteria/protobufProtocol/resources")
 
-            val gatewayTask = configureGatewayProtocol(project, extension, generatedKotlin, generatedResources)
-            val rpcTask = configureRpcProtocol(project, extension, generatedKotlin, generatedResources)
+            val gatewayTask = configureGatewayProtocol(project, extension, generatedGatewayKotlin, generatedResources)
+            val rpcTask = configureRpcProtocol(project, extension, generatedRpcKotlin, generatedResources)
             configureGenerateProtoDependency(project, gatewayTask, rpcTask)
 
             project.extensions.configure(KotlinJvmProjectExtension::class.java) { kotlin ->
-                kotlin.sourceSets.getByName("main").kotlin.srcDir(generatedKotlin)
+                kotlin.sourceSets.getByName("main").kotlin.srcDir(generatedGatewayKotlin)
+                kotlin.sourceSets.getByName("main").kotlin.srcDir(generatedRpcKotlin)
             }
             project.extensions.configure(org.gradle.api.plugins.JavaPluginExtension::class.java) { java ->
                 java.sourceSets.getByName("main").resources.srcDir(generatedResources)
@@ -70,7 +73,7 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
             it.generationEnabled.set(extension.gateway.enabled)
             it.metadataFile.set(extension.gateway.metadataFile)
             it.descriptorSetFile.set(extension.gateway.descriptorSetFile)
-            it.kotlinOutputDirectory.set(generatedKotlin.map { directory -> directory.dir("gateway") })
+            it.kotlinOutputDirectory.set(generatedKotlin)
             it.resourcesOutputDirectory.set(generatedResources)
             it.packageName.set(
                 extension.gateway.packageName.orElse(extension.packageName.map { packageName -> "$packageName.gateway" }),
@@ -97,7 +100,7 @@ class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
             it.generationEnabled.set(extension.rpc.enabled)
             it.metadataFile.set(extension.rpc.metadataFile)
             it.descriptorSetFile.set(extension.rpc.descriptorSetFile)
-            it.kotlinOutputDirectory.set(generatedKotlin.map { directory -> directory.dir("rpc") })
+            it.kotlinOutputDirectory.set(generatedKotlin)
             it.resourcesOutputDirectory.set(generatedResources)
             it.packageName.set(
                 extension.rpc.packageName.orElse(extension.packageName.map { packageName -> "$packageName.rpc" }),
