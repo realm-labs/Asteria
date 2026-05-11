@@ -38,21 +38,24 @@ install(PatchModule {
 ```
 
 `patch-jar` provides a jar artifact resolver, `patch-mongodb` provides Mongo repositories and GridFS artifact storage,
-`patch-pekko` provides Pekko cluster-control integration, and `patch-zookeeper` provides ZooKeeper repositories,
-artifact storage, and node-result storage.
+`patch-pekko` provides Pekko cluster-control integration, and `patch-config-center` provides repositories,
+small-artifact
+storage, node-result storage, and watch-driven reconcile on top of any `config-center` backend.
 
 With `starter-game-server-pekko`, business code usually wires durable repositories and artifact storage directly:
 
 ```kotlin
 runtimePatches(
     version = BuildInfo.version,
-    repository = ZookeeperRuntimePatchRepository(asyncZk, "/asteria/prod/runtime-patches"),
-    artifactStore = ZookeeperPatchArtifactStore(
-        client = asyncZk,
+    repository = ConfigCenterRuntimePatchRepository(configStore, "/asteria/prod/runtime-patches"),
+    artifactStore = ConfigCenterPatchArtifactStore(
+        store = configStore,
         appName = "game",
         appVersion = BuildInfo.version,
         rootPath = "/asteria/prod/runtime-patches",
     ),
+    nodeResults = ConfigCenterRuntimePatchNodeResultRepository(configStore, "/asteria/prod/runtime-patches"),
+    reconcileTrigger = ConfigCenterPatchReconcileTrigger(configStore, "/asteria/prod/runtime-patches"),
     cacheDirectory = Paths.get("data/patch-cache"),
 )
 ```
@@ -70,8 +73,10 @@ restart, GM does not
 need to push patches again; if the repository and artifact store are durable, the node reloads enabled metadata and
 restores patch layers from the stored jars.
 `PatchModule` also runs node-local desired-state reconciliation periodically according to `reconcileInterval`; the
-default is one minute, and `null` disables it. Periodic reconciliation compensates for nodes that were absent from the
-active member view during apply, transient network failures, and nodes that recover after the initial apply attempt.
+default is one minute, and `null` disables it. Deployments can additionally install a `PatchReconcileTrigger`, such as
+`ConfigCenterPatchReconcileTrigger`, so config-center changes immediately ask each node to reconcile. Periodic
+reconciliation remains useful as a backstop for missed watch events, transient network failures, and nodes that recover
+after the initial apply attempt.
 When the runtime provides `ClusterViewService`, Pekko patch control uses that view as the target node source. Configured
 nodes that are currently not reachable are recorded as `Unreachable` instead of being silently skipped.
 `PekkoPatchControlModule` can also accept an explicit `PatchNodeProvider`; otherwise it uses `ClusterViewService`,
@@ -183,33 +188,35 @@ decide whether to retry, roll back, or escalate.
 `patch-pekko` ships a default Pekko serializer binding for patch-control messages, node status responses, and apply
 results through `reference.conf`. Applications should not need to bind these messages to Java serialization manually.
 
-## ZooKeeper Storage
+## Config-Center Storage
 
-`patch-zookeeper` groups data by app/version so operations can inspect one running version with zkCli:
+`patch-config-center` groups data by app/version and uses the common `ConfigStore` API. The same implementation works
+with `config-center-zookeeper`, `config-center-nacos`, `config-center-etcd`, and in-memory stores:
 
 ```text
-{root}/apps/{appName}/versions/{appVersion}/patches/{patchId}/metadata
+{root}/apps/{appName}/versions/{appVersion}/patches/{patchId}
 {root}/apps/{appName}/versions/{appVersion}/artifacts/{artifactKey}/metadata
 {root}/apps/{appName}/versions/{appVersion}/artifacts/{artifactKey}/content
-{root}/apps/{appName}/versions/{appVersion}/node-results/{patchId}/{nodeKey}/{attempt}
+{root}/apps/{appName}/versions/{appVersion}/node-results/{patchId}__{nodeKey}__{attempt}
 {root}/index/patches/{patchId}
 {root}/counters/patch-revision
 {root}/counters/node-results/{patchId}/{address}
 ```
 
 Path segments use percent encoding, so ordinary names stay readable and only characters such as `/`, `:`, and `@` are
-escaped. Znode data goes through `ZookeeperPatchCodec`; the default implementation is `JacksonZookeeperPatchCodec`.
-Metadata is stable DTO JSON, not Jackson's polymorphic domain-object format. For example, `PatchTarget` is written as
-explicit `type/roles/addresses` fields, which is easier to inspect and safer to evolve.
+escaped. Stored values go through `ConfigCenterPatchCodec`; the default implementation is
+`JacksonConfigCenterPatchCodec`. Metadata is stable DTO JSON, not Jackson's polymorphic domain-object format. For
+example, `PatchTarget` is written as explicit `type/roles/addresses` fields, which is easier to inspect and safer to
+evolve.
 
-`ZookeeperPatchArtifactStore` is scoped to one app/version. GM uses the store for the version it is publishing, and a
+`ConfigCenterPatchArtifactStore` is scoped to one app/version. GM uses the store for the version it is publishing, and a
 node uses the store for its current version when loading jars. The default artifact size limit is 768 KiB, which is
-appropriate for small patch jars. For larger artifacts, keep metadata and desired state in ZooKeeper and store bytes in
-GridFS, object storage, or an HTTP-backed store.
+appropriate for small patch jars. For larger artifacts, keep metadata and desired state in config-center and store bytes
+in GridFS, object storage, or an HTTP-backed store.
 
-If a patch is compatible with multiple versions, `ZookeeperRuntimePatchRepository.save` writes metadata under every
-version path and stores an `index/patches/{patchId}` entry for `find(id)`. A business node scans only its own
-`appName/version` path during startup.
+If a patch is compatible with multiple versions, `ConfigCenterRuntimePatchRepository.save` writes metadata under every
+version path and stores an `index/patches/{patchId}` entry for `find(id)` and broad listing. A business node reconciles
+only its own `appName/version` path during startup and when a reconcile trigger fires.
 
 ## Boundaries
 

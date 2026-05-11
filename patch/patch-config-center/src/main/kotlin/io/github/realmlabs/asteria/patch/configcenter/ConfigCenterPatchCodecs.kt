@@ -1,4 +1,4 @@
-package io.github.realmlabs.asteria.patch.zookeeper
+package io.github.realmlabs.asteria.patch.configcenter
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonInclude.Value
@@ -12,20 +12,19 @@ import io.github.realmlabs.asteria.patch.*
 import java.time.Instant
 
 /**
- * Encodes ZooKeeper znode data for patch metadata, artifact descriptors, index entries, and node results.
+ * Encodes config-center patch payloads.
  *
- * Implementations define the durable wire format used by [ZookeeperRuntimePatchRepository],
- * [ZookeeperPatchArtifactStore], and [ZookeeperRuntimePatchNodeResultRepository]. Keep formats stable and tolerant of
- * unknown fields so already-published patch metadata can survive application upgrades.
+ * The wire format uses explicit DTOs so sealed values remain stable and readable regardless of the selected
+ * config-center backend.
  */
-interface ZookeeperPatchCodec {
+interface ConfigCenterPatchCodec {
     fun encodePatch(patch: RuntimePatchDescriptor): ByteArray
 
     fun decodePatch(bytes: ByteArray): RuntimePatchDescriptor
 
-    fun encodePatchIndex(index: ZookeeperPatchIndex): ByteArray
+    fun encodePatchIndex(index: ConfigCenterPatchIndex): ByteArray
 
-    fun decodePatchIndex(bytes: ByteArray): ZookeeperPatchIndex
+    fun decodePatchIndex(bytes: ByteArray): ConfigCenterPatchIndex
 
     fun encodeArtifact(artifact: PatchArtifact): ByteArray
 
@@ -36,15 +35,9 @@ interface ZookeeperPatchCodec {
     fun decodeNodeResult(bytes: ByteArray): RuntimePatchNodeResult
 }
 
-/**
- * JSON codec for ZooKeeper patch data.
- *
- * This codec maps domain objects through explicit DTOs instead of relying on Jackson polymorphic serialization. The
- * resulting JSON is readable from zkCli and keeps sealed values such as [PatchTarget] in a stable `type`-tagged shape.
- */
-class JacksonZookeeperPatchCodec(
+class JacksonConfigCenterPatchCodec(
     private val mapper: ObjectMapper = defaultObjectMapper(),
-) : ZookeeperPatchCodec {
+) : ConfigCenterPatchCodec {
     override fun encodePatch(patch: RuntimePatchDescriptor): ByteArray {
         return mapper.writeValueAsBytes(patch.toDto())
     }
@@ -53,12 +46,12 @@ class JacksonZookeeperPatchCodec(
         return mapper.readValue(bytes, RuntimePatchDto::class.java).toDomain()
     }
 
-    override fun encodePatchIndex(index: ZookeeperPatchIndex): ByteArray {
+    override fun encodePatchIndex(index: ConfigCenterPatchIndex): ByteArray {
         return mapper.writeValueAsBytes(index)
     }
 
-    override fun decodePatchIndex(bytes: ByteArray): ZookeeperPatchIndex {
-        return mapper.readValue(bytes, ZookeeperPatchIndex::class.java)
+    override fun decodePatchIndex(bytes: ByteArray): ConfigCenterPatchIndex {
+        return mapper.readValue(bytes, ConfigCenterPatchIndex::class.java)
     }
 
     override fun encodeArtifact(artifact: PatchArtifact): ByteArray {
@@ -84,8 +77,8 @@ class JacksonZookeeperPatchCodec(
                 .setDefaultPropertyInclusion(
                     Value.construct(
                         JsonInclude.Include.NON_NULL,
-                        JsonInclude.Include.NON_NULL
-                    )
+                        JsonInclude.Include.NON_NULL,
+                    ),
                 )
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
@@ -94,12 +87,9 @@ class JacksonZookeeperPatchCodec(
 }
 
 /**
- * Lightweight index that maps a patch id to the app/version paths containing its metadata.
- *
- * The repository writes this under `index/patches/{patchId}` so [RuntimePatchRepository.find] can locate metadata
- * without scanning every app and version.
+ * Index entry mapping one patch id to the app/version metadata entries containing the descriptor.
  */
-data class ZookeeperPatchIndex(
+data class ConfigCenterPatchIndex(
     val appName: String,
     val versions: Set<String>,
 )
@@ -109,6 +99,7 @@ private data class RuntimePatchDto(
     val name: String,
     val artifact: PatchArtifactDto,
     val compatibility: PatchCompatibilityDto,
+    val requirements: PatchRequirementsDto = PatchRequirementsDto(),
     val target: PatchTargetDto,
     val status: String,
     val revision: Long,
@@ -125,6 +116,12 @@ private data class PatchCompatibilityDto(
     val versions: Set<String>,
 )
 
+private data class PatchRequirementsDto(
+    val roles: Set<String> = emptySet(),
+    val modules: Set<String> = emptySet(),
+    val capabilities: Set<String> = emptySet(),
+)
+
 private data class PatchTargetDto(
     val type: String,
     val roles: Set<String> = emptySet(),
@@ -138,6 +135,8 @@ private data class RuntimePatchNodeResultDto(
     val appName: String,
     val version: String,
     val roles: Set<String> = emptySet(),
+    val modules: Set<String> = emptySet(),
+    val capabilities: Set<String> = emptySet(),
     val status: String,
     val attempt: Int,
     val operationCount: Int? = null,
@@ -151,6 +150,7 @@ private fun RuntimePatchDescriptor.toDto(): RuntimePatchDto {
         name = name,
         artifact = artifact.toDto(),
         compatibility = PatchCompatibilityDto(compatibility.appName, compatibility.versions),
+        requirements = requirements.toDto(),
         target = target.toDto(),
         status = status.name,
         revision = revision,
@@ -162,6 +162,7 @@ private fun RuntimePatchDto.toDomain(): RuntimePatchDescriptor {
         id = PatchId(id),
         artifact = artifact.toDomain(),
         compatibility = PatchCompatibility(compatibility.appName, compatibility.versions),
+        requirements = requirements.toDomain(),
         name = name,
         target = target.toDomain(),
         status = PatchStatus.valueOf(status),
@@ -177,6 +178,22 @@ private fun PatchArtifactDto.toDomain(): PatchArtifact {
     return PatchArtifact(name, checksum, version)
 }
 
+private fun PatchRequirements.toDto(): PatchRequirementsDto {
+    return PatchRequirementsDto(
+        roles = roles.mapTo(linkedSetOf()) { it.value },
+        modules = modules,
+        capabilities = capabilities,
+    )
+}
+
+private fun PatchRequirementsDto.toDomain(): PatchRequirements {
+    return PatchRequirements(
+        roles = roles.mapTo(linkedSetOf(), ::RoleKey),
+        modules = modules,
+        capabilities = capabilities,
+    )
+}
+
 private fun PatchTarget.toDto(): PatchTargetDto {
     return when (this) {
         PatchTarget.AllNodes -> PatchTargetDto(type = "all-nodes")
@@ -190,7 +207,7 @@ private fun PatchTargetDto.toDomain(): PatchTarget {
         "all-nodes" -> PatchTarget.AllNodes
         "roles" -> PatchTarget.Roles(roles.mapTo(linkedSetOf(), ::RoleKey))
         "nodes" -> PatchTarget.Nodes(addresses)
-        else -> error("unknown zookeeper patch target type $type")
+        else -> error("unknown config-center patch target type $type")
     }
 }
 
@@ -202,6 +219,8 @@ private fun RuntimePatchNodeResult.toDto(): RuntimePatchNodeResultDto {
         appName = appName,
         version = version,
         roles = roles.mapTo(linkedSetOf()) { it.value },
+        modules = modules,
+        capabilities = capabilities,
         status = status.name,
         attempt = attempt,
         operationCount = operationCount,
@@ -218,6 +237,8 @@ private fun RuntimePatchNodeResultDto.toDomain(): RuntimePatchNodeResult {
         appName = appName,
         version = version,
         roles = roles.mapTo(linkedSetOf(), ::RoleKey),
+        modules = modules,
+        capabilities = capabilities,
         status = RuntimePatchNodeStatus.valueOf(status),
         attempt = attempt,
         operationCount = operationCount,

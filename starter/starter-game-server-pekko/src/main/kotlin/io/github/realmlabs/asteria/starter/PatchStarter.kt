@@ -26,6 +26,7 @@ fun AsteriaApplicationBuilder.runtimePatches(
     applyOnStart: Boolean = true,
     expireIncompatibleOnStart: Boolean = true,
     reconcileInterval: Duration? = 1.minutes,
+    reconcileTrigger: PatchReconcileTrigger? = null,
     controlTimeout: Duration = 10.seconds,
 ) {
     install(
@@ -37,6 +38,7 @@ fun AsteriaApplicationBuilder.runtimePatches(
             this.applyOnStart = applyOnStart
             this.expireIncompatibleOnStart = expireIncompatibleOnStart
             this.reconcileInterval = reconcileInterval
+            reconcileTrigger?.let(::reconcileTrigger)
         },
     )
     install(PekkoPatchControlModule(controlTimeout))
@@ -51,6 +53,7 @@ fun AsteriaApplicationBuilder.runtimePatches(
     applyOnStart: Boolean = true,
     expireIncompatibleOnStart: Boolean = true,
     reconcileInterval: Duration? = 1.minutes,
+    reconcileTrigger: PatchReconcileTrigger? = null,
     controlTimeout: Duration = 10.seconds,
 ) {
     install(
@@ -62,6 +65,7 @@ fun AsteriaApplicationBuilder.runtimePatches(
             this.applyOnStart = applyOnStart
             this.expireIncompatibleOnStart = expireIncompatibleOnStart
             this.reconcileInterval = reconcileInterval
+            reconcileTrigger?.let(::reconcileTrigger)
         },
     )
     install(PekkoPatchControlModule(controlTimeout))

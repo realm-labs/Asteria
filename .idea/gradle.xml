@@ -80,11 +80,11 @@
             <option value="$PROJECT_DIR$/ops" />
             <option value="$PROJECT_DIR$/ops/ops-http-ktor" />
             <option value="$PROJECT_DIR$/patch" />
+            <option value="$PROJECT_DIR$/patch/patch-config-center" />
             <option value="$PROJECT_DIR$/patch/patch-core" />
             <option value="$PROJECT_DIR$/patch/patch-jar" />
             <option value="$PROJECT_DIR$/patch/patch-mongodb" />
             <option value="$PROJECT_DIR$/patch/patch-pekko" />
-            <option value="$PROJECT_DIR$/patch/patch-zookeeper" />
             <option value="$PROJECT_DIR$/persistence" />
             <option value="$PROJECT_DIR$/persistence/persistence-core" />
             <option value="$PROJECT_DIR$/persistence/persistence-mongodb" />

@@ -5,6 +5,8 @@ import io.github.realmlabs.asteria.core.ModuleContext
 import io.github.realmlabs.asteria.observability.metricsOrNoop
 import io.github.realmlabs.asteria.observability.tracerOrNoop
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -17,7 +19,9 @@ class PatchModule private constructor(
     private val logger = LoggerFactory.getLogger(PatchModule::class.java)
     private var scope: CoroutineScope? = null
     private var reconcileJob: Job? = null
+    private var triggerJobs: List<Job> = emptyList()
     private var installed: Boolean = false
+    private val reconcileLock: Mutex = Mutex()
 
     override suspend fun install(context: ModuleContext) {
         if (options.environment != null) {
@@ -31,14 +35,17 @@ class PatchModule private constructor(
             service.expireIncompatiblePatches()
         }
         if (options.applyOnStart) {
-            service.reconcileEnabledPatches()
+            reconcile(service, "startup")
         }
         startPeriodicReconcile(service)
+        startTriggeredReconcile(service)
     }
 
     override suspend fun stop(context: ModuleContext) {
         reconcileJob?.cancelAndJoin()
         reconcileJob = null
+        triggerJobs.forEach { it.cancelAndJoin() }
+        triggerJobs = emptyList()
         scope?.cancel()
         scope = null
         installed = false
@@ -98,7 +105,7 @@ class PatchModule private constructor(
                 while (isActive) {
                     delay(interval)
                     try {
-                        val report = service.reconcileEnabledPatches()
+                        val report = reconcile(service, "periodic")
                         logger.debug(
                             "periodic patch reconcile completed applied={} removed={}",
                             report.appliedCount,
@@ -114,6 +121,41 @@ class PatchModule private constructor(
         }
     }
 
+    private fun startTriggeredReconcile(service: PatchApplicationService) {
+        if (options.reconcileTriggers.isEmpty()) {
+            return
+        }
+        val scope = scope ?: CoroutineScope(Dispatchers.Default + SupervisorJob()).also { scope = it }
+        triggerJobs = options.reconcileTriggers.map { trigger ->
+            scope.launch {
+                trigger.signals(service.environment).collect {
+                    try {
+                        val report = reconcile(service, "trigger")
+                        logger.debug(
+                            "triggered patch reconcile completed applied={} removed={}",
+                            report.appliedCount,
+                            report.removedCount,
+                        )
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        logger.warn("triggered patch reconcile failed", error)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun reconcile(
+        service: PatchApplicationService,
+        source: String,
+    ): PatchReconcileReport {
+        return reconcileLock.withLock {
+            logger.debug("patch reconcile started source={}", source)
+            service.reconcileEnabledPatches()
+        }
+    }
+
     companion object {
         operator fun invoke(environment: PatchEnvironment): PatchModule {
             return PatchModule(
@@ -126,6 +168,7 @@ class PatchModule private constructor(
                     nodeResults = null,
                     nodeProvider = null,
                     nodeClient = null,
+                    reconcileTriggers = emptyList(),
                     applyOnStart = true,
                     expireIncompatibleOnStart = true,
                     reconcileInterval = DEFAULT_RECONCILE_INTERVAL,
@@ -148,6 +191,7 @@ data class PatchModuleOptions(
     val nodeResults: RuntimePatchNodeResultRepository?,
     val nodeProvider: PatchNodeProvider?,
     val nodeClient: PatchNodeClient?,
+    val reconcileTriggers: List<PatchReconcileTrigger>,
     val applyOnStart: Boolean,
     val expireIncompatibleOnStart: Boolean,
     val reconcileInterval: Duration?,
@@ -166,6 +210,7 @@ class PatchModuleBuilder {
     private var nodeResults: RuntimePatchNodeResultRepository? = null
     private var nodeProvider: PatchNodeProvider? = null
     private var nodeClient: PatchNodeClient? = null
+    private val reconcileTriggers: MutableList<PatchReconcileTrigger> = mutableListOf()
     var applyOnStart: Boolean = true
     var expireIncompatibleOnStart: Boolean = true
     var reconcileInterval: Duration? = DEFAULT_RECONCILE_INTERVAL
@@ -190,6 +235,10 @@ class PatchModuleBuilder {
         nodeClient = client
     }
 
+    fun reconcileTrigger(trigger: PatchReconcileTrigger) {
+        reconcileTriggers += trigger
+    }
+
     fun environment(provider: PatchEnvironmentProvider) {
         environmentProvider = provider
     }
@@ -208,6 +257,7 @@ class PatchModuleBuilder {
             nodeResults = nodeResults,
             nodeProvider = nodeProvider,
             nodeClient = nodeClient,
+            reconcileTriggers = reconcileTriggers.toList(),
             applyOnStart = applyOnStart,
             expireIncompatibleOnStart = expireIncompatibleOnStart,
             reconcileInterval = reconcileInterval,

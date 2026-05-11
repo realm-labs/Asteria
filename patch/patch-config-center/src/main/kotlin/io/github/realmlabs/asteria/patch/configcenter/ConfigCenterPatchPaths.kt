@@ -1,93 +1,99 @@
-package io.github.realmlabs.asteria.patch.zookeeper
+package io.github.realmlabs.asteria.patch.configcenter
 
+import io.github.realmlabs.asteria.config.center.ConfigPath
+import io.github.realmlabs.asteria.config.center.configPath
 import io.github.realmlabs.asteria.patch.PatchArtifact
 import io.github.realmlabs.asteria.patch.PatchId
 import java.nio.charset.StandardCharsets.UTF_8
 
 /**
- * Version-scoped ZooKeeper path layout for runtime patches.
+ * Config-center path layout for runtime patches.
  *
- * Patch metadata and artifacts are grouped under app/version so operators can inspect one running game version without
- * scanning unrelated versions. Path segments are URL-safe base64 encoded; znode data keeps the original values.
+ * Patch metadata is stored directly under `patches/{patchId}` so all [ConfigStore][io.github.realmlabs.asteria.config.center.ConfigStore]
+ * implementations can list it through direct-child reads without relying on backend-specific directory znodes.
  */
-class ZookeeperPatchPaths(
+class ConfigCenterPatchPaths(
     rootPath: String = "/asteria/runtime-patches",
 ) {
-    val rootPath: String = normalizeRoot(rootPath)
+    val rootPath: ConfigPath = configPath(rootPath)
 
     fun appVersionPath(
         appName: String,
         version: String,
-    ): String {
-        return "$rootPath/apps/${appName.segment()}/versions/${version.segment()}"
+    ): ConfigPath {
+        return rootPath / "apps" / appName.segment() / "versions" / version.segment()
     }
 
     fun patchesPath(
         appName: String,
         version: String,
-    ): String {
-        return "${appVersionPath(appName, version)}/patches"
+    ): ConfigPath {
+        return appVersionPath(appName, version) / "patches"
     }
 
     fun patchMetadataPath(
         appName: String,
         version: String,
         patchId: PatchId,
-    ): String {
-        return "${patchesPath(appName, version)}/${patchId.value.segment()}/metadata"
+    ): ConfigPath {
+        return patchesPath(appName, version) / patchId.value.segment()
     }
 
     fun artifactsPath(
         appName: String,
         version: String,
-    ): String {
-        return "${appVersionPath(appName, version)}/artifacts"
+    ): ConfigPath {
+        return appVersionPath(appName, version) / "artifacts"
     }
 
     fun artifactPath(
         appName: String,
         version: String,
         artifact: PatchArtifact,
-    ): String {
-        return "${artifactsPath(appName, version)}/${artifact.keySegment()}"
+    ): ConfigPath {
+        return artifactsPath(appName, version) / artifact.keySegment()
     }
 
     fun artifactMetadataPath(
         appName: String,
         version: String,
         artifact: PatchArtifact,
-    ): String {
-        return "${artifactPath(appName, version, artifact)}/metadata"
+    ): ConfigPath {
+        return artifactPath(appName, version, artifact) / "metadata"
     }
 
     fun artifactContentPath(
         appName: String,
         version: String,
         artifact: PatchArtifact,
-    ): String {
-        return "${artifactPath(appName, version, artifact)}/content"
+    ): ConfigPath {
+        return artifactPath(appName, version, artifact) / "content"
     }
 
-    fun patchIndexPath(patchId: PatchId): String {
-        return "$rootPath/index/patches/${patchId.value.segment()}"
+    fun patchIndexRootPath(): ConfigPath {
+        return rootPath / "index" / "patches"
     }
 
-    fun patchRevisionCounterPath(): String {
-        return "$rootPath/counters/patch-revision"
+    fun patchIndexPath(patchId: PatchId): ConfigPath {
+        return patchIndexRootPath() / patchId.value.segment()
+    }
+
+    fun patchRevisionCounterPath(): ConfigPath {
+        return rootPath / "counters" / "patch-revision"
     }
 
     fun nodeResultAttemptCounterPath(
         patchId: PatchId,
         address: String,
-    ): String {
-        return "$rootPath/counters/node-results/${patchId.value.segment()}/${address.segment()}"
+    ): ConfigPath {
+        return rootPath / "counters" / "node-results" / patchId.value.segment() / address.segment()
     }
 
     fun nodeResultsPath(
         appName: String,
         version: String,
-    ): String {
-        return "${appVersionPath(appName, version)}/node-results"
+    ): ConfigPath {
+        return appVersionPath(appName, version) / "node-results"
     }
 
     fun nodeResultPath(
@@ -96,16 +102,8 @@ class ZookeeperPatchPaths(
         patchId: PatchId,
         nodeKey: String,
         attempt: Int,
-    ): String {
-        return "${nodeResultsPath(appName, version)}/${patchId.value.segment()}/${nodeKey.segment()}/$attempt"
-    }
-
-    fun appsPath(): String {
-        return "$rootPath/apps"
-    }
-
-    fun versionsPath(appNameSegment: String): String {
-        return "${appsPath()}/$appNameSegment/versions"
+    ): ConfigPath {
+        return nodeResultsPath(appName, version) / "${patchId.value.segment()}__${nodeKey.segment()}__$attempt"
     }
 
     private fun PatchArtifact.keySegment(): String {
@@ -122,16 +120,9 @@ class ZookeeperPatchPaths(
         return encodeSegment(this)
     }
 
-    private fun normalizeRoot(path: String): String {
-        val normalized = path.trim().trimEnd('/')
-        require(normalized.startsWith("/")) { "zookeeper patch root path must start with /" }
-        require(normalized.length > 1) { "zookeeper patch root path must not be root" }
-        return normalized
-    }
-
     companion object {
         fun encodeSegment(value: String): String {
-            require(value.isNotBlank()) { "zookeeper patch path segment must not be blank" }
+            require(value.isNotBlank()) { "config-center patch path segment must not be blank" }
             return buildString {
                 value.toByteArray(UTF_8).forEach { byte ->
                     val char = byte.toInt().toChar()
@@ -150,7 +141,7 @@ class ZookeeperPatchPaths(
             var index = 0
             while (index < segment.length) {
                 if (segment[index] == '%') {
-                    require(index + 2 < segment.length) { "invalid zookeeper patch path escape" }
+                    require(index + 2 < segment.length) { "invalid config-center patch path escape" }
                     bytes += segment.substring(index + 1, index + 3).toInt(16).toByte()
                     index += 3
                 } else {

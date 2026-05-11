@@ -53,18 +53,18 @@
 
 ## Operations
 
-| Module                                                                           | Responsibility                                                       | Use When                                          |
-|----------------------------------------------------------------------------------|----------------------------------------------------------------------|---------------------------------------------------|
-| `script-core`                                                                    | Script engine, context, targets, execution results                   | GM or operational scripts are required            |
-| `script-pekko`                                                                   | Maps script targets to Pekko nodes, roles, entities, and singletons  | Scripts need to run against actor runtime         |
-| `script-job` / `script-job-mongodb`                                              | Async script jobs, persisted results, throttling, leases             | GM scripts may be long-running or multi-target    |
-| `gm-core`                                                                        | GM feature metadata, operation authorization, audit context          | The service has GM tools                          |
-| `gm-shutdown`                                                                    | Business-side shutdown plans, phases, steps, and GM action metadata  | GM or operations workflows trigger graceful stop  |
-| `gm-*` starters                                                                  | Spring HTTP APIs and concrete feature adapters                       | GM operations are exposed over HTTP               |
-| `ops-http-ktor`                                                                  | Node-local Ktor HTTP endpoint for SSH/curl script and patch controls | No GM node exists but local operations are needed |
-| `patch-core` / `patch-jar` / `patch-mongodb` / `patch-zookeeper` / `patch-pekko` | Runtime patches, plugin resolution, repositories, cluster control    | Online runtime patches or patch audit are needed  |
-| `observability-core` / `observability-opentelemetry`                             | Metrics/tracing abstractions and OTel implementation                 | The service reports observability data            |
-| `starter-game-server-pekko`                                                      | Local and cluster startup DSL, route module, patch starter           | Business projects want less startup glue          |
+| Module                                                                               | Responsibility                                                       | Use When                                          |
+|--------------------------------------------------------------------------------------|----------------------------------------------------------------------|---------------------------------------------------|
+| `script-core`                                                                        | Script engine, context, targets, execution results                   | GM or operational scripts are required            |
+| `script-pekko`                                                                       | Maps script targets to Pekko nodes, roles, entities, and singletons  | Scripts need to run against actor runtime         |
+| `script-job` / `script-job-mongodb`                                                  | Async script jobs, persisted results, throttling, leases             | GM scripts may be long-running or multi-target    |
+| `gm-core`                                                                            | GM feature metadata, operation authorization, audit context          | The service has GM tools                          |
+| `gm-shutdown`                                                                        | Business-side shutdown plans, phases, steps, and GM action metadata  | GM or operations workflows trigger graceful stop  |
+| `gm-*` starters                                                                      | Spring HTTP APIs and concrete feature adapters                       | GM operations are exposed over HTTP               |
+| `ops-http-ktor`                                                                      | Node-local Ktor HTTP endpoint for SSH/curl script and patch controls | No GM node exists but local operations are needed |
+| `patch-core` / `patch-jar` / `patch-mongodb` / `patch-config-center` / `patch-pekko` | Runtime patches, plugin resolution, repositories, cluster control    | Online runtime patches or patch audit are needed  |
+| `observability-core` / `observability-opentelemetry`                                 | Metrics/tracing abstractions and OTel implementation                 | The service reports observability data            |
+| `starter-game-server-pekko`                                                          | Local and cluster startup DSL, route module, patch starter           | Business projects want less startup glue          |
 
 ## How It Works
 
