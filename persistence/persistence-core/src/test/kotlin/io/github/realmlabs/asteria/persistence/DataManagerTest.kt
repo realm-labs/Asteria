@@ -170,6 +170,76 @@ class DataManagerTest {
     }
 
     @Test
+    fun `use can load multiple data modules in one scope`(): Unit = runBlocking {
+        val clock = MutableClock()
+        val first = GuardedData()
+        val second = OtherGuardedData()
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { first },
+                dataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { second },
+            ),
+            clock = clock,
+        )
+
+        val result = manager.use { mail: GuardedData, activity: OtherGuardedData ->
+            mail.touch()
+            activity.touch()
+            "used"
+        }
+
+        assertEquals("used", result)
+        assertTrue(first.loaded)
+        assertTrue(second.loaded)
+
+        clock.advanceSeconds(10)
+        manager.tick()
+
+        assertEquals(1, first.drains)
+        assertEquals(1, second.drains)
+        assertFailsWith<IllegalStateException> {
+            first.touch()
+        }
+        assertFailsWith<IllegalStateException> {
+            second.touch()
+        }
+    }
+
+    @Test
+    fun `multi use rejects duplicate data types`(): Unit = runBlocking {
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(dataModule(bucket = DataBucket.lazy()) { GuardedData() }),
+        )
+
+        assertFailsWith<IllegalStateException> {
+            manager.use(GuardedData::class, GuardedData::class) { _, _ -> Unit }
+        }
+    }
+
+    @Test
+    fun `use supports five data modules in one scope`(): Unit = runBlocking {
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.lazy()) { NamedData("first") },
+                dataModule(bucket = DataBucket.lazy()) { SecondData() },
+                dataModule(bucket = DataBucket.lazy()) { ThirdData() },
+                dataModule(bucket = DataBucket.lazy()) { FourthData() },
+                dataModule(bucket = DataBucket.lazy()) { FifthData() },
+            ),
+        )
+
+        val result =
+            manager.use { first: NamedData, second: SecondData, third: ThirdData, fourth: FourthData, fifth: FifthData ->
+                listOf(first.name, second.name, third.name, fourth.name, fifth.name)
+            }
+
+        assertEquals(listOf("first", "second", "third", "fourth", "fifth"), result)
+    }
+
+    @Test
     fun `unloaded data is loaded again as a fresh instance`(): Unit = runBlocking {
         val clock = MutableClock()
         val created = mutableListOf<GuardedData>()
@@ -295,6 +365,30 @@ private class OtherGuardedData : LeaseGuardedMemData(), AutoFlushMemData {
         drains += 1
         return true
     }
+}
+
+private class SecondData : MemData {
+    val name: String = "second"
+
+    override suspend fun load() = Unit
+}
+
+private class ThirdData : MemData {
+    val name: String = "third"
+
+    override suspend fun load() = Unit
+}
+
+private class FourthData : MemData {
+    val name: String = "fourth"
+
+    override suspend fun load() = Unit
+}
+
+private class FifthData : MemData {
+    val name: String = "fifth"
+
+    override suspend fun load() = Unit
 }
 
 private class MutableClock : Clock {

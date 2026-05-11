@@ -66,18 +66,63 @@ class DataManager<ID : Any>(
     suspend fun <T : MemData, R> use(type: KClass<T>, block: suspend (T) -> R): R {
         val module = module(type)
         return measured("use", dataTags(module)) {
-            val data = loaded(type)?.also {
-                metrics.counter("asteria.persistence.data.cache.hit.total", dataTags(module)).increment()
-            } ?: run {
-                metrics.counter("asteria.persistence.data.cache.miss.total", dataTags(module)).increment()
-                load(module)
-            }
+            val data = getOrLoadForUse(module)
             touch(type)
             try {
                 block(data)
             } finally {
                 touch(type)
             }
+        }
+    }
+
+    suspend fun <A : MemData, B : MemData, R> use(
+        firstType: KClass<A>,
+        secondType: KClass<B>,
+        block: suspend (A, B) -> R,
+    ): R {
+        return useMany(listOf(firstType, secondType)) { data ->
+            @Suppress("UNCHECKED_CAST")
+            block(data[0] as A, data[1] as B)
+        }
+    }
+
+    suspend fun <A : MemData, B : MemData, C : MemData, R> use(
+        firstType: KClass<A>,
+        secondType: KClass<B>,
+        thirdType: KClass<C>,
+        block: suspend (A, B, C) -> R,
+    ): R {
+        return useMany(listOf(firstType, secondType, thirdType)) { data ->
+            @Suppress("UNCHECKED_CAST")
+            block(data[0] as A, data[1] as B, data[2] as C)
+        }
+    }
+
+    suspend fun <A : MemData, B : MemData, C : MemData, D : MemData, R> use(
+        firstType: KClass<A>,
+        secondType: KClass<B>,
+        thirdType: KClass<C>,
+        fourthType: KClass<D>,
+        block: suspend (A, B, C, D) -> R,
+    ): R {
+        return useMany(listOf(firstType, secondType, thirdType, fourthType)) { data ->
+            @Suppress("UNCHECKED_CAST")
+            block(data[0] as A, data[1] as B, data[2] as C, data[3] as D)
+        }
+    }
+
+    suspend fun <A : MemData, B : MemData, C : MemData, D : MemData, E : MemData, R> use(
+        firstType: KClass<A>,
+        secondType: KClass<B>,
+        thirdType: KClass<C>,
+        fourthType: KClass<D>,
+        fifthType: KClass<E>,
+        block: suspend (A, B, C, D, E) -> R,
+    ): R {
+        return useMany(listOf(firstType, secondType, thirdType, fourthType, fifthType)) { data ->
+            @Suppress("UNCHECKED_CAST")
+            block(data[0] as A, data[1] as B, data[2] as C, data[3] as D, data[4] as E)
         }
     }
 
@@ -141,9 +186,39 @@ class DataManager<ID : Any>(
             ?: error("data module ${type.qualifiedName} not registered")
     }
 
+    private fun moduleUntyped(type: KClass<out MemData>): DataModule<ID, out MemData> {
+        return modulesByType[type] ?: error("data module ${type.qualifiedName} not registered")
+    }
+
     private fun <T : MemData> loaded(type: KClass<T>): T? {
         @Suppress("UNCHECKED_CAST")
         return loadedDataByType[type]?.data as? T
+    }
+
+    private suspend fun <T : MemData> getOrLoadForUse(module: DataModule<ID, T>): T {
+        loaded(module.type)?.let { data ->
+            metrics.counter("asteria.persistence.data.cache.hit.total", dataTags(module)).increment()
+            return data
+        }
+        metrics.counter("asteria.persistence.data.cache.miss.total", dataTags(module)).increment()
+        return load(module)
+    }
+
+    private suspend fun <R> useMany(
+        types: List<KClass<out MemData>>,
+        block: suspend (List<MemData>) -> R,
+    ): R {
+        checkDistinctUseTypes(types)
+        val modules = types.map(::moduleUntyped)
+        return measured("use_many", baseTags()) {
+            val data = modules.map { module -> getOrLoadForUse(module) }
+            types.forEach(::touch)
+            try {
+                block(data)
+            } finally {
+                types.forEach(::touch)
+            }
+        }
     }
 
     private suspend fun <T : MemData> load(module: DataModule<ID, T>): T {
@@ -170,6 +245,10 @@ class DataManager<ID : Any>(
         val loadedData = loadedDataByType[type] ?: return
         loadedData.lease?.ensureActive()
         loadedData.lastAccessMillis = clock.now().toEpochMilliseconds()
+    }
+
+    private fun checkDistinctUseTypes(types: List<KClass<out MemData>>) {
+        check(types.toSet().size == types.size) { "use requires distinct mem data types" }
     }
 
     private suspend fun unload(loadedData: LoadedData<ID, out MemData>) =
@@ -226,6 +305,43 @@ suspend inline fun <reified T : MemData> DataManager<*>.getOrLoad(): T = getOrLo
 
 suspend inline fun <reified T : MemData, R> DataManager<*>.use(noinline block: suspend (T) -> R): R {
     return use(T::class, block)
+}
+
+suspend inline fun <reified A : MemData, reified B : MemData, R> DataManager<*>.use(
+    noinline block: suspend (A, B) -> R,
+): R {
+    return use(A::class, B::class, block)
+}
+
+suspend inline fun <reified A : MemData, reified B : MemData, reified C : MemData, R> DataManager<*>.use(
+    noinline block: suspend (A, B, C) -> R,
+): R {
+    return use(A::class, B::class, C::class, block)
+}
+
+suspend inline fun <
+        reified A : MemData,
+        reified B : MemData,
+        reified C : MemData,
+        reified D : MemData,
+        R,
+        > DataManager<*>.use(
+    noinline block: suspend (A, B, C, D) -> R,
+): R {
+    return use(A::class, B::class, C::class, D::class, block)
+}
+
+suspend inline fun <
+        reified A : MemData,
+        reified B : MemData,
+        reified C : MemData,
+        reified D : MemData,
+        reified E : MemData,
+        R,
+        > DataManager<*>.use(
+    noinline block: suspend (A, B, C, D, E) -> R,
+): R {
+    return use(A::class, B::class, C::class, D::class, E::class, block)
 }
 
 inline fun <reified T : MemData> DataManager<*>.requireLoaded(): T = requireLoaded(T::class)
