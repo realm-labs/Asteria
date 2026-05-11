@@ -45,7 +45,12 @@ class ConfigCenterReloadTrigger(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
-                    logger.error("config center reload watch create failed mode={} path={}", mode.name, path.value, error)
+                    logger.error(
+                        "config center reload watch create failed mode={} path={}",
+                        mode.name,
+                        path.value,
+                        error
+                    )
                     attempt++
                     delayRetry()
                     continue
@@ -58,11 +63,20 @@ class ConfigCenterReloadTrigger(
                     watch.events.collect { event ->
                         emit(event.toSignal())
                     }
-                    logger.warn("config center reload watch completed mode={} path={}; rebuilding", mode.name, path.value)
+                    logger.warn(
+                        "config center reload watch completed mode={} path={}; rebuilding",
+                        mode.name,
+                        path.value
+                    )
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
-                    logger.error("config center reload watch failed mode={} path={}; rebuilding", mode.name, path.value, error)
+                    logger.error(
+                        "config center reload watch failed mode={} path={}; rebuilding",
+                        mode.name,
+                        path.value,
+                        error
+                    )
                 } finally {
                     watch.close()
                 }

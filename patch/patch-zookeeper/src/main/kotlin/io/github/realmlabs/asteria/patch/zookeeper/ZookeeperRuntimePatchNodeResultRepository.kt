@@ -46,7 +46,8 @@ class ZookeeperRuntimePatchNodeResultRepository(
             .filter { result -> query.patchId == null || result.patchId == query.patchId }
             .filter { result -> query.address == null || result.address == query.address }
             .filter { result -> query.status == null || result.status == query.status }
-            .sortedWith(compareBy<RuntimePatchNodeResult> { it.patchId.value }.thenBy { it.address }.thenBy { it.attempt })
+            .sortedWith(compareBy<RuntimePatchNodeResult> { it.patchId.value }.thenBy { it.address }
+                .thenBy { it.attempt })
     }
 
     private suspend fun scanResults(query: RuntimePatchNodeResultQuery): List<RuntimePatchNodeResult> {

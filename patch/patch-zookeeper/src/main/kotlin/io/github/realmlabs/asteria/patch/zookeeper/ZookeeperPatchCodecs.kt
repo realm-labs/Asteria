@@ -81,7 +81,12 @@ class JacksonZookeeperPatchCodec(
         fun defaultObjectMapper(): ObjectMapper {
             return jacksonObjectMapper()
                 .registerModule(JavaTimeModule())
-                .setDefaultPropertyInclusion(Value.construct(JsonInclude.Include.NON_NULL, JsonInclude.Include.NON_NULL))
+                .setDefaultPropertyInclusion(
+                    Value.construct(
+                        JsonInclude.Include.NON_NULL,
+                        JsonInclude.Include.NON_NULL
+                    )
+                )
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
         }

@@ -163,11 +163,11 @@ class ZookeeperPatchPaths(
 
         private fun Char.isSafePathChar(): Boolean {
             return this in 'A'..'Z' ||
-                this in 'a'..'z' ||
-                this in '0'..'9' ||
-                this == '.' ||
-                this == '_' ||
-                this == '-'
+                    this in 'a'..'z' ||
+                    this in '0'..'9' ||
+                    this == '.' ||
+                    this == '_' ||
+                    this == '-'
         }
     }
 }

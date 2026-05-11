@@ -100,7 +100,11 @@ fun nodeLocalOpsDescription(options: NodeLocalOpsHttpOptions): OpsHttpDescriptio
             OpsHttpEndpointDescription("GET", "/ops/scripts/jobs/{jobId}", "Returns one script job."),
             OpsHttpEndpointDescription("GET", "/ops/scripts/jobs/{jobId}/summary", "Returns a job result summary."),
             OpsHttpEndpointDescription("GET", "/ops/scripts/jobs/{jobId}/items", "Lists script job items."),
-            OpsHttpEndpointDescription("GET", "/ops/scripts/jobs/{jobId}/items/{itemId}", "Returns one script job item."),
+            OpsHttpEndpointDescription(
+                "GET",
+                "/ops/scripts/jobs/{jobId}/items/{itemId}",
+                "Returns one script job item."
+            ),
             OpsHttpEndpointDescription(
                 "POST",
                 "/ops/scripts/jobs/{jobId}/cancel",
@@ -201,9 +205,20 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
                 ),
                 OpsHttpFieldDescription("target", "ScriptTargetRequest", true, "Script routing target."),
                 OpsHttpFieldDescription("artifact", "OpsScriptArtifactRequest", true, "Script artifact payload."),
-                OpsHttpFieldDescription("metadata", "OpsScriptMetadataRequest", false, "Additional metadata and resources."),
+                OpsHttpFieldDescription(
+                    "metadata",
+                    "OpsScriptMetadataRequest",
+                    false,
+                    "Additional metadata and resources."
+                ),
                 OpsHttpFieldDescription("options", "OpsScriptExecutionOptionsRequest", false, "Execution options."),
-                OpsHttpFieldDescription("timeoutMillis", "long", false, "Per-execution timeout in milliseconds.", "3000"),
+                OpsHttpFieldDescription(
+                    "timeoutMillis",
+                    "long",
+                    false,
+                    "Per-execution timeout in milliseconds.",
+                    "3000"
+                ),
             ),
         ),
         "multipart target+artifact" to OpsHttpSchemaDescription(
@@ -215,13 +230,44 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
                     true,
                     "ScriptTargetRequest encoded as one form field."
                 ),
-                OpsHttpFieldDescription("artifact", "file", true, "Groovy or jar script file. Engine is inferred from .groovy or .jar."),
-                OpsHttpFieldDescription("engine", "string", false, "Required only when artifact filename is not .groovy or .jar."),
+                OpsHttpFieldDescription(
+                    "artifact",
+                    "file",
+                    true,
+                    "Groovy or jar script file. Engine is inferred from .groovy or .jar."
+                ),
+                OpsHttpFieldDescription(
+                    "engine",
+                    "string",
+                    false,
+                    "Required only when artifact filename is not .groovy or .jar."
+                ),
                 OpsHttpFieldDescription("name", "string", false, "Script name. Defaults to uploaded filename."),
-                OpsHttpFieldDescription("executionId", "string", false, "Idempotency and audit id. Generated when absent."),
-                OpsHttpFieldDescription("metadata", "json string", false, "OpsScriptMetadataRequest encoded as one form field."),
-                OpsHttpFieldDescription("options", "json string", false, "OpsScriptExecutionOptionsRequest encoded as one form field."),
-                OpsHttpFieldDescription("timeoutMillis", "long", false, "Per-execution timeout in milliseconds.", "3000"),
+                OpsHttpFieldDescription(
+                    "executionId",
+                    "string",
+                    false,
+                    "Idempotency and audit id. Generated when absent."
+                ),
+                OpsHttpFieldDescription(
+                    "metadata",
+                    "json string",
+                    false,
+                    "OpsScriptMetadataRequest encoded as one form field."
+                ),
+                OpsHttpFieldDescription(
+                    "options",
+                    "json string",
+                    false,
+                    "OpsScriptExecutionOptionsRequest encoded as one form field."
+                ),
+                OpsHttpFieldDescription(
+                    "timeoutMillis",
+                    "long",
+                    false,
+                    "Per-execution timeout in milliseconds.",
+                    "3000"
+                ),
             ),
         ),
         "ScriptTargetRequest" to OpsHttpSchemaDescription(
@@ -270,10 +316,26 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
         "OpsScriptArtifactRequest" to OpsHttpSchemaDescription(
             description = "Script bytes encoded for JSON transport.",
             fields = listOf(
-                OpsHttpFieldDescription("name", "string", false, "Script name used for diagnostics and policy.", "ops-script"),
+                OpsHttpFieldDescription(
+                    "name",
+                    "string",
+                    false,
+                    "Script name used for diagnostics and policy.",
+                    "ops-script"
+                ),
                 OpsHttpFieldDescription("engine", "string", true, "Script engine name, for example groovy or jar."),
-                OpsHttpFieldDescription("bodyText", "string", false, "Plain UTF-8 script body. Use this for curl text scripts."),
-                OpsHttpFieldDescription("bodyBase64", "string", false, "Base64-encoded script body. Required when bodyText is absent."),
+                OpsHttpFieldDescription(
+                    "bodyText",
+                    "string",
+                    false,
+                    "Plain UTF-8 script body. Use this for curl text scripts."
+                ),
+                OpsHttpFieldDescription(
+                    "bodyBase64",
+                    "string",
+                    false,
+                    "Base64-encoded script body. Required when bodyText is absent."
+                ),
                 OpsHttpFieldDescription("extraBase64", "string", false, "Optional base64-encoded sidecar bytes."),
                 OpsHttpFieldDescription("checksum", "string", false, "Optional artifact checksum."),
             ),
@@ -281,9 +343,26 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
         "OpsScriptMetadataRequest" to OpsHttpSchemaDescription(
             description = "Human and machine metadata for one execution.",
             fields = listOf(
-                OpsHttpFieldDescription("reason", "string", false, "Reason for this script. Header reason is used when absent."),
-                OpsHttpFieldDescription("attributes", "map<string,string>", false, "Additional metadata attributes.", "{}"),
-                OpsHttpFieldDescription("resources", "OpsScriptResourceRequest[]", false, "External resource references.", "[]"),
+                OpsHttpFieldDescription(
+                    "reason",
+                    "string",
+                    false,
+                    "Reason for this script. Header reason is used when absent."
+                ),
+                OpsHttpFieldDescription(
+                    "attributes",
+                    "map<string,string>",
+                    false,
+                    "Additional metadata attributes.",
+                    "{}"
+                ),
+                OpsHttpFieldDescription(
+                    "resources",
+                    "OpsScriptResourceRequest[]",
+                    false,
+                    "External resource references.",
+                    "[]"
+                ),
             ),
         ),
         "OpsScriptResourceRequest" to OpsHttpSchemaDescription(
@@ -294,7 +373,13 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
                 OpsHttpFieldDescription("checksum", "string", false, "Optional checksum verified by resolvers."),
                 OpsHttpFieldDescription("format", "string", false, "Optional format hint, such as csv or json."),
                 OpsHttpFieldDescription("sizeBytes", "long", false, "Optional resource size hint."),
-                OpsHttpFieldDescription("attributes", "map<string,string>", false, "Resolver-specific attributes.", "{}"),
+                OpsHttpFieldDescription(
+                    "attributes",
+                    "map<string,string>",
+                    false,
+                    "Resolver-specific attributes.",
+                    "{}"
+                ),
             ),
         ),
         "OpsScriptExecutionOptionsRequest" to OpsHttpSchemaDescription(
@@ -322,15 +407,32 @@ private fun nodeLocalOpsSchemas(): Map<String, OpsHttpSchemaDescription> {
         "OpsScriptRetryItemRequest" to OpsHttpSchemaDescription(
             description = "Optional body for retrying one failed item. Empty body is accepted.",
             fields = listOf(
-                OpsHttpFieldDescription("timeoutMillis", "long", false, "Retry attempt timeout in milliseconds.", "3000"),
+                OpsHttpFieldDescription(
+                    "timeoutMillis",
+                    "long",
+                    false,
+                    "Retry attempt timeout in milliseconds.",
+                    "3000"
+                ),
             ),
         ),
         "OpsScriptRetryFailedItemsRequest" to OpsHttpSchemaDescription(
             description = "Optional body for retrying failed items. Empty body is accepted.",
             fields = listOf(
-                OpsHttpFieldDescription("error", "string", false, "Only retry failed items whose error summary matches."),
+                OpsHttpFieldDescription(
+                    "error",
+                    "string",
+                    false,
+                    "Only retry failed items whose error summary matches."
+                ),
                 OpsHttpFieldDescription("limit", "int", false, "Maximum number of failed items to retry.", "100"),
-                OpsHttpFieldDescription("timeoutMillis", "long", false, "Retry attempt timeout in milliseconds.", "3000"),
+                OpsHttpFieldDescription(
+                    "timeoutMillis",
+                    "long",
+                    false,
+                    "Retry attempt timeout in milliseconds.",
+                    "3000"
+                ),
             ),
         ),
     )

@@ -1,13 +1,7 @@
 package io.github.realmlabs.asteria.config.ksp
 
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.PropertySpec
-import com.squareup.kotlinpoet.TypeName
-import com.squareup.kotlinpoet.TypeSpec
 
 object AsteriaConfigChangeCodeGenerator {
     fun buildFiles(
@@ -94,7 +88,8 @@ object AsteriaConfigChangeCodeGenerator {
     }
 
     private fun validateHandlers(handlers: List<ConfigChangeHandlerModel>) {
-        val duplicate = handlers.groupBy { it.handlerType.canonicalName }.filterValues { it.size > 1 }.keys.firstOrNull()
+        val duplicate =
+            handlers.groupBy { it.handlerType.canonicalName }.filterValues { it.size > 1 }.keys.firstOrNull()
         require(duplicate == null) { "duplicate config change handler $duplicate" }
     }
 

@@ -97,7 +97,8 @@ class ZookeeperRuntimePatchRepository(
         return appSegments.flatMap { appSegment ->
             val appName = ZookeeperPatchPaths.decodeSegment(appSegment)
             if (query.appName != null && appName != query.appName) return@flatMap emptyList()
-            val versionSegments = query.version?.let { listOf(it.segment()) } ?: zk.children(paths.versionsPath(appSegment))
+            val versionSegments =
+                query.version?.let { listOf(it.segment()) } ?: zk.children(paths.versionsPath(appSegment))
             versionSegments.flatMap { versionSegment ->
                 val version = ZookeeperPatchPaths.decodeSegment(versionSegment)
                 if (query.version != null && version != query.version) return@flatMap emptyList()

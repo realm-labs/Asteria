@@ -6,20 +6,15 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.github.realmlabs.asteria.core.AsteriaDsl
 import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
-import io.ktor.serialization.jackson.jackson
-import io.ktor.server.application.Application
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.install
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.EmbeddedServer
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.plugins.BadRequestException
-import io.ktor.server.plugins.NotFoundException
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.plugins.statuspages.StatusPages
-import io.ktor.server.response.respond
-import io.ktor.server.routing.get
-import io.ktor.server.routing.routing
+import io.ktor.serialization.jackson.*
+import io.ktor.server.application.*
+import io.ktor.server.cio.*
+import io.ktor.server.engine.*
+import io.ktor.server.plugins.*
+import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import kotlin.time.Duration
@@ -154,7 +149,10 @@ private fun Application.installNodeLocalOpsApplication(
             call.respond(io.ktor.http.HttpStatusCode.BadRequest, OpsErrorResponse(cause.message ?: "bad request"))
         }
         exception<IllegalStateException> { call, cause ->
-            call.respond(io.ktor.http.HttpStatusCode.ServiceUnavailable, OpsErrorResponse(cause.message ?: "unavailable"))
+            call.respond(
+                io.ktor.http.HttpStatusCode.ServiceUnavailable,
+                OpsErrorResponse(cause.message ?: "unavailable")
+            )
         }
         exception<NotFoundException> { call, cause ->
             call.respond(io.ktor.http.HttpStatusCode.NotFound, OpsErrorResponse(cause.message ?: "not found"))

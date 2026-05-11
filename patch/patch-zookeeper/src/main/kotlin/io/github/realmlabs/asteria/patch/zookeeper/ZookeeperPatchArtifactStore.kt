@@ -43,7 +43,11 @@ class ZookeeperPatchArtifactStore(
         require(bytes.size <= maxArtifactBytes) {
             "patch artifact $name is too large for ZooKeeper: ${bytes.size} > $maxArtifactBytes bytes"
         }
-        val artifact = PatchArtifact(name = name.safeArtifactName(), checksum = patchArtifactSha256Checksum(bytes), version = version)
+        val artifact = PatchArtifact(
+            name = name.safeArtifactName(),
+            checksum = patchArtifactSha256Checksum(bytes),
+            version = version
+        )
         upsert(paths.artifactMetadataPath(appName, appVersion, artifact), codec.encodeArtifact(artifact))
         upsert(paths.artifactContentPath(appName, appVersion, artifact), bytes.copyOf())
         artifact

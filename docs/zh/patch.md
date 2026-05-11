@@ -41,7 +41,7 @@ Pekko 集群控制适配，`patch-zookeeper` 提供 ZooKeeper repository、artif
 
 ```kotlin
 runtimePatches(
-  version = BuildInfo.version,
+    version = BuildInfo.version,
     repository = ZookeeperRuntimePatchRepository(asyncZk, "/asteria/prod/runtime-patches"),
     artifactStore = ZookeeperPatchArtifactStore(
         client = asyncZk,

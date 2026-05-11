@@ -2,6 +2,7 @@ package io.github.realmlabs.asteria.script.pekko
 
 import io.github.realmlabs.asteria.script.ScriptExecutionCommand
 import io.github.realmlabs.asteria.script.ScriptExecutionResult
+import io.github.realmlabs.asteria.script.pekko.PekkoScriptSerializer.Companion.IDENTIFIER
 import io.github.realmlabs.asteria.script.protobuf.toModel
 import io.github.realmlabs.asteria.script.protobuf.toProto
 import org.apache.pekko.actor.ExtendedActorSystem

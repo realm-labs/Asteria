@@ -55,7 +55,10 @@ class AsteriaConfigCodeGeneratorTest {
         assertContains(code, "val Global: RowConfigTableRef<ItemConfig> = rowConfigTableRef(\"global\")")
         assertContains(code, "class GameConfigs(")
         assertContains(code, "val items: MapConfigTable<Int, ItemConfig>")
-        assertContains(code, "get() = configService.current().requireTable(GameConfigTables.Items, MapConfigTable::class)")
+        assertContains(
+            code,
+            "get() = configService.current().requireTable(GameConfigTables.Items, MapConfigTable::class)"
+        )
         assertContains(code, "val ConfigSnapshot.items: MapConfigTable<Int, ItemConfig>")
         assertContains(code, "get() = requireTable(GameConfigTables.Items, MapConfigTable::class)")
         assertContains(code, "val ConfigService.items: MapConfigTable<Int, ItemConfig>")

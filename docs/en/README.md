@@ -48,7 +48,8 @@ Asteria KSP modules also generate JSON snapshots that describe the source model 
 are intended for optional project-side verification, not runtime configuration.
 
 - `META-INF/asteria/codegen-snapshots/message/<moduleId>.json`
-- `META-INF/asteria/codegen-snapshots/event/<rootPackage>.json`, with non-alphanumeric root package characters replaced by `_`
+- `META-INF/asteria/codegen-snapshots/event/<rootPackage>.json`, with non-alphanumeric root package characters replaced
+  by `_`
 - `META-INF/asteria/codegen-snapshots/config/config.json`
 - `META-INF/asteria/codegen-snapshots/persistence-mongodb/entities.json`
 

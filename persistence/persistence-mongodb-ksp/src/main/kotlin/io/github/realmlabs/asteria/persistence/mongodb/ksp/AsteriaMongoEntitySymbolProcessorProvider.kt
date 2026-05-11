@@ -7,13 +7,7 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
-import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoEntity
-import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoField
-import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoId
-import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoIgnore
-import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoScanIgnore
-import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoScanWholeField
-import io.github.realmlabs.asteria.persistence.mongodb.annotations.AsteriaMongoValue
+import io.github.realmlabs.asteria.persistence.mongodb.annotations.*
 import org.bson.codecs.pojo.annotations.BsonId
 
 class AsteriaMongoEntitySymbolProcessorProvider : SymbolProcessorProvider {

@@ -106,7 +106,8 @@ the recommended bridge is a metadata file emitted by the Luban export step:
 
 The Gradle plugin turns this metadata into Kotlin markers, then KSP generates `GameConfigTables` and `ConfigService`
 extension properties. Generated files are chunked so large config catalogs do not become one oversized Kotlin file.
-`tableType` is optional. Without it, keyed accessors return `KeyedConfigTable<K, R>`; with it, generated accessors return
+`tableType` is optional. Without it, keyed accessors return `KeyedConfigTable<K, R>`; with it, generated accessors
+return
 the requested concrete type, such as `MapConfigTable<K, R>` or `OrderedMapConfigTable<K, R>`, so callers can use the
 underlying collection API.
 

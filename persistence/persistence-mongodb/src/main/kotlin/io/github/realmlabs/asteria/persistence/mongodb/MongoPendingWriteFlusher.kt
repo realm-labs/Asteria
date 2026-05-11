@@ -1,12 +1,8 @@
 package io.github.realmlabs.asteria.persistence.mongodb
 
 import com.mongodb.bulk.BulkWriteResult
-import com.mongodb.client.model.BulkWriteOptions
-import com.mongodb.client.model.DeleteOneModel
+import com.mongodb.client.model.*
 import com.mongodb.client.model.Filters.eq
-import com.mongodb.client.model.UpdateOneModel
-import com.mongodb.client.model.UpdateOptions
-import com.mongodb.client.model.WriteModel
 import com.mongodb.client.model.Updates.*
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.observability.MetricTags

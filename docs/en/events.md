@@ -39,7 +39,8 @@ object PlayerTopics : EventTopicCatalog("player") {
 }
 ```
 
-`PlayerTopics.Progression.Level.Changed.topic` has the path `player.progression.level.changed`. Publishing it also matches:
+`PlayerTopics.Progression.Level.Changed.topic` has the path `player.progression.level.changed`. Publishing it also
+matches:
 
 - `player`
 - `player.progression`

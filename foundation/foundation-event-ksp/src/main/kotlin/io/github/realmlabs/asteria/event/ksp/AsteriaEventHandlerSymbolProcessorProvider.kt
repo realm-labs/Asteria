@@ -3,36 +3,14 @@ package io.github.realmlabs.asteria.event.ksp
 import com.google.devtools.ksp.getAllSuperTypes
 import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.getDeclaredFunctions
-import com.google.devtools.ksp.processing.CodeGenerator
-import com.google.devtools.ksp.processing.Dependencies
-import com.google.devtools.ksp.processing.KSPLogger
-import com.google.devtools.ksp.processing.Resolver
-import com.google.devtools.ksp.processing.SymbolProcessor
-import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
-import com.google.devtools.ksp.processing.SymbolProcessorProvider
-import com.google.devtools.ksp.symbol.ClassKind
-import com.google.devtools.ksp.symbol.KSAnnotated
-import com.google.devtools.ksp.symbol.KSAnnotation
-import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.symbol.KSFile
-import com.google.devtools.ksp.symbol.KSType
-import com.google.devtools.ksp.symbol.KSTypeAlias
-import com.google.devtools.ksp.symbol.Modifier
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.MemberName
+import com.google.devtools.ksp.processing.*
+import com.google.devtools.ksp.symbol.*
+import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.PropertySpec
-import com.squareup.kotlinpoet.TypeName
-import com.squareup.kotlinpoet.TypeSpec
-import com.squareup.kotlinpoet.asClassName
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
-import java.util.Locale
+import java.util.*
 
 class AsteriaEventHandlerSymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
@@ -110,7 +88,7 @@ private class AsteriaEventHandlerSymbolProcessor(
 
     private fun collectTopicBindings(resolver: Resolver): List<EventTopicBinding> {
         val declarations = (resolver.getSymbolsWithAnnotation(eventTopicRootAnnotationName) +
-            resolver.getSymbolsWithAnnotation(eventTopicAnnotationName))
+                resolver.getSymbolsWithAnnotation(eventTopicAnnotationName))
             .filterIsInstance<KSClassDeclaration>()
             .associateBy { it.qualifiedName?.asString().orEmpty() }
         val cache = linkedMapOf<String, EventTopicBinding>()
@@ -289,7 +267,8 @@ private class AsteriaEventHandlerSymbolProcessor(
             .apply {
                 dispatchers.forEach { dispatcherKey ->
                     val dispatcherBindings = bindings.filter { it.dispatcher == dispatcherKey }
-                    val contextType = sharedContextType(rootPackage, dispatcherKey, dispatcherBindings) ?: return@forEach
+                    val contextType =
+                        sharedContextType(rootPackage, dispatcherKey, dispatcherBindings) ?: return@forEach
                     addProperty(
                         PropertySpec.builder(
                             dispatcherKey.toRegistryPropertyName(),
@@ -324,7 +303,7 @@ private class AsteriaEventHandlerSymbolProcessor(
         handlerBindings: List<EventHandlerBinding>,
     ) {
         val sourceFiles = (topicBindings.map(EventTopicBinding::sourceFile) +
-            handlerBindings.map(EventHandlerBinding::sourceFile))
+                handlerBindings.map(EventHandlerBinding::sourceFile))
             .distinctBy { it.filePath }
             .toTypedArray()
         val generatedPackage = "$rootPackage.generated"

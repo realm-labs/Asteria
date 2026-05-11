@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.test.*
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 class ConfigServiceTest {
     @Test
@@ -162,7 +163,8 @@ class ConfigServiceTest {
             tables = listOf(table),
         )
 
-        val typed: MapConfigTable<Int, ItemConfig> = snapshot.requireTable(TestConfigTables.Items, MapConfigTable::class)
+        val typed: MapConfigTable<Int, ItemConfig> =
+            snapshot.requireTable(TestConfigTables.Items, MapConfigTable::class)
 
         assertSame(table, typed)
         assertEquals("Sword", typed.getValue(1).name)
@@ -198,7 +200,7 @@ class ConfigServiceTest {
     fun `reload rejects component build failure before publishing`() = runBlocking {
         var version = 0
         val service = ConfigService(
-            loader = ConfigLoader {
+            loader = {
                 version += 1
                 changingSnapshot("v$version")
             },
@@ -225,9 +227,8 @@ class ConfigServiceTest {
     @Test
     fun `reload exposes changed event after publishing snapshot`() = runBlocking {
         var version = 0
-        lateinit var service: ConfigService
-        service = ConfigService(
-            loader = ConfigLoader {
+        val service = ConfigService(
+            loader = {
                 version += 1
                 changingSnapshot("v$version")
             },
@@ -304,7 +305,7 @@ class ConfigServiceTest {
         val signals = MutableSharedFlow<ConfigReloadSignal>(replay = 1)
         var version = 0
         val service = ConfigService(
-            loader = ConfigLoader {
+            loader = {
                 version += 1
                 snapshot("v$version")
             },
@@ -319,7 +320,7 @@ class ConfigServiceTest {
         val hotReload = ConfigHotReloadService(
             service,
             ConfigHotReloadOptions(
-                trigger = ConfigReloadTrigger { signals },
+                trigger = { signals },
                 debounce = Duration.ZERO,
                 retryDelay = Duration.ZERO,
             ),
@@ -329,7 +330,7 @@ class ConfigServiceTest {
             hotReload.start()
             signals.emit(ConfigReloadSignal("test"))
 
-            val result = withTimeout(1_000) { reloaded.await() }
+            val result = withTimeout(1_000.milliseconds) { reloaded.await() }
 
             assertEquals("v1", result.previous?.revision?.version)
             assertEquals("v2", result.current.revision.version)
@@ -344,7 +345,7 @@ class ConfigServiceTest {
         val signals = MutableSharedFlow<ConfigReloadSignal>(replay = 1)
         var attempts = 0
         val service = ConfigService(
-            loader = ConfigLoader {
+            loader = {
                 attempts += 1
                 if (attempts > 1) {
                     error("broken config")
@@ -357,7 +358,7 @@ class ConfigServiceTest {
         val hotReload = ConfigHotReloadService(
             service,
             ConfigHotReloadOptions(
-                trigger = ConfigReloadTrigger { signals },
+                trigger = { signals },
                 debounce = Duration.ZERO,
                 retryDelay = Duration.ZERO,
                 failureListeners = listOf(ConfigReloadFailureListener { failed.complete(it) }),
@@ -368,7 +369,7 @@ class ConfigServiceTest {
             hotReload.start()
             signals.emit(ConfigReloadSignal("test"))
 
-            val failure = withTimeout(1_000) { failed.await() }
+            val failure = withTimeout(1_000.milliseconds) { failed.await() }
 
             assertEquals("test", failure.signal?.reason)
             assertEquals("broken config", failure.error.message)

@@ -3,15 +3,11 @@ package io.github.realmlabs.asteria.config.center
 import io.github.realmlabs.asteria.core.gameApplication
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
 import kotlin.reflect.KClass
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.*
+import kotlin.time.Duration.Companion.milliseconds
 
 class ConfigCenterTest {
     @Test
@@ -168,7 +164,11 @@ class ConfigCenterTest {
             }
         }
 
-        override suspend fun put(path: ConfigPath, bytes: ByteArray, expectedRevision: ConfigRevision?): ConfigRevision {
+        override suspend fun put(
+            path: ConfigPath,
+            bytes: ByteArray,
+            expectedRevision: ConfigRevision?
+        ): ConfigRevision {
             error("not supported")
         }
 

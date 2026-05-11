@@ -30,7 +30,8 @@
 
 ## 示例项目
 
-- [Antares](https://github.com/mikai233/antares)：一个真实游戏服务器脚手架，展示基于 Asteria 的服务如何拆分网关、世界、玩家、GM、配置、协议和工具等区域。
+- [Antares](https://github.com/mikai233/antares)：一个真实游戏服务器脚手架，展示基于 Asteria
+  的服务如何拆分网关、世界、玩家、GM、配置、协议和工具等区域。
 
 ## KSP 生成快照
 
@@ -41,7 +42,8 @@
 - `META-INF/asteria/codegen-snapshots/config/config.json`
 - `META-INF/asteria/codegen-snapshots/persistence-mongodb/entities.json`
 
-业务项目可以把这些快照同步到版本管理中，在 CI 或发布构建前重新生成并比较 diff，用来发现 handler、topic、配置表或 Mongo wrapper 模型的意外变化。
+业务项目可以把这些快照同步到版本管理中，在 CI 或发布构建前重新生成并比较 diff，用来发现 handler、topic、配置表或 Mongo
+wrapper 模型的意外变化。
 
 ## 文档约定
 

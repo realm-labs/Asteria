@@ -247,7 +247,8 @@ private class AsteriaMessageHandlerSymbolProcessor(
             .apply {
                 dispatchers.forEach { dispatcherKey ->
                     val dispatcherBindings = bindings.filter { it.dispatcher == dispatcherKey }
-                    val messageSuperType = resolveMessageSuperType(dispatcherKey, dispatcherBindings, generatedMessageType)
+                    val messageSuperType =
+                        resolveMessageSuperType(dispatcherKey, dispatcherBindings, generatedMessageType)
                     addProperty(
                         PropertySpec.builder(
                             dispatcherKey.toHandlesPropertyName(),
@@ -386,7 +387,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
         gatewayRouteBindings: List<GatewayRouteBinding>,
     ) {
         val sourceFiles = (handlerBindings.map(HandlerBinding::sourceFile) +
-            gatewayRouteBindings.map(GatewayRouteBinding::sourceFile))
+                gatewayRouteBindings.map(GatewayRouteBinding::sourceFile))
             .distinctBy { it.filePath }
             .toTypedArray()
         val output = codeGenerator.createNewFile(
@@ -590,7 +591,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
     private fun String.toRegistryPropertyName(): String {
         val dispatcherName = toDispatcherPropertyName()
         val screamingSnake = dispatcherName.any { it.isLetter() } &&
-            dispatcherName.all { !it.isLetter() || it.isUpperCase() }
+                dispatcherName.all { !it.isLetter() || it.isUpperCase() }
         return if (screamingSnake) {
             "${dispatcherName}_REGISTRY"
         } else {
@@ -601,7 +602,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
     private fun String.toHandlesPropertyName(): String {
         val dispatcherName = toDispatcherPropertyName()
         val screamingSnake = dispatcherName.any { it.isLetter() } &&
-            dispatcherName.all { !it.isLetter() || it.isUpperCase() }
+                dispatcherName.all { !it.isLetter() || it.isUpperCase() }
         return if (screamingSnake) {
             "${dispatcherName}_HANDLES"
         } else {

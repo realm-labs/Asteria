@@ -3,7 +3,7 @@ package io.github.realmlabs.asteria.gm.shutdown
 import io.github.realmlabs.asteria.core.NodeRuntime
 import io.github.realmlabs.asteria.core.ServiceRegistry
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 import kotlin.time.Duration
 
 /**

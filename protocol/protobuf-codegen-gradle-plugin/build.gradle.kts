@@ -17,7 +17,8 @@ gradlePlugin {
     plugins {
         create("asteriaProtobufProtocolCodegen") {
             id = "io.github.realm-labs.asteria.protobuf-protocol-codegen"
-            implementationClass = "io.github.realmlabs.asteria.protocol.protobuf.gradle.AsteriaProtobufProtocolCodegenPlugin"
+            implementationClass =
+                "io.github.realmlabs.asteria.protocol.protobuf.gradle.AsteriaProtobufProtocolCodegenPlugin"
         }
     }
 }

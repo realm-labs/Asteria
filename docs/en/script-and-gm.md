@@ -263,7 +263,8 @@ install(gmShutdownModule {
 ```
 
 GM or operations controllers can retrieve `GmShutdownOperations` from `ServiceRegistry`, submit a `GmShutdownRequest`,
-and inspect `status()`. After business drain completes, the final step can call a business-provided node-exit service, or
+and inspect `status()`. After business drain completes, the final step can call a business-provided node-exit service,
+or
 only mark the node as `ready-to-exit` and let the deployment system scale down or send SIGTERM.
 
 ## Spring Starters

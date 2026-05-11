@@ -85,7 +85,8 @@ private suspend fun ApplicationCall.receiveMultipartOpsScriptCommand(
 
     val resolvedTarget = requireNotNull(target) { "multipart field target is required" }
     val resolvedBytes = requireNotNull(artifactBytes) { "multipart file field artifact is required" }
-    val resolvedEngine = engine ?: error("multipart field engine is required when artifact file extension is not groovy or jar")
+    val resolvedEngine =
+        engine ?: error("multipart field engine is required when artifact file extension is not groovy or jar")
     require(timeoutMillis > 0) { "script timeout must be positive" }
     val resolvedName = artifactName ?: "ops-script"
     val attributes = metadata.attributes + options.toMetadataAttributes() + principal.toMetadataAttributes()

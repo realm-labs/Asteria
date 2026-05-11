@@ -1037,7 +1037,10 @@ object AsteriaMongoEntityCodeGenerator {
                     .addParameter("index", INT)
                     .addParameter("value", valueType)
                     .returns(trackedValueType)
-                    .addStatement("return %T(path.child(index), value, queue, ::effectiveDirtyTarget)", trackedValueType)
+                    .addStatement(
+                        "return %T(path.child(index), value, queue, ::effectiveDirtyTarget)",
+                        trackedValueType
+                    )
                     .build(),
             )
             .addFunction(
@@ -1106,7 +1109,11 @@ object AsteriaMongoEntityCodeGenerator {
             .addStatement("get() = endExclusive - fromIndex")
             .unindent()
             .add("\n")
-            .addStatement("override fun get(index: Int): %T = this@%L[fromIndex + index]", trackedValueType, facadeType.simpleName)
+            .addStatement(
+                "override fun get(index: Int): %T = this@%L[fromIndex + index]",
+                trackedValueType,
+                facadeType.simpleName
+            )
             .add("\n")
             .add("override fun set(index: Int, element: %T): %T {\n", trackedValueType, trackedValueType)
             .indent()
@@ -1308,7 +1315,12 @@ object AsteriaMongoEntityCodeGenerator {
         val entries = CodeBlock.builder()
         model.properties.forEachIndexed { index, property ->
             if (index > 0) entries.add(",\n")
-            entries.add("%S to %M(%L)", property.fieldName, MONGO_VALUE_OF, scanValueExpression(property, "value.${property.name}"))
+            entries.add(
+                "%S to %M(%L)",
+                property.fieldName,
+                MONGO_VALUE_OF,
+                scanValueExpression(property, "value.${property.name}")
+            )
         }
         return FunSpec.builder(functionName)
             .addModifiers(KModifier.PRIVATE)

@@ -104,6 +104,7 @@ private fun ConfigTable<*>.fingerprint(): ConfigTableFingerprint {
             val keyed = this as KeyedConfigTable<Any, Any>
             keyed.keys.map { key -> key to keyed[key] }
         }
+
         else -> null
     }
     return ConfigTableFingerprint(

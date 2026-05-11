@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.MongoDBContainer
 import org.testcontainers.utility.DockerImageName
-import java.util.UUID
+import java.util.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -53,8 +53,14 @@ class MongoTrackedDocumentIntegrationTest {
         val document = findPlayer(database, 1)
         assertEquals("bob", document.getString("name"))
         assertEquals(Document(mapOf("nickname" to "bobby", "avatar" to 1)), document["profile"])
-        assertEquals(Document(mapOf("itemId" to 2001, "count" to 7)), document.get("bag", Document::class.java)["potion"])
-        assertEquals(Document(mapOf("itemId" to 3001, "count" to 2)), document.get("bag", Document::class.java)["shield"])
+        assertEquals(
+            Document(mapOf("itemId" to 2001, "count" to 7)),
+            document.get("bag", Document::class.java)["potion"]
+        )
+        assertEquals(
+            Document(mapOf("itemId" to 3001, "count" to 2)),
+            document.get("bag", Document::class.java)["shield"]
+        )
         assertEquals(false, document.get("bag", Document::class.java).containsKey("sword"))
         assertEquals(
             listOf(

@@ -53,7 +53,8 @@ itself in the `ServiceRegistry`, then runs every module's `install` and `start`.
 `NodeState`; `onState` listeners run inline during state transitions, so they should be small and should not recursively
 launch or stop the same lifecycle.
 
-Startup failure is fatal to the launch attempt. If any module fails during `install` or `start`, `launch()` stops modules
+Startup failure is fatal to the launch attempt. If any module fails during `install` or `start`, `launch()` stops
+modules
 whose `start` completed, uninstalls modules whose `install` completed, attaches cleanup failures as suppressed
 exceptions, and rethrows the original startup error. Production entry points should usually let that error terminate the
 process.

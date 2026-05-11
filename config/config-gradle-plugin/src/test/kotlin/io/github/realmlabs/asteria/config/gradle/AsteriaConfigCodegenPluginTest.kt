@@ -1,20 +1,11 @@
 package io.github.realmlabs.asteria.config.gradle
 
+import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
-import org.gradle.testfixtures.ProjectBuilder
+import kotlin.io.path.*
+import kotlin.test.*
 import java.nio.file.Path as NioPath
-import kotlin.io.path.Path
-import kotlin.io.path.createTempDirectory
-import kotlin.io.path.exists
-import kotlin.io.path.readText
-import kotlin.io.path.writeText
-import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 class AsteriaConfigCodegenPluginTest {
     @Test

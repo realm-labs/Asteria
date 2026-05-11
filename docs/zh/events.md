@@ -1,6 +1,7 @@
 # 事件系统
 
-`foundation-event` 提供进程内事件分发，面向游戏业务里的领域事实。它适合 actor 内或服务内工作流：一次状态变更需要通知任务、红点、成就、战力失效、外观刷新等多个解耦系统。
+`foundation-event` 提供进程内事件分发，面向游戏业务里的领域事实。它适合 actor
+内或服务内工作流：一次状态变更需要通知任务、红点、成就、战力失效、外观刷新等多个解耦系统。
 
 事件不是命令。业务代码应该在状态已经变更后发布事实：
 
@@ -43,7 +44,8 @@ object PlayerTopics : EventTopicCatalog("player") {
 - `player.progression.level`
 - `player.progression.level.changed`
 
-正常业务 topic 可以使用全局 registry。测试或生成代码如果需要隔离 topic 树，可以显式传入 `EventTopicRegistry`。registry 不做同步，应该在启动期构建完成，或者由单个
+正常业务 topic 可以使用全局 registry。测试或生成代码如果需要隔离 topic 树，可以显式传入 `EventTopicRegistry`。registry
+不做同步，应该在启动期构建完成，或者由单个
 actor/runtime 组件持有。
 
 ## Handler 注册
@@ -154,7 +156,8 @@ class LevelPatch : RuntimePatchPlugin {
 }
 ```
 
-patch 的粒度是 `EventHandleKey`，不是 event type 或 topic。因为一个事件类型或一个 topic 下面通常会有多个 handler，直接按 topic
+patch 的粒度是 `EventHandleKey`，不是 event type 或 topic。因为一个事件类型或一个 topic 下面通常会有多个 handler，直接按
+topic
 替换会误伤其他订阅者。KSP 生成的 key 默认由 `eventHandleKey(Handler::class)` 计算；如果同一个 handler 订阅多个 topic，使用
 `eventHandleKey(Handler::class, topic)` 指定其中一个订阅 slot。补丁只能覆盖已有 slot，不能引入一个全新的事件订阅；卸载补丁后会回退到下一层补丁或基础
 handler。

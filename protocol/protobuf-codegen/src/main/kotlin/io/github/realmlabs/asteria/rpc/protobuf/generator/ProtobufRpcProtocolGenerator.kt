@@ -68,7 +68,12 @@ object ProtobufRpcProtocolGenerator {
             val chunkName = "${config.className}Chunk${chunkIndex++}"
             GeneratedRpcProtocolFile(chunkName, buildEntityIdChunkFile(config, chunkName, chunk))
         }
-        return listOf(GeneratedRpcProtocolFile(config.className, buildAggregatorFile(config, chunks.map { it.fileName }))) +
+        return listOf(
+            GeneratedRpcProtocolFile(
+                config.className,
+                buildAggregatorFile(config, chunks.map { it.fileName })
+            )
+        ) +
                 chunks
     }
 

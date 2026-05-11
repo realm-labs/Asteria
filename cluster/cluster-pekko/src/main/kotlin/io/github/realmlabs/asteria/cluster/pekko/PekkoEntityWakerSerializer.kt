@@ -1,12 +1,9 @@
 package io.github.realmlabs.asteria.cluster.pekko
 
+import io.github.realmlabs.asteria.cluster.pekko.PekkoEntityWakerSerializer.Companion.IDENTIFIER
 import org.apache.pekko.actor.ExtendedActorSystem
 import org.apache.pekko.serialization.SerializerWithStringManifest
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
-import java.io.Serializable
+import java.io.*
 
 /**
  * Cluster wire serializer for entity waker control and status messages.

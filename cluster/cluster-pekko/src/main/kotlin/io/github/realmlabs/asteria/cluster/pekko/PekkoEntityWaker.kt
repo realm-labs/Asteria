@@ -3,6 +3,7 @@ package io.github.realmlabs.asteria.cluster.pekko
 import io.github.realmlabs.asteria.config.ConfigReloadSubscription
 import io.github.realmlabs.asteria.config.ConfigService
 import io.github.realmlabs.asteria.core.*
+import kotlinx.coroutines.future.await
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.cluster.singleton.ClusterSingletonManager
@@ -11,7 +12,6 @@ import org.apache.pekko.cluster.singleton.ClusterSingletonProxy
 import org.apache.pekko.cluster.singleton.ClusterSingletonProxySettings
 import org.apache.pekko.pattern.Patterns
 import java.io.Serializable
-import kotlinx.coroutines.future.await
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -628,7 +628,7 @@ private fun Iterable<Serializable>.requireSupportedWakeTargetIds() {
     forEach { targetId ->
         require(targetId is String || targetId is Long || targetId is Int) {
             "wake target id type ${targetId::class.qualifiedName} is not supported across Pekko serialization; " +
-                "use String, Long, or Int"
+                    "use String, Long, or Int"
         }
     }
 }

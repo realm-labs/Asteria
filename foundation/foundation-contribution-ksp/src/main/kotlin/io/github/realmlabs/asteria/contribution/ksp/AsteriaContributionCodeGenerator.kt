@@ -1,13 +1,7 @@
 package io.github.realmlabs.asteria.contribution.ksp
 
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.PropertySpec
-import com.squareup.kotlinpoet.TypeSpec
 
 object AsteriaContributionCodeGenerator {
     fun buildFiles(
@@ -143,7 +137,8 @@ object AsteriaContributionCodeGenerator {
         return builder.build()
     }
 
-    private fun descriptorListType(contractType: ClassName) = listType(CONTRIBUTION_DESCRIPTOR.parameterizedBy(contractType))
+    private fun descriptorListType(contractType: ClassName) =
+        listType(CONTRIBUTION_DESCRIPTOR.parameterizedBy(contractType))
 
     private fun listType(elementType: com.squareup.kotlinpoet.TypeName) = LIST.parameterizedBy(elementType)
 

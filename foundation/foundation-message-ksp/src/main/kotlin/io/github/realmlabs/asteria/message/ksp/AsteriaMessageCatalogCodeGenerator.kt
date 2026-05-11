@@ -1,13 +1,7 @@
 package io.github.realmlabs.asteria.message.ksp
 
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.PropertySpec
-import com.squareup.kotlinpoet.TypeSpec
-import com.squareup.kotlinpoet.asClassName
 import io.github.realmlabs.asteria.message.MessageCatalog
 import io.github.realmlabs.asteria.message.MessageCatalogEntry
 

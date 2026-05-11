@@ -41,19 +41,23 @@ class PekkoPatchControlSerializer(
                     writeBoolean(o.removed)
                     writeNullableString(o.message)
                 }
+
                 is PatchNode -> writePatchNode(o)
                 is PatchApplyResult.Applied -> {
                     writePatchId(o.patchId)
                     writeInt(o.operationCount)
                 }
+
                 is PatchApplyResult.Failed -> {
                     writePatchId(o.patchId)
                     writeString(o.message)
                 }
+
                 is PatchApplyResult.Ignored -> {
                     writePatchId(o.patchId)
                     writeString(o.reason)
                 }
+
                 else -> error("unsupported patch control message ${o::class.qualifiedName}")
             }
         }
@@ -69,19 +73,23 @@ class PekkoPatchControlSerializer(
                     removed = readBoolean(),
                     message = readNullableString(),
                 )
+
                 PATCH_NODE_MANIFEST -> readPatchNode()
                 APPLY_RESULT_APPLIED_MANIFEST -> PatchApplyResult.Applied(
                     patchId = readPatchId(),
                     operationCount = readInt(),
                 )
+
                 APPLY_RESULT_FAILED_MANIFEST -> PatchApplyResult.Failed(
                     patchId = readPatchId(),
                     message = readString(),
                 )
+
                 APPLY_RESULT_IGNORED_MANIFEST -> PatchApplyResult.Ignored(
                     patchId = readPatchId(),
                     reason = readString(),
                 )
+
                 else -> error("unsupported patch control message manifest $manifest")
             }
         }

@@ -40,7 +40,8 @@ suspend fun main() {
 
 ## 生命周期约定
 
-`install` 用于创建和注册服务；`start` 执行依赖其他模块已安装完成后的启动动作；`stop` 停止运行时工作；`uninstall` 释放 install 阶段分配的资源。模块按声明顺序安装和启动，停止和卸载时按反向顺序执行。
+`install` 用于创建和注册服务；`start` 执行依赖其他模块已安装完成后的启动动作；`stop` 停止运行时工作；`uninstall` 释放
+install 阶段分配的资源。模块按声明顺序安装和启动，停止和卸载时按反向顺序执行。
 
 `AsteriaApplication` 是应用定义，不是某个节点的全部运行态。Pekko runtime 或业务 runtime 可以通过 `bind(runtime)`
 复用同一套模块生命周期，把服务注册到自己的 `NodeRuntime.services`。
@@ -50,7 +51,8 @@ suspend fun main() {
 监听器在状态切换时同步执行，适合做轻量通知，不适合递归启动/停止同一个 lifecycle。
 
 启动失败对当前启动尝试来说是致命错误。任意模块在 `install` 或 `start` 阶段失败时，`launch()` 会停止已经
-`start` 成功的模块，卸载已经 `install` 成功的模块，把清理失败作为 suppressed exception 挂到原始异常上，最后重新抛出原始启动异常。生产入口通常应该让这个异常终止进程。
+`start` 成功的模块，卸载已经 `install` 成功的模块，把清理失败作为 suppressed exception
+挂到原始异常上，最后重新抛出原始启动异常。生产入口通常应该让这个异常终止进程。
 
 如果宿主运行时有自己的关闭流程，可以使用 `stopAfter(moduleName)` 停止声明在某个模块之后的模块。Pekko runtime
 会把它接入 `CoordinatedShutdown`，避免 ActorSystem 关闭时又递归终止自己。

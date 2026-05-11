@@ -33,7 +33,7 @@ install(PatchModule {
     resolver(JarRuntimePatchPluginResolver(artifactStore))
     applyOnStart = true
     expireIncompatibleOnStart = true
-  reconcileInterval = 1.minutes
+    reconcileInterval = 1.minutes
 })
 ```
 

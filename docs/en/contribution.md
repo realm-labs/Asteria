@@ -154,7 +154,8 @@ context.replaceActivityService(activities.registry, ActivityKey("seven_day"), Pa
 ```
 
 The base list comes from compile-time generation, while runtime reads go through the `PatchableRegistry` active view.
-Whether a patch can add new keys, replace only existing keys, or update multiple indexes is a business-registry decision.
+Whether a patch can add new keys, replace only existing keys, or update multiple indexes is a business-registry
+decision.
 
 ## Common Mistakes
 

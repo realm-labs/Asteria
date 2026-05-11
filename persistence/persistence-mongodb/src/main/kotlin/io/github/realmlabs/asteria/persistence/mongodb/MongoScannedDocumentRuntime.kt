@@ -5,12 +5,7 @@ import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
-import io.github.realmlabs.asteria.persistence.DataLease
-import io.github.realmlabs.asteria.persistence.DataLeaseAware
-import io.github.realmlabs.asteria.persistence.Entity
-import io.github.realmlabs.asteria.persistence.EntityScanPlan
-import io.github.realmlabs.asteria.persistence.EntityScanSnapshot
-import io.github.realmlabs.asteria.persistence.FieldChange
+import io.github.realmlabs.asteria.persistence.*
 
 /**
  * Hash-scan dirty tracking runtime for one Mongo document.
@@ -97,7 +92,8 @@ class MongoScannedDocumentRuntime<ID : Any, E : Entity<ID>>(
         }
         if (changedFields > 0) {
             metrics.counter("asteria.persistence.mongodb.scan.documents.dirty.total", tags).increment()
-            metrics.counter("asteria.persistence.mongodb.scan.fields.changed.total", tags).increment(changedFields.toLong())
+            metrics.counter("asteria.persistence.mongodb.scan.fields.changed.total", tags)
+                .increment(changedFields.toLong())
         }
         metrics.timer("asteria.persistence.mongodb.scan.duration", tags)
             .record((System.nanoTime() - startedAt) / 1_000_000)

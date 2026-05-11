@@ -14,8 +14,8 @@ import io.etcd.jetcd.options.PutOption
 import io.etcd.jetcd.options.WatchOption
 import io.github.realmlabs.asteria.config.center.*
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.future.await
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.concurrent.atomic.AtomicBoolean

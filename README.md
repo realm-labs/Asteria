@@ -3,7 +3,8 @@
 > 中文版请见 [README.zh.md](README.zh.md).
 
 Asteria is a modular Kotlin game server runtime. It provides framework primitives for application modules, roles,
-entities, message and event dispatch, Pekko cluster adapters, protocol registries, gateway sessions, persistence contracts,
+entities, message and event dispatch, Pekko cluster adapters, protocol registries, gateway sessions, persistence
+contracts,
 configuration, scripts, GM tooling, runtime patches, and observability.
 
 Game projects still own their topology and domain model. Concepts such as `World`, `Home`, `Player`, `Room`, or `Match`
