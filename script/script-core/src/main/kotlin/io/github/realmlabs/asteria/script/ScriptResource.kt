@@ -190,7 +190,9 @@ class CachingScriptResourceResolver(
         }
         val path = cacheDirectory.resolve(cacheFileName(ref))
         if (!Files.exists(path) || !isScriptResourceChecksumValid(ref, path)) {
-            Files.createDirectories(path.parent)
+            withContext(Dispatchers.IO) {
+                Files.createDirectories(path.parent)
+            }
             downloader.download(ref, path)
         }
         verifyScriptResourceChecksum(ref, path)

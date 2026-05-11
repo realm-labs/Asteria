@@ -133,7 +133,7 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
     @Test
     fun `map keys with Mongo path characters are encoded end to end`() = withDatabase { database ->
         val table = table(database)
-        val row = table.createLoaded(TestEntity(1, "alice", linkedMapOf("a.b" to 1, "a\$b" to 2, "a%b" to 3)))
+        val row = table.createLoaded(TestEntity(1, "alice", linkedMapOf("a.b" to 1, $$"a$b" to 2, "a%b" to 3)))
         assertTrue(table.flush())
 
         val createdBag = findPlayer(database, 1).get("bag", Document::class.java)
@@ -142,7 +142,7 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
         assertEquals(3, createdBag["a%25b"])
 
         row.bag.remove("a.b")
-        row.bag["a\$b"] = 5
+        row.bag[$$"a$b"] = 5
         assertTrue(table.flush())
 
         val updatedBag = findPlayer(database, 1).get("bag", Document::class.java)

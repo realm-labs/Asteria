@@ -22,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.time.Duration.Companion.milliseconds
 
 class ConfigPublisherTest {
     @Test
@@ -149,7 +150,7 @@ class ConfigPublisherTest {
         val layout = ConfigPublicationLayout(configPath("/game/config"))
         val revision = ConfigRevision("2026.05.02", "checksum-1")
         val signal = async {
-            withTimeout(1_000) {
+            withTimeout(1_000.milliseconds) {
                 configPublicationReloadTrigger(store, layout).events().first()
             }
         }

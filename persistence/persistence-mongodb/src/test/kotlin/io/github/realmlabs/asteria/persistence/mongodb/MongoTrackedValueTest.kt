@@ -68,7 +68,7 @@ class MongoTrackedValueTest {
             MongoPath("player", 1001L, "bag"),
             linkedMapOf(
                 "item.1" to 5,
-                "\$.cash" to 10,
+                "$.cash" to 10,
                 "%raw" to 15,
             ),
             queue,
@@ -78,7 +78,7 @@ class MongoTrackedValueTest {
             assertEquals("item.1", next().key)
             remove()
         }
-        bag.keys.remove("\$.cash")
+        bag.keys.remove("$.cash")
         bag.values.remove(15)
 
         val write = queue.drain().single()

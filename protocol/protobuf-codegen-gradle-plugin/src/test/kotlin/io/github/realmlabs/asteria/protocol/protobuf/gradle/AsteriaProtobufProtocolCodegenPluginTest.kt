@@ -166,7 +166,7 @@ class AsteriaProtobufProtocolCodegenPluginTest {
             """.trimIndent(),
         )
         projectDir.resolve("build.gradle.kts").writeText(
-            """
+            $$"""
             plugins {
                 kotlin("jvm") version "2.3.21"
                 id("io.github.realm-labs.asteria.protobuf-protocol-codegen")
@@ -182,7 +182,7 @@ class AsteriaProtobufProtocolCodegenPluginTest {
                     extension.sourceSets.getByName("main").kotlin.srcDirs
                         .map { projectDir.toPath().relativize(it.toPath()).toString().replace('\\', '/') }
                         .sorted()
-                        .forEach { println("KOTLIN_SRC=${'$'}it") }
+                        .forEach { println("KOTLIN_SRC=$it") }
                 }
             }
             """.trimIndent(),

@@ -10,7 +10,7 @@ class MongoPathTest {
         val parts = listOf(
             "plain",
             "a.b",
-            "a\$b",
+            $$"a$b",
             "a%b",
             "a%2Eb",
             "a%24b",

@@ -59,7 +59,7 @@ class MongoPendingWriteQueueTest {
         val path = MongoPath("player", 1001L, "counters")
 
         queue.enqueue(MongoChangeOp.Set(path.child("a.b"), 1))
-        queue.enqueue(MongoChangeOp.Set(path.child("a\$b"), 2))
+        queue.enqueue(MongoChangeOp.Set(path.child($$"a$b"), 2))
         queue.enqueue(MongoChangeOp.Set(path.child("a%b"), 3))
 
         val write = queue.drain().single()

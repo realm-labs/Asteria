@@ -17,7 +17,7 @@ class MongoEntityScanTest {
         val unset = MongoFieldChangeEncoder.encode(
             collectionName = "players",
             documentId = 1001L,
-            change = FieldChange.Unset(FieldPath.of("bag").child("old\$key")),
+            change = FieldChange.Unset(FieldPath.of("bag").child($$"old$key")),
         )
 
         assertEquals(MongoChangeOp.Set(MongoPath("players", 1001L, "bag.a%2Eb"), Document("count", 2)), set)
