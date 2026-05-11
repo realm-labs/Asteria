@@ -15,18 +15,18 @@ interface ScriptEngine {
 /**
  * Executable script produced by a [ScriptEngine].
  *
- * Returning `null` lets the runner create the default success result. Throwing is converted to the runner's failure
- * result and should be reserved for execution failures rather than business-level no-op outcomes.
+ * Normal completion is reported as a successful execution by the runner. Throwing is converted to the runner's failure
+ * result.
  */
 fun interface CompiledScript {
-    suspend fun execute(context: ScriptContext): ScriptExecutionResult?
+    suspend fun execute(context: ScriptContext)
 }
 
 /**
  * Adapter for script functions that do not suspend.
  */
 fun interface BlockingScriptFunction {
-    fun execute(context: ScriptContext): ScriptExecutionResult?
+    fun execute(context: ScriptContext)
 }
 
 fun BlockingScriptFunction.asCompiledScript(): CompiledScript {
@@ -61,8 +61,8 @@ class ScriptExecutor(
     /**
      * Compiles on every call so engine implementations can choose their own artifact cache policy.
      */
-    suspend fun execute(context: ScriptContext): ScriptExecutionResult? {
+    suspend fun execute(context: ScriptContext) {
         val compiled = engines.engine(context.artifact.engine).compile(context.artifact)
-        return compiled.execute(context)
+        compiled.execute(context)
     }
 }

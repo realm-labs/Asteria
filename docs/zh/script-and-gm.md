@@ -50,7 +50,7 @@ body 内容生成缓存 key。
 
 直接发送 Groovy 文本时，顶层脚本会拿到以下 binding：`context`、`runtime`、`services`、`request`、`artifact`、`metadata`、
 `resources`、`tables` 和 `cancellation`。node 上下文额外提供 `target` 和 `nodeAddress`；actor 上下文额外提供 `actor`、
-`target` 和 `actorPath`。脚本返回 `ScriptExecutionResult` 时使用该结果；返回 `null` 或其它值时，runner 会生成默认成功结果。
+`target` 和 `actorPath`。脚本正常执行完成时记为成功；抛出错误时记为失败。
 
 ```groovy
 // fix-player.groovy

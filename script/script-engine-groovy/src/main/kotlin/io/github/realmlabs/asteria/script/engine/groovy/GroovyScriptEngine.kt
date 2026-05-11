@@ -76,7 +76,7 @@ private fun KClass<*>.toGroovyCompiledScript(): CompiledScript {
     if (Script::class.java.isAssignableFrom(java)) {
         return CompiledScript { context ->
             val script = InvokerHelper.createScript(java, context.toGroovyBinding())
-            script.run().toScriptExecutionResultOrNull()
+            script.run()
         }
     }
     return toCompiledScript()
@@ -108,8 +108,4 @@ private fun ScriptContext.toGroovyBinding(): Binding {
             }
         },
     )
-}
-
-private fun Any?.toScriptExecutionResultOrNull(): ScriptExecutionResult? {
-    return this as? ScriptExecutionResult
 }

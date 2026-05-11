@@ -44,7 +44,7 @@ class ActorScriptSupportTest {
 
             assertEquals("actor-script", result.executionId)
             assertEquals(true, result.success)
-            assertEquals("component", result.target)
+            assertEquals("/user/component", result.target)
             assertEquals("pong", actor.askAny("ping"))
         } finally {
             FutureConverters.asJava(system.terminate()).await()
@@ -92,13 +92,7 @@ private object ComponentScriptEngine : ScriptEngine {
     override val name: String = "component"
 
     override fun compile(artifact: ScriptArtifact): CompiledScript {
-        return CompiledScript {
-            ScriptExecutionResult(
-                executionId = it.request?.executionId ?: "missing",
-                success = true,
-                target = name,
-            )
-        }
+        return CompiledScript { }
     }
 }
 

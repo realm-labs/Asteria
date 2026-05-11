@@ -54,6 +54,6 @@ private class FakeEngine(
     override val name: String,
 ) : ScriptEngine {
     override fun compile(artifact: ScriptArtifact): CompiledScript {
-        return CompiledScript { null }
+        return CompiledScript { }
     }
 }

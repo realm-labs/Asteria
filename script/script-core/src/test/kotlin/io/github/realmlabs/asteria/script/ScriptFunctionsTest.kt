@@ -19,32 +19,22 @@ class ScriptFunctionsTest {
             scope = ScriptExecutionScope.Node,
         )
 
-        val result = TestNodeScript().execute(NodeScriptContext(runtime, request))
+        TestNodeScript().execute(NodeScriptContext(runtime, request))
 
-        assertEquals(
-            ScriptExecutionResult(
-                executionId = "typed-node-test",
-                success = true,
-                target = "player-1",
-            ),
-            result,
-        )
+        assertEquals("player-1", runtime.lastNodeId)
     }
 }
 
 private class TestNodeScript : NodeScript<TestNodeRuntime>() {
-    override fun executeNode(context: NodeScriptContext<TestNodeRuntime>): ScriptExecutionResult {
-        return ScriptExecutionResult(
-            executionId = context.request.executionId,
-            success = true,
-            target = context.runtime.nodeId,
-        )
+    override fun executeNode(context: NodeScriptContext<TestNodeRuntime>) {
+        context.runtime.lastNodeId = context.runtime.nodeId
     }
 }
 
-private data class TestNodeRuntime(
+private class TestNodeRuntime(
     val nodeId: String,
 ) : NodeRuntime {
+    var lastNodeId: String? = null
     override val name: String = "test"
     override val roles: Set<RoleKey> = emptySet()
     override val state: NodeState = NodeState.Started

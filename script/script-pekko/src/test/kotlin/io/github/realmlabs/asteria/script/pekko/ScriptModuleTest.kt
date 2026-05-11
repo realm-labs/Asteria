@@ -47,7 +47,16 @@ class ScriptModuleTest {
                 artifact = ScriptArtifact("echo", EchoScriptEngine.name, ByteArray(0)),
             )
             val result = scriptRuntime.execute(command, 3.seconds)
-            assertEquals(ScriptExecutionResult(command.executionId, success = true, target = "echo"), result)
+            val selfAddress = Cluster.get(app.services.get<ActorSystem>()).selfAddress().toString()
+            assertEquals(
+                ScriptExecutionResult(
+                    command.executionId,
+                    success = true,
+                    target = selfAddress,
+                    nodeAddress = selfAddress
+                ),
+                result,
+            )
             assertEquals(listOf("started:test-script", "completed:test-script:true"), auditSink.events)
         } finally {
             app.stop()
@@ -79,11 +88,19 @@ class ScriptModuleTest {
                 artifact = ScriptArtifact("echo", EchoScriptEngine.name, ByteArray(0)),
             )
             val batch = scriptRuntime.executeAll(command, 200.milliseconds)
+            val selfAddress = Cluster.get(app.services.get<ActorSystem>()).selfAddress().toString()
             assertEquals(command.executionId, batch.executionId)
             assertTrue(batch.success)
             assertEquals(
-                listOf(ScriptExecutionResult(command.executionId, success = true, target = "echo")),
-                batch.results
+                listOf(
+                    ScriptExecutionResult(
+                        command.executionId,
+                        success = true,
+                        target = selfAddress,
+                        nodeAddress = selfAddress,
+                    ),
+                ),
+                batch.results,
             )
         } finally {
             app.stop()
@@ -264,9 +281,7 @@ private object EchoScriptEngine : ScriptEngine {
     override val name: String = "echo"
 
     override fun compile(artifact: ScriptArtifact): CompiledScript {
-        return CompiledScript {
-            ScriptExecutionResult("test-script", success = true, target = name)
-        }
+        return CompiledScript { }
     }
 }
 
@@ -274,7 +289,7 @@ private object DefaultResultScriptEngine : ScriptEngine {
     override val name: String = "default-result"
 
     override fun compile(artifact: ScriptArtifact): CompiledScript {
-        return CompiledScript { null }
+        return CompiledScript { }
     }
 }
 
@@ -286,7 +301,6 @@ private class CountingScriptEngine : ScriptEngine {
     override fun compile(artifact: ScriptArtifact): CompiledScript {
         return CompiledScript {
             executions += 1
-            ScriptExecutionResult("idempotent-script", success = true, target = name)
         }
     }
 }

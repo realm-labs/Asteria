@@ -258,7 +258,8 @@ class ScriptRunner(
         }
         auditSink.started(request)
         val result = runCatching {
-            executor.execute(context) ?: defaultResult()
+            executor.execute(context)
+            defaultResult()
         }.getOrElse(failureResult)
         executionStore.complete(key, result)
         auditSink.completed(request, result)

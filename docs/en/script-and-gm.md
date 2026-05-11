@@ -58,8 +58,8 @@ otherwise by body content.
 
 Top-level Groovy scripts receive these binding variables: `context`, `runtime`, `services`, `request`, `artifact`,
 `metadata`, `resources`, `tables`, and `cancellation`. Node contexts also expose `target` and `nodeAddress`; actor
-contexts also expose `actor`, `target`, and `actorPath`. If the script returns `ScriptExecutionResult`, that result is
-used. If it returns `null` or any other value, the runner creates the default success result.
+contexts also expose `actor`, `target`, and `actorPath`. Normal completion is reported as success; throwing an error is
+reported as failure.
 
 ```groovy
 // fix-player.groovy

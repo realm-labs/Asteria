@@ -4,23 +4,23 @@ import io.github.realmlabs.asteria.actor.AsteriaActor
 import io.github.realmlabs.asteria.core.NodeRuntime
 
 abstract class NodeScript<N : NodeRuntime> : BlockingScriptFunction {
-    final override fun execute(context: ScriptContext): ScriptExecutionResult? {
+    final override fun execute(context: ScriptContext) {
         val nodeContext = context.requireNodeContext()
         @Suppress("UNCHECKED_CAST")
-        return executeNode(nodeContext as NodeScriptContext<N>)
+        executeNode(nodeContext as NodeScriptContext<N>)
     }
 
-    abstract fun executeNode(context: NodeScriptContext<N>): ScriptExecutionResult?
+    abstract fun executeNode(context: NodeScriptContext<N>)
 }
 
 abstract class ActorScript<A : AsteriaActor<*>> : BlockingScriptFunction {
-    final override fun execute(context: ScriptContext): ScriptExecutionResult? {
+    final override fun execute(context: ScriptContext) {
         val actorContext = context.requireActorContext()
         @Suppress("UNCHECKED_CAST")
-        return executeActor(actorContext as ActorScriptContext<A>)
+        executeActor(actorContext as ActorScriptContext<A>)
     }
 
-    abstract fun executeActor(context: ActorScriptContext<A>): ScriptExecutionResult?
+    abstract fun executeActor(context: ActorScriptContext<A>)
 }
 
 private fun ScriptContext.requireNodeContext(): NodeScriptContext<*> {
