@@ -18,6 +18,7 @@ out/
 
 ### Kotlin ###
 .kotlin
+.jqwik-database
 
 ### Eclipse ###
 .apt_generated

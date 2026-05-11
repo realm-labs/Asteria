@@ -10,5 +10,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.slf4j.api)
     testImplementation(libs.kotlinx.coroutines.core)
+    testImplementation(libs.jqwik)
     testImplementation(libs.testcontainers.mongodb)
 }
