@@ -37,10 +37,10 @@ class ScriptPolicyTest {
                 scope = ScriptExecutionScope.Actor,
                 metadata = ScriptExecutionMetadata(
                     attributes = mapOf(
-                        ScriptSecurityAttributes.ApprovedBy to "lead-gm",
-                        ScriptSecurityAttributes.Signature to "valid",
-                        ScriptSecurityAttributes.TemplateId to "tpl-1",
-                        ScriptSecurityAttributes.Permissions to "script.engine.groovy,script.target.entity",
+                        ScriptSecurityAttributes.APPROVED_BY to "lead-gm",
+                        ScriptSecurityAttributes.SIGNATURE to "valid",
+                        ScriptSecurityAttributes.TEMPLATE_ID to "tpl-1",
+                        ScriptSecurityAttributes.PERMISSIONS to "script.engine.groovy,script.target.entity",
                     ),
                 ),
             ),

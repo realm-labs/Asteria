@@ -24,7 +24,7 @@ data class ScriptJobExecutionContext(
 }
 
 object ScriptJobExecutionAttributes {
-    const val MaxConcurrentItems: String = "script.job.maxConcurrentItems"
+    const val MAX_CONCURRENT_ITEMS: String = "script.job.maxConcurrentItems"
 }
 
 /**
@@ -256,7 +256,7 @@ class ScriptJobPermitLeaseLostException(
 ) : IllegalStateException("script job permit lease ${lease.id} for ${lease.owner} is lost", cause)
 
 private fun ScriptJobExecutionContext.requestedMaxConcurrentItems(): Int? {
-    val value = command.metadata.attributes[ScriptJobExecutionAttributes.MaxConcurrentItems] ?: return null
+    val value = command.metadata.attributes[ScriptJobExecutionAttributes.MAX_CONCURRENT_ITEMS] ?: return null
     val parsed = value.toIntOrNull()
     require(parsed != null && parsed > 0) { "script job max concurrent items must be positive" }
     return parsed

@@ -6,11 +6,11 @@ enum class ScriptExecutionScope {
 }
 
 object ScriptSecurityAttributes {
-    const val ApprovedBy: String = "script.approvedBy"
-    const val ApprovalTicket: String = "script.approvalTicket"
-    const val Permissions: String = "script.permissions"
-    const val Signature: String = "script.signature"
-    const val TemplateId: String = "script.templateId"
+    const val APPROVED_BY: String = "script.approvedBy"
+    const val APPROVAL_TICKET: String = "script.approvalTicket"
+    const val PERMISSIONS: String = "script.permissions"
+    const val SIGNATURE: String = "script.signature"
+    const val TEMPLATE_ID: String = "script.templateId"
 }
 
 data class ScriptExecutionRequest(
@@ -47,7 +47,7 @@ fun interface ScriptPermissionAuthorizer {
 
 object MetadataScriptPermissionAuthorizer : ScriptPermissionAuthorizer {
     override suspend fun isAllowed(request: ScriptExecutionRequest, permission: String): Boolean {
-        return request.metadata.attributes[ScriptSecurityAttributes.Permissions]
+        return request.metadata.attributes[ScriptSecurityAttributes.PERMISSIONS]
             ?.split(",")
             ?.map { it.trim() }
             ?.any { it == permission }
@@ -153,18 +153,18 @@ class DefaultScriptPolicy(
         }?.let { token ->
             return ScriptAuthorization.Denied("script uses forbidden API token $token")
         }
-        if (approvalRequired && request.metadata.attributes[ScriptSecurityAttributes.ApprovedBy].isNullOrBlank()) {
+        if (approvalRequired && request.metadata.attributes[ScriptSecurityAttributes.APPROVED_BY].isNullOrBlank()) {
             return ScriptAuthorization.Denied("script approval is required")
         }
         if (templateRequired) {
-            val templateId = request.metadata.attributes[ScriptSecurityAttributes.TemplateId]
+            val templateId = request.metadata.attributes[ScriptSecurityAttributes.TEMPLATE_ID]
                 ?: return ScriptAuthorization.Denied("script template is required")
             if (templateCatalog?.exists(templateId) == false) {
                 return ScriptAuthorization.Denied("script template $templateId does not exist")
             }
         }
         if (signatureRequired) {
-            val signature = request.metadata.attributes[ScriptSecurityAttributes.Signature]
+            val signature = request.metadata.attributes[ScriptSecurityAttributes.SIGNATURE]
                 ?: return ScriptAuthorization.Denied("script signature is required")
             val verifier = signatureVerifier
                 ?: return ScriptAuthorization.Denied("script signature verifier is not configured")

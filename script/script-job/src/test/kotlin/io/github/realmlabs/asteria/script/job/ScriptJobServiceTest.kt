@@ -584,7 +584,7 @@ class ScriptJobServiceTest {
                 command(
                     "job-1",
                     listOf("node-1", "node-2", "node-3", "node-4"),
-                    attributes = mapOf(ScriptJobExecutionAttributes.MaxConcurrentItems to "2"),
+                    attributes = mapOf(ScriptJobExecutionAttributes.MAX_CONCURRENT_ITEMS to "2"),
                 ),
             )
             awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Completed)
@@ -623,7 +623,7 @@ class ScriptJobServiceTest {
                 command(
                     "job-1",
                     listOf("node-1", "node-2", "node-3"),
-                    attributes = mapOf(ScriptJobExecutionAttributes.MaxConcurrentItems to "1"),
+                    attributes = mapOf(ScriptJobExecutionAttributes.MAX_CONCURRENT_ITEMS to "1"),
                 ),
             )
             val job = awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.PartialFailed)
@@ -667,7 +667,7 @@ class ScriptJobServiceTest {
                 command(
                     "job-1",
                     listOf("node-1", "node-2"),
-                    attributes = mapOf(ScriptJobExecutionAttributes.MaxConcurrentItems to "1"),
+                    attributes = mapOf(ScriptJobExecutionAttributes.MAX_CONCURRENT_ITEMS to "1"),
                 ),
             )
             awaitJob(repository, ScriptJobId("job-1"), ScriptJobStatus.Failed)

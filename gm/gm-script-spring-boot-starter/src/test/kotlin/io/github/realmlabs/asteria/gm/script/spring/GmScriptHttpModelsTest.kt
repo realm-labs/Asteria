@@ -75,6 +75,6 @@ class GmScriptHttpModelsTest {
 
         val command = request.toCommand("alice")
 
-        assertEquals("64", command.metadata.attributes[ScriptJobExecutionAttributes.MaxConcurrentItems])
+        assertEquals("64", command.metadata.attributes[ScriptJobExecutionAttributes.MAX_CONCURRENT_ITEMS])
     }
 }

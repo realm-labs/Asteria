@@ -61,7 +61,7 @@ data class OpsScriptExecutionOptionsRequest(
 
     fun toMetadataAttributes(): Map<String, String> {
         return buildMap {
-            maxConcurrentItems?.let { put(ScriptJobExecutionAttributes.MaxConcurrentItems, it.toString()) }
+            maxConcurrentItems?.let { put(ScriptJobExecutionAttributes.MAX_CONCURRENT_ITEMS, it.toString()) }
         }
     }
 }
