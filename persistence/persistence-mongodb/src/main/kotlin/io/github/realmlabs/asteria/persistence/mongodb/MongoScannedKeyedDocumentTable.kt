@@ -86,6 +86,9 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         }
     }
 
+    /**
+     * Scans every loaded row and marks rows dirty when their hash snapshot changed.
+     */
     fun scanLoaded(): Int {
         var dirty = 0
         rowsById.values.forEach { row ->
@@ -97,6 +100,9 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         return dirty
     }
 
+    /**
+     * Scans loaded rows from a round-robin cursor until [budget] is exhausted.
+     */
     fun scanSome(budget: MongoFlushBudget): MongoScanProgress {
         val ids = rowsById.keys.toList()
         if (ids.isEmpty()) return MongoScanProgress(0, 0, 0)
@@ -139,6 +145,12 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         return drainDirtyRows()
     }
 
+    /**
+     * Flushes a bounded number of rows already known to be dirty.
+     *
+     * Dirty knowledge comes from previous scans or create/delete operations. Failed rows are requeued; successful rows
+     * are marked clean because their pending write queue has been acknowledged.
+     */
     suspend fun flushSome(budget: MongoFlushBudget): MongoFlushProgress {
         val start = TimeSource.Monotonic.markNow()
         var attemptedRows = 0
@@ -209,6 +221,11 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         return row
     }
 
+    /**
+     * Deletes a currently loaded row by enqueueing a document delete and flushing it immediately.
+     *
+     * The row is detached only after Mongo accepts the delete. A false result leaves the row loaded for retry.
+     */
     suspend fun deleteLoaded(key: ID): Boolean {
         val row = rowsById[key] ?: return true
         val runtime = runtime(row)
@@ -239,6 +256,11 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
         return runtime.flushSafely()
     }
 
+    /**
+     * Runs a database-side query and returns only document ids.
+     *
+     * Use the returned keys with [use] before mutating rows so the scan runtime observes the current loaded row.
+     */
     suspend fun queryKeys(filter: Bson = Document()): List<ID> {
         return collection.find(filter).toList().map { it.id }
     }

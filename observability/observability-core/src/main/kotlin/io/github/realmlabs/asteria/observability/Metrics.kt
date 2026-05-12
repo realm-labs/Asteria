@@ -1,5 +1,11 @@
 package io.github.realmlabs.asteria.observability
 
+/**
+ * Minimal metrics facade used by framework modules.
+ *
+ * Implementations should be safe to call from actor threads, coroutine dispatchers, and network event loops. Metric
+ * names must be non-blank; implementations may cache instruments by name and apply [MetricTags] at record time.
+ */
 interface Metrics {
     fun counter(name: String, tags: MetricTags = MetricTags.Empty): Counter
 
@@ -8,6 +14,12 @@ interface Metrics {
     fun gauge(name: String, tags: MetricTags = MetricTags.Empty, value: () -> Double)
 }
 
+/**
+ * Immutable metric tag set.
+ *
+ * Tag keys must be non-blank. Combining tag sets with [plus] lets call-site tags override shared tags with the same
+ * key.
+ */
 data class MetricTags(
     private val values: Map<String, String> = emptyMap(),
 ) {
@@ -30,16 +42,25 @@ data class MetricTags(
     }
 }
 
+/**
+ * Monotonic counter instrument.
+ */
 interface Counter {
     fun increment(amount: Long = 1)
 }
 
+/**
+ * Duration recorder using milliseconds as the common unit across implementations.
+ */
 interface Timer {
     suspend fun <T> record(block: suspend () -> T): T
 
     fun record(durationMillis: Long)
 }
 
+/**
+ * Metrics implementation used when no backend has been installed.
+ */
 object NoopMetrics : Metrics {
     override fun counter(name: String, tags: MetricTags): Counter {
         require(name.isNotBlank()) { "counter name must not be blank" }

@@ -161,6 +161,12 @@ fun <K : Any, R : Any, T : KeyedConfigTable<K, R>> ConfigSnapshot.requireTable(
     return table(ref, tableType) ?: error("config table ${ref.name} not found in revision ${revision.version}")
 }
 
+/**
+ * Returns a list-shaped table by [ref], or `null` when it is absent.
+ *
+ * The stored table must match [ref]'s row type and must be a [ListConfigTable]. Shape mismatches throw immediately so
+ * generated accessors fail at the snapshot boundary instead of returning a table with incompatible access semantics.
+ */
 fun <R : Any> ConfigSnapshot.listTable(ref: RowConfigTableRef<R>): ListConfigTable<R>? {
     val table = table(ref) ?: return null
     require(table is ListConfigTable<*>) {
@@ -194,6 +200,11 @@ fun <R : Any, T : ListConfigTable<R>> ConfigSnapshot.requireListTable(
     return listTable(ref, tableType) ?: error("config list table ${ref.name} not found in revision ${revision.version}")
 }
 
+/**
+ * Returns a singleton-shaped table by [ref], or `null` when it is absent.
+ *
+ * The stored table must match [ref]'s row type and must be a [SingleConfigTable].
+ */
 fun <R : Any> ConfigSnapshot.singleTable(ref: RowConfigTableRef<R>): SingleConfigTable<R>? {
     val table = table(ref) ?: return null
     require(table is SingleConfigTable<*>) {

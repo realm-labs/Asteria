@@ -12,12 +12,21 @@ class DataLease internal constructor(
     private var active: Boolean = true
     private var generation: Long = 0
 
+    /**
+     * Fails when a caller is using a reference after the owning cache unloaded it.
+     */
     fun ensureActive() {
         check(active) { "$label has been unloaded" }
     }
 
+    /**
+     * True until the owning cache unloads the leased data.
+     */
     fun active(): Boolean = active
 
+    /**
+     * Monotonic invalidation counter for consumers that cache derived state from a lease.
+     */
     fun generation(): Long = generation
 
     internal fun invalidate() {
@@ -30,6 +39,9 @@ class DataLease internal constructor(
  * Marker for data units that can be safely invalidated when unloaded.
  */
 interface DataLeaseAware {
+    /**
+     * Binds the lease that guards externally reachable mutable operations.
+     */
     fun bindLease(lease: DataLease)
 }
 

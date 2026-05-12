@@ -5,6 +5,13 @@ import com.google.protobuf.Parser
 import io.github.realmlabs.asteria.protobuf.ProtobufMessageRegistry
 import kotlin.reflect.KClass
 
+/**
+ * Registry for protobuf protocol ids, parsers, and allowed directions.
+ *
+ * Gateway codecs use [decode] for client-to-server frames and [encode] for server-to-client messages. Both operations
+ * validate [ProtoDirection] so server-only messages cannot enter gateway routing and client-only messages cannot be
+ * sent to a client by mistake.
+ */
 class ProtobufProtocolRegistry(
     mappings: Iterable<ProtoMapping<out GeneratedMessage>> = emptyList(),
 ) {
@@ -59,6 +66,9 @@ class ProtobufProtocolRegistry(
     }
 }
 
+/**
+ * Allowed wire direction for one protobuf message id.
+ */
 enum class ProtoDirection(
     val allowsClientToServer: Boolean,
     val allowsServerToClient: Boolean,
@@ -68,6 +78,9 @@ enum class ProtoDirection(
     BIDIRECTIONAL(allowsClientToServer = true, allowsServerToClient = true),
 }
 
+/**
+ * Static mapping between a protobuf message class, its parser, wire id, and direction.
+ */
 data class ProtoMapping<M : GeneratedMessage>(
     val id: Int,
     val direction: ProtoDirection,

@@ -82,19 +82,52 @@ data class LubanConfigModuleOptions(
     val validationParallelism: Int,
 )
 
+/**
+ * Luban export format consumed by [LubanConfigModule].
+ */
 enum class LubanConfigFormat {
     Json,
     Binary,
 }
 
+/**
+ * DSL for installing a [ConfigService] that loads directly from Luban exports.
+ */
 @AsteriaDsl
 class LubanConfigModuleBuilder {
+    /**
+     * Export format expected from the configured data source.
+     */
     var format: LubanConfigFormat = LubanConfigFormat.Json
+
+    /**
+     * Charset used when parsing JSON exports.
+     */
     var charset: Charset = StandardCharsets.UTF_8
+
+    /**
+     * Jackson mapper used by the JSON loader before values enter the Luban generated loader.
+     */
     var objectMapper: ObjectMapper = ObjectMapper()
+
+    /**
+     * Whether directory-backed loading should read listed files concurrently.
+     */
     var preload: Boolean = true
+
+    /**
+     * Maximum concurrent file reads when [preload] is enabled.
+     */
     var preloadConcurrency: Int = 4
+
+    /**
+     * Whether [ConfigService.load] should run during module start.
+     */
     var loadOnStart: Boolean = true
+
+    /**
+     * Maximum number of validators allowed to run at the same time.
+     */
     var validationParallelism: Int = 1
 
     private var tablesType: KClass<Any>? = null
@@ -132,16 +165,25 @@ class LubanConfigModuleBuilder {
         this.bridge = bridge as LubanSnapshotBridge<Any, Any>
     }
 
+    /**
+     * Reads Luban files from the first level of [path].
+     */
     fun dataDir(path: Path) {
         dataDir = path
         dataSource = null
     }
 
+    /**
+     * Uses a custom Luban data source.
+     */
     fun dataSource(source: LubanDataSource) {
         dataSource = source
         dataDir = null
     }
 
+    /**
+     * Uses in-memory Luban files, typically from tests or publication bundles.
+     */
     fun memory(files: Map<String, ByteArray>) {
         dataSource(MemoryLubanDataSource(files))
     }
@@ -154,6 +196,9 @@ class LubanConfigModuleBuilder {
         format = LubanConfigFormat.Binary
     }
 
+    /**
+     * Configures directory preload behavior for [DirectoryLubanDataSource].
+     */
     fun preload(
         enabled: Boolean = true,
         maxConcurrency: Int = 4,
@@ -162,6 +207,9 @@ class LubanConfigModuleBuilder {
         preloadConcurrency = maxConcurrency
     }
 
+    /**
+     * Overrides how a [ConfigRevision] is created from the files used during load.
+     */
     fun revision(factory: (LubanLoadReport) -> ConfigRevision) {
         revisionFactory = factory
     }

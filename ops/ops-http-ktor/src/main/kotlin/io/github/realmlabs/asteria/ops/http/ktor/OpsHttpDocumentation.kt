@@ -1,5 +1,8 @@
 package io.github.realmlabs.asteria.ops.http.ktor
 
+/**
+ * Self-describing OPS endpoint document returned from `/ops`.
+ */
 data class OpsHttpDescription(
     val service: String = "asteria-node-local-ops",
     val authentication: OpsHttpAuthenticationDescription,
@@ -10,22 +13,34 @@ data class OpsHttpDescription(
     val examples: Map<String, Any>,
 )
 
+/**
+ * Authentication section of the OPS endpoint document.
+ */
 data class OpsHttpAuthenticationDescription(
     val scheme: String,
     val required: Boolean,
     val header: String = "Authorization: Bearer <token>",
 )
 
+/**
+ * Header contract exposed by the OPS endpoint document.
+ */
 data class OpsHttpHeaderDescription(
     val name: String,
     val requiredForMutations: Boolean,
     val description: String,
 )
 
+/**
+ * Runtime limits exposed by the OPS endpoint document.
+ */
 data class OpsHttpLimitDescription(
     val maxScriptBytes: Int,
 )
 
+/**
+ * One route entry in the OPS endpoint document.
+ */
 data class OpsHttpEndpointDescription(
     val method: String,
     val path: String,
@@ -33,11 +48,17 @@ data class OpsHttpEndpointDescription(
     val body: String? = null,
 )
 
+/**
+ * Schema entry used by the generated OPS endpoint document.
+ */
 data class OpsHttpSchemaDescription(
     val description: String,
     val fields: List<OpsHttpFieldDescription>,
 )
 
+/**
+ * Field entry used by schema descriptions in the OPS endpoint document.
+ */
 data class OpsHttpFieldDescription(
     val name: String,
     val type: String,
@@ -47,6 +68,9 @@ data class OpsHttpFieldDescription(
     val values: List<String>? = null,
 )
 
+/**
+ * Builds the node-local OPS endpoint description from runtime options.
+ */
 fun nodeLocalOpsDescription(options: NodeLocalOpsHttpOptions): OpsHttpDescription {
     return OpsHttpDescription(
         authentication = OpsHttpAuthenticationDescription(

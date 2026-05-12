@@ -52,6 +52,9 @@ class LubanJsonConfigLoader<T : Any, L : Any>(
     }
 }
 
+/**
+ * Load report passed to the JSON revision factory.
+ */
 data class LubanJsonLoadReport(
     override val files: List<String>,
     override val checksum: String,

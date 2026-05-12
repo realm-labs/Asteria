@@ -19,6 +19,12 @@ import org.slf4j.LoggerFactory
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
+/**
+ * GridFS artifact store for runtime patch jars.
+ *
+ * Files are addressed by checksum-derived names, making saves idempotent for identical content. Loaded bytes are
+ * verified against the [PatchArtifact] checksum before being returned to the patch runtime.
+ */
 class MongoGridFsPatchArtifactStore(
     database: MongoDatabase,
     bucketName: String = "runtime_patch_artifacts",

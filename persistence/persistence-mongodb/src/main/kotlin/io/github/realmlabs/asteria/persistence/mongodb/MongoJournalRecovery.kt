@@ -19,6 +19,11 @@ class MongoJournalRecovery(
 ) {
     private val logger = LoggerFactory.getLogger(MongoJournalRecovery::class.java)
 
+    /**
+     * Replays uncheckpointed WAL entries and acknowledges entries that flush successfully.
+     *
+     * Failures are propagated so callers can stop startup instead of running with uncertain durability state.
+     */
     suspend fun recover(): MongoJournalRecoveryResult {
         val startedAt = System.nanoTime()
         val entries = journal.recover()
@@ -75,6 +80,9 @@ class MongoJournalRuntime(
     private val policy: MongoJournalPolicy,
     private val metrics: Metrics = NoopMetrics,
 ) : AutoCloseable {
+    /**
+     * Runs startup recovery when enabled by [MongoJournalPolicy].
+     */
     suspend fun recoverOnStart(): MongoJournalRecoveryResult {
         if (!policy.enabled || !policy.recoverOnStart) return MongoJournalRecoveryResult()
         return MongoJournalRecovery(journal, database, metrics).recover()

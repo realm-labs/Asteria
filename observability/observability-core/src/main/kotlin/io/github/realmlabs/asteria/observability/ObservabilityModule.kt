@@ -4,6 +4,12 @@ import io.github.realmlabs.asteria.core.AsteriaDsl
 import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
 
+/**
+ * Installs tracing and metrics services into the application registry.
+ *
+ * Install this module before modules that should observe startup work. Modules that are installed earlier still fall
+ * back to no-op services through the `OrNoop` helpers.
+ */
 class ObservabilityModule private constructor(
     private val observability: Observability,
 ) : AsteriaModule {
@@ -22,6 +28,9 @@ class ObservabilityModule private constructor(
     }
 }
 
+/**
+ * DSL backing [ObservabilityModule].
+ */
 @AsteriaDsl
 class ObservabilityModuleBuilder {
     var tracer: Tracer = NoopTracer

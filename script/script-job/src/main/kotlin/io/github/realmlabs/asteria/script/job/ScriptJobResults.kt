@@ -1,5 +1,11 @@
 package io.github.realmlabs.asteria.script.job
 
+/**
+ * Aggregated terminal state for a script job.
+ *
+ * Counts are derived from persisted items; [errorTypes] groups failed item messages so operators can decide whether to
+ * retry by error bucket.
+ */
 data class ScriptJobResultSummary(
     val jobId: ScriptJobId,
     val totalItems: Int,
@@ -9,6 +15,9 @@ data class ScriptJobResultSummary(
     val errorTypes: List<ScriptJobErrorSummary>,
 )
 
+/**
+ * One grouped error in a job result summary.
+ */
 data class ScriptJobErrorSummary(
     val error: String,
     val count: Int,
@@ -20,6 +29,9 @@ data class ScriptJobErrorSummary(
     }
 }
 
+/**
+ * Exported job results, usually produced as CSV for GM and ops tooling.
+ */
 data class ScriptJobResultExport(
     val fileName: String,
     val contentType: String,
@@ -31,6 +43,12 @@ data class ScriptJobResultExport(
     }
 }
 
+/**
+ * Selection criteria for retrying failed job items.
+ *
+ * [error] narrows retries to one error bucket. [limit] caps how many failed items are moved back to pending in one
+ * request.
+ */
 data class ScriptJobRetryFailedItemsRequest(
     val error: String? = null,
     val limit: Int = 100,

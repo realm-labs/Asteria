@@ -112,15 +112,27 @@ data class ConfigPublicationBundle(
     val manifest: ConfigPublicationManifest,
     val artifacts: Map<String, ByteArray>,
 ) {
+    /**
+     * Exposes the validated artifact map as a Luban in-memory data source.
+     *
+     * The returned source preserves manifest-relative artifact names, so a Luban loader can request files exactly as
+     * they appeared in the published export.
+     */
     fun lubanDataSource(): MemoryLubanDataSource {
         return MemoryLubanDataSource(artifacts)
     }
 }
 
+/**
+ * Raised when a required publication pointer, manifest, history record, or artifact path is absent.
+ */
 class ConfigPublicationNotFoundException(
     val path: ConfigPath,
 ) : IllegalStateException("config publication entry not found at $path")
 
+/**
+ * Raised when publication metadata exists but fails consistency checks.
+ */
 class ConfigPublicationValidationException(
     message: String,
 ) : IllegalStateException(message)

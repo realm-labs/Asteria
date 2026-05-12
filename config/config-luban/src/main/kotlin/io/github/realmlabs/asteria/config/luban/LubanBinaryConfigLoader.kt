@@ -43,6 +43,9 @@ class LubanBinaryConfigLoader<T : Any, L : Any>(
     }
 }
 
+/**
+ * Load report passed to the binary revision factory.
+ */
 data class LubanBinaryLoadReport(
     override val files: List<String>,
     override val checksum: String,

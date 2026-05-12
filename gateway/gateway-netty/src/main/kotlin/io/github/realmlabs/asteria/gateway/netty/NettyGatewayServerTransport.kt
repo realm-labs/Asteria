@@ -23,6 +23,12 @@ import kotlinx.coroutines.Dispatchers
 import org.slf4j.LoggerFactory
 import java.util.*
 
+/**
+ * Common server options for Netty-backed gateway transports.
+ *
+ * [workerThreads] follows Netty defaults when set to `0`. [maxFrameLength] is used by the built-in TCP and WebSocket
+ * pipeline installers; custom installers may interpret it differently or ignore it.
+ */
 data class NettyGatewayServerOptions(
     val host: String = "0.0.0.0",
     val port: Int,
@@ -35,6 +41,9 @@ data class NettyGatewayServerOptions(
     val childChannelOptions: NettyChildChannelOptions = NettyChildChannelOptions(),
 )
 
+/**
+ * Netty options applied to the listening server channel.
+ */
 data class NettyServerChannelOptions(
     val backlog: Int? = null,
     val reuseAddress: Boolean? = null,
@@ -42,6 +51,9 @@ data class NettyServerChannelOptions(
     val extraOptions: List<NettyChannelOption<*>> = emptyList(),
 )
 
+/**
+ * Netty options applied to accepted child channels.
+ */
 data class NettyChildChannelOptions(
     val tcpNoDelay: Boolean? = true,
     val keepAlive: Boolean? = null,
@@ -53,16 +65,25 @@ data class NettyChildChannelOptions(
     val extraOptions: List<NettyChannelOption<*>> = emptyList(),
 )
 
+/**
+ * Write buffer thresholds passed to Netty child channels.
+ */
 data class NettyWriteBufferWaterMark(
     val low: Int,
     val high: Int,
 )
 
+/**
+ * Escape hatch for Netty [ChannelOption] values not modeled directly by Asteria.
+ */
 data class NettyChannelOption<T : Any>(
     val option: ChannelOption<T>,
     val value: T,
 )
 
+/**
+ * Native event-loop backend selection for Netty transports.
+ */
 enum class NettyEventLoopBackend {
     /**
      * Uses epoll when available, then kqueue when available, otherwise NIO.
@@ -74,6 +95,12 @@ enum class NettyEventLoopBackend {
     KQUEUE,
 }
 
+/**
+ * Base class for Netty gateway server transports.
+ *
+ * Subclasses provide the [GatewayTransportKind] and pipeline installer. Start and stop are intentionally final so
+ * binding, metrics, and event-loop shutdown stay consistent across TCP, WebSocket, and custom Netty transports.
+ */
 abstract class NettyGatewayServerTransport(
     final override val kind: GatewayTransportKind,
     protected val options: NettyGatewayServerOptions,

@@ -24,6 +24,12 @@ class MongoPendingWriteFlusher(
 ) {
     private val logger = LoggerFactory.getLogger(MongoPendingWriteFlusher::class.java)
 
+    /**
+     * Drains the queue and writes each collection with unordered bulk operations.
+     *
+     * Journal entries are acknowledged only for collections that completed successfully. Writes from collections that
+     * did not complete are requeued before the exception is rethrown.
+     */
     suspend fun flush(): List<BulkWriteResult> {
         val writes = queue.drain()
         if (writes.isEmpty()) return emptyList()

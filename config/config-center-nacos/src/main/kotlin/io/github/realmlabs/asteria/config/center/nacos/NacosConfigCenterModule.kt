@@ -73,6 +73,12 @@ class NacosConfigCenterModule private constructor(
     }
 }
 
+/**
+ * Immutable options for [NacosConfigCenterModule].
+ *
+ * Connection properties are only used when the module creates its own Nacos client. [group], [timeoutMs], and
+ * [dataIdPrefix] are always applied by [NacosConfigStore].
+ */
 data class NacosConfigCenterModuleOptions(
     val serverAddr: String?,
     val namespace: String?,
@@ -86,14 +92,44 @@ data class NacosConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
+/**
+ * DSL for installing a Nacos-backed config center.
+ */
 @AsteriaDsl
 class NacosConfigCenterModuleBuilder {
+    /**
+     * Nacos server address used when the module owns the client.
+     */
     var serverAddr: String? = null
+
+    /**
+     * Optional Nacos namespace used when creating the client.
+     */
     var namespace: String? = null
+
+    /**
+     * Optional username used when creating the client.
+     */
     var username: String? = null
+
+    /**
+     * Optional password used when creating the client.
+     */
     var password: String? = null
+
+    /**
+     * Nacos group used for all data IDs managed by this store.
+     */
     var group: String = NacosConfigStore.DEFAULT_GROUP
+
+    /**
+     * Blocking Nacos read timeout in milliseconds.
+     */
     var timeoutMs: Long = NacosConfigStore.DEFAULT_TIMEOUT_MS
+
+    /**
+     * Prefix prepended to every config path when deriving Nacos data IDs.
+     */
     var dataIdPrefix: String = NacosConfigStore.DEFAULT_DATA_ID_PREFIX
 
     private val properties = Properties()

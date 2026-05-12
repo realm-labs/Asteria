@@ -14,6 +14,9 @@ import io.ktor.server.request.*
 import io.ktor.utils.io.*
 import java.util.*
 
+/**
+ * Parsed OPS script command plus request metadata useful for routing, audit, and logging.
+ */
 data class ReceivedOpsScriptCommand(
     val command: ScriptExecutionCommand,
     val timeoutMillis: Long,
@@ -22,6 +25,12 @@ data class ReceivedOpsScriptCommand(
     val artifactEngine: String,
 )
 
+/**
+ * Reads either JSON or multipart script submissions from an OPS request.
+ *
+ * Multipart accepts `target` as JSON and `artifact` as a file; the engine is inferred from `.groovy` or `.jar` unless
+ * an explicit `engine` form field is supplied.
+ */
 suspend fun ApplicationCall.receiveOpsScriptCommand(
     principal: NodeLocalOpsPrincipal,
     maxScriptBytes: Int,

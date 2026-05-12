@@ -13,6 +13,14 @@ import org.apache.pekko.cluster.sharding.ShardCoordinator
 import org.apache.pekko.cluster.sharding.ShardRegion
 import scala.jdk.javaapi.FutureConverters
 
+/**
+ * Runtime module that creates the Pekko [ActorSystem] and starts configured entities and singletons.
+ *
+ * Installation resolves cluster startup config, registers Pekko services, and joins the cluster when the startup mode
+ * requires self-join. Start-up then materializes shard regions/proxies and singleton proxies from the application
+ * topology. Shutdown terminates the actor system and is also wired into Pekko Coordinated Shutdown when the module
+ * lifecycle service is available.
+ */
 class PekkoRuntimeModule(
     private val startup: PekkoClusterStartup,
 ) : AsteriaModule {

@@ -6,6 +6,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
+/**
+ * HTTP headers used to bind node-local OPS calls to an operator and reason.
+ */
 object OpsHeaders {
     const val OPERATOR: String = "X-Asteria-Operator"
     const val REASON: String = "X-Asteria-Reason"
@@ -13,6 +16,9 @@ object OpsHeaders {
     const val SOURCE: String = "X-Asteria-Source"
 }
 
+/**
+ * Authenticated caller context for node-local OPS requests.
+ */
 data class NodeLocalOpsPrincipal(
     val id: String,
     val source: String = "node-local-http",
@@ -21,6 +27,9 @@ data class NodeLocalOpsPrincipal(
     val attributes: Map<String, String> = emptyMap(),
 )
 
+/**
+ * Audit event recorded around each OPS action.
+ */
 data class NodeLocalOpsAuditEvent(
     val action: String,
     val principal: NodeLocalOpsPrincipal,
@@ -30,6 +39,9 @@ data class NodeLocalOpsAuditEvent(
     val occurredAtMillis: Long = System.currentTimeMillis(),
 )
 
+/**
+ * Receives OPS HTTP audit events after authentication and before errors are returned.
+ */
 fun interface NodeLocalOpsAuditSink {
     suspend fun record(event: NodeLocalOpsAuditEvent)
 }
@@ -43,10 +55,16 @@ fun interface NodeLocalOpsTokenValidator {
     fun validate(token: String?): Boolean
 }
 
+/**
+ * Token validator for explicitly unsecured local deployments.
+ */
 object AllowAllNodeLocalOpsTokenValidator : NodeLocalOpsTokenValidator {
     override fun validate(token: String?): Boolean = true
 }
 
+/**
+ * Constant-time bearer token validator backed by an inline token or token file.
+ */
 class StaticNodeLocalOpsTokenValidator private constructor(
     private val expected: ByteArray,
 ) : NodeLocalOpsTokenValidator {
@@ -69,11 +87,17 @@ class StaticNodeLocalOpsTokenValidator private constructor(
     }
 }
 
+/**
+ * Exception mapped by the OPS HTTP module to an explicit response status.
+ */
 class NodeLocalOpsHttpException(
     val status: HttpStatusCode,
     override val message: String,
 ) : RuntimeException(message)
 
+/**
+ * Authenticates a Ktor call and extracts the operator context from OPS headers.
+ */
 fun ApplicationCall.authenticateNodeLocalOps(
     options: NodeLocalOpsHttpOptions,
     tokenValidator: NodeLocalOpsTokenValidator,

@@ -53,6 +53,11 @@ abstract class MongoScannedDocumentData<ID : Any, E : Entity<ID>>(
         return requireNotNull(value) { "scanned document $collectionName:${scope.entityId} is not loaded" }
     }
 
+    /**
+     * Enqueues a document delete and flushes it immediately.
+     *
+     * A false result leaves [value] attached so the caller can retry later.
+     */
     protected suspend fun deleteValue(): Boolean {
         if (value == null) return true
         runtime.enqueueDelete()

@@ -1,5 +1,12 @@
 package io.github.realmlabs.asteria.script
 
+/**
+ * Script payload handed to a [ScriptEngine].
+ *
+ * [engine] must match a registered engine name. [body] is the primary source or binary artifact; [extra] is reserved
+ * for engine-specific side data such as compiled metadata. [checksum] is carried for policy and audit use and is not
+ * verified by this value object.
+ */
 data class ScriptArtifact(
     val name: String,
     val engine: String,

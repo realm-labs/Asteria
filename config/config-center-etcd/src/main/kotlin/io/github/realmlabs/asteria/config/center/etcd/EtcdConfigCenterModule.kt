@@ -61,6 +61,12 @@ class EtcdConfigCenterModule private constructor(
     }
 }
 
+/**
+ * Immutable options for [EtcdConfigCenterModule].
+ *
+ * [endpoints] are only used when the module creates its own client. [keyPrefix] scopes all config paths into one etcd
+ * key namespace and is normalized before use by [EtcdConfigStore].
+ */
 data class EtcdConfigCenterModuleOptions(
     val endpoints: List<String>,
     val keyPrefix: String,
@@ -68,9 +74,19 @@ data class EtcdConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
+/**
+ * DSL for installing an etcd-backed config center.
+ */
 @AsteriaDsl
 class EtcdConfigCenterModuleBuilder {
+    /**
+     * Endpoint URLs used when the module owns the jetcd client.
+     */
     var endpoints: List<String> = emptyList()
+
+    /**
+     * Optional etcd key prefix prepended to every [io.github.realmlabs.asteria.config.center.ConfigPath].
+     */
     var keyPrefix: String = ""
 
     private var client: Client? = null

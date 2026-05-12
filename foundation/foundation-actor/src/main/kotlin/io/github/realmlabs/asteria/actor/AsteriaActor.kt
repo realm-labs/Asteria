@@ -14,6 +14,13 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * Base actor that wires Asteria runtime services into Pekko actors.
+ *
+ * Incoming messages are wrapped with tracing and metrics, while coroutine tasks posted through [launch] or [async] are
+ * executed on the actor mailbox. This keeps actor state access serialized as long as coroutine code resumes through the
+ * provided [coroutineScope].
+ */
 abstract class AsteriaActor<N : NodeRuntime>(
     val runtime: N,
 ) : AbstractActorWithStash() {
@@ -74,10 +81,19 @@ abstract class AsteriaActor<N : NodeRuntime>(
         return this?.javaClass?.name ?: "null"
     }
 
+    /**
+     * Posts a named synchronous task to this actor's mailbox.
+     */
     fun execute(name: String, block: () -> Unit) {
         self tell NamedActorTask(name, block)
     }
 
+    /**
+     * Launches coroutine work whose continuations resume through this actor's mailbox.
+     *
+     * The default timeout bounds accidental long-running actor work. Pass `timeout = null` for lifecycle operations that
+     * intentionally wait on external resources.
+     */
     fun launch(
         context: CoroutineContext = EmptyCoroutineContext,
         start: CoroutineStart = CoroutineStart.DEFAULT,
@@ -91,6 +107,9 @@ abstract class AsteriaActor<N : NodeRuntime>(
         }
     }
 
+    /**
+     * Starts coroutine work that returns a [Deferred] while keeping continuations on the actor mailbox.
+     */
     fun <T> async(
         context: CoroutineContext = EmptyCoroutineContext,
         start: CoroutineStart = CoroutineStart.DEFAULT,
@@ -100,6 +119,9 @@ abstract class AsteriaActor<N : NodeRuntime>(
     }
 }
 
+/**
+ * Mailbox task used by [AsteriaActor.execute].
+ */
 data class NamedActorTask(
     val name: String,
     val block: () -> Unit,

@@ -6,15 +6,27 @@ import io.github.realmlabs.asteria.protobuf.ProtobufMessageRegistry
 import io.github.realmlabs.asteria.protobuf.ProtobufMessageRegistryBuilder
 import kotlin.reflect.KClass
 
+/**
+ * Protobuf metadata needed by RPC transports.
+ *
+ * [messages] owns message id encoding/decoding. [entityIds] optionally maps request messages to sharding entity ids for
+ * transports that route RPC calls through clustered actors.
+ */
 class ProtobufRpcProtocol(
     val messages: ProtobufMessageRegistry<Int>,
     val entityIds: ProtobufRpcEntityIdRegistry,
 )
 
+/**
+ * Contribution hook used by generated modules to extend an RPC protocol builder.
+ */
 fun interface ProtobufRpcProtocolContributor {
     fun contribute(builder: ProtobufRpcProtocolBuilder)
 }
 
+/**
+ * Builder for RPC protobuf ids and optional entity-id extractors.
+ */
 class ProtobufRpcProtocolBuilder {
     private val messages = ProtobufMessageRegistryBuilder<Int>()
     private val entityIds = ProtobufRpcEntityIdRegistryBuilder()
@@ -57,6 +69,9 @@ class ProtobufRpcProtocolBuilder {
     }
 }
 
+/**
+ * Builds an RPC protobuf protocol from a DSL block.
+ */
 fun protobufRpcProtocol(
     configure: ProtobufRpcProtocolBuilder.() -> Unit,
 ): ProtobufRpcProtocol {

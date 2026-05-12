@@ -5,6 +5,12 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
+/**
+ * Gradle plugin that wires Asteria config KSP generation into a Kotlin JVM project.
+ *
+ * The plugin applies KSP after the Kotlin JVM plugin is present, passes extension values as KSP options, optionally
+ * generates Luban marker sources before compilation, and can add the required Asteria config dependencies.
+ */
 class AsteriaConfigCodegenPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create(

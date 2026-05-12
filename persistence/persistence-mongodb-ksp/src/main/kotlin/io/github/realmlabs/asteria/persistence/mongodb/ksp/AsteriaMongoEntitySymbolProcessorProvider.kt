@@ -10,6 +10,9 @@ import com.squareup.kotlinpoet.ksp.writeTo
 import io.github.realmlabs.asteria.persistence.mongodb.annotations.*
 import org.bson.codecs.pojo.annotations.BsonId
 
+/**
+ * KSP entry point for generating Mongo tracked wrappers from `@AsteriaMongoEntity`.
+ */
 class AsteriaMongoEntitySymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
         return AsteriaMongoEntitySymbolProcessor(environment.codeGenerator, environment.logger, environment.options)

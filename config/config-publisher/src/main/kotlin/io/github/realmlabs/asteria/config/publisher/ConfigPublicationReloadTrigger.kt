@@ -28,6 +28,11 @@ class ConfigPublicationReloadTrigger(
     }
 }
 
+/**
+ * Watches only the current pointer used by [ConfigPublisher].
+ *
+ * This matches the publisher's write order and avoids reloads from intermediate artifact writes.
+ */
 fun configPublicationReloadTrigger(
     store: ConfigStore,
     layout: ConfigPublicationLayout = ConfigPublicationLayout(),

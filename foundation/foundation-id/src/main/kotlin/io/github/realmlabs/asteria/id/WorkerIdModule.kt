@@ -237,6 +237,13 @@ private class LeaseAwareIdGenerator(
 
 private val DEFAULT_RENEW_RETRY_DELAY: Duration = 1.seconds
 
+/**
+ * Lease and generator settings for [WorkerIdModule].
+ *
+ * [renewInterval] must be shorter than [ttl] so the module has time to retry transient repository failures before the
+ * lease expires. [owner] can be supplied to make ownership stable across restarts; otherwise a random process-local
+ * owner is used.
+ */
 data class WorkerIdModuleOptions(
     val range: WorkerIdRange = WorkerIdRange.of(0, 1023),
     val ttl: Duration = 30.seconds,

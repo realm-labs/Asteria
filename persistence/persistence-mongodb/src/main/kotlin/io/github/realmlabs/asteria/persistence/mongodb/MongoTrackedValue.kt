@@ -15,6 +15,9 @@ data class MongoDirtyTarget(
     val value: Any?,
 )
 
+/**
+ * Receives the nearest write boundary used when nested mutations cannot be represented as precise Mongo paths.
+ */
 interface MongoDirtyTargetAware {
     fun bindDirtyTarget(dirtyTarget: MongoDirtyTarget?)
 }
@@ -35,6 +38,12 @@ internal fun MongoChangeQueue.enqueueUnset(path: MongoPath, dirtyTarget: MongoDi
     }
 }
 
+/**
+ * Wraps mutable Mongo values so later in-place mutations enqueue dirty operations.
+ *
+ * Deeply nested mutable values may be assigned a [MongoDirtyTarget]. When that target is present, any child mutation
+ * writes the boundary value instead of trying to encode an unstable descendant path.
+ */
 @Suppress("UNCHECKED_CAST")
 fun trackMongoMutableValue(
     path: MongoPath,
@@ -97,6 +106,12 @@ private fun canHaveNestedMutation(value: Any?): Boolean {
             value is Deque<*>
 }
 
+/**
+ * Property delegate for scalar or immutable field writes on a tracked Mongo document.
+ *
+ * Assigning an equal value is ignored. Assigning a new value checks the optional lease and enqueues one `$set`, or the
+ * current dirty boundary set when this value lives below a boundary.
+ */
 class MongoTrackedValue<T>(
     private val path: MongoPath,
     initialValue: T,
@@ -135,6 +150,12 @@ fun <T> mongoTrackedValue(
     return MongoTrackedValue(path, initialValue, queue, dirtyTarget, leaseProvider)
 }
 
+/**
+ * Base support for generated tracked objects and nested collection facades.
+ *
+ * It propagates row leases and dirty boundaries to children, and exposes protected helpers that generated setters use
+ * to enqueue durable writes.
+ */
 abstract class MongoTrackedObjectSupport(
     private val queue: MongoChangeQueue,
 ) : MongoPersistentValue, MongoDirtyTargetAware, DataLeaseAware {

@@ -36,6 +36,9 @@ class NettyGatewayPipelineContext(
     val metrics: Metrics,
     val connectionIdFactory: () -> GatewayConnectionId,
 ) {
+    /**
+     * Builds a handler that bridges complete [GatewayFrame] objects into gateway-core.
+     */
     fun gatewayFrameHandler(writer: NettyGatewayFrameWriter): ChannelHandler {
         return NettyGatewayFrameHandler(
             transport = transport,
@@ -47,6 +50,9 @@ class NettyGatewayPipelineContext(
         )
     }
 
+    /**
+     * Builds a handler that lets the pipeline deliver native decoded messages to [receiver].
+     */
     fun <I : Any> gatewayMessageHandler(
         inboundType: Class<out I>,
         receiver: NettyGatewayMessageReceiver<I>,
@@ -65,10 +71,16 @@ class NettyGatewayPipelineContext(
     }
 }
 
+/**
+ * Writes a gateway frame through a Netty channel using the transport's outbound representation.
+ */
 fun interface NettyGatewayFrameWriter {
     fun write(channel: Channel, frame: GatewayFrame)
 }
 
+/**
+ * Built-in frame writers for byte-buffer and binary WebSocket pipelines.
+ */
 object NettyGatewayFrameWriters {
     val BYTE_BUF: NettyGatewayFrameWriter = NettyGatewayFrameWriter { channel, frame ->
         channel.writeAndFlush(Unpooled.wrappedBuffer(frame.bytes))
@@ -79,7 +91,13 @@ object NettyGatewayFrameWriters {
     }
 }
 
+/**
+ * Built-in pipeline installers for common binary gateway transports.
+ */
 object NettyGatewayPipelineInstallers {
+    /**
+     * Length-field based TCP framing with a four-byte big-endian length prefix.
+     */
     fun lengthFieldTcp(): NettyGatewayPipelineInstaller {
         return NettyGatewayPipelineInstaller { channel, context ->
             channel.pipeline()
@@ -97,6 +115,9 @@ object NettyGatewayPipelineInstallers {
         }
     }
 
+    /**
+     * HTTP upgrade pipeline that accepts binary WebSocket frames on [NettyGatewayServerOptions.websocketPath].
+     */
     fun webSocket(): NettyGatewayPipelineInstaller {
         return NettyGatewayPipelineInstaller { channel, context ->
             channel.pipeline()

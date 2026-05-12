@@ -44,6 +44,12 @@ class ConfigPublicationLubanBinaryLoader<T : Any, L : Any>(
     }
 }
 
+/**
+ * Reified factory for a Luban binary loader backed by the current published config revision.
+ *
+ * Use this in runtime module wiring when the Luban root tables type is available as a type argument and artifacts are
+ * read from a [ConfigStore] instead of a local export directory.
+ */
 inline fun <reified T : Any> configPublicationLubanBinaryLoader(
     store: ConfigStore,
     bridge: LubanSnapshotBridge<T, *>,

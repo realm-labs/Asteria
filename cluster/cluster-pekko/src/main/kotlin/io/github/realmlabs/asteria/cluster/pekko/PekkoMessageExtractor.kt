@@ -2,6 +2,12 @@ package io.github.realmlabs.asteria.cluster.pekko
 
 import org.apache.pekko.cluster.sharding.ShardRegion
 
+/**
+ * Type-checking Pekko [ShardRegion.MessageExtractor].
+ *
+ * The extractor rejects unexpected message types before resolver lambdas run, which makes route misconfiguration fail
+ * at the sharding boundary instead of surfacing as unchecked casts inside application code.
+ */
 class PekkoMessageExtractor<M : Any>(
     private val messageClass: Class<M>,
     private val entityIdResolver: (M) -> String,

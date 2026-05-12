@@ -11,6 +11,12 @@ import io.opentelemetry.extension.kotlin.asContextElement
 import kotlinx.coroutines.withContext
 import io.opentelemetry.api.trace.Tracer as OpenTelemetryApiTracer
 
+/**
+ * OpenTelemetry-backed [Tracer].
+ *
+ * Coroutine spans install the OpenTelemetry [Context] as a coroutine context element so child suspending work can see
+ * the active span. Blocking spans use `makeCurrent` for the duration of the call.
+ */
 class OpenTelemetryTracer(
     private val tracer: OpenTelemetryApiTracer,
 ) : Tracer {

@@ -11,6 +11,12 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.*
 import java.io.File
 
+/**
+ * Cacheable Gradle task that generates gateway protobuf protocol registry sources.
+ *
+ * When [clientMetadataEnabled] is true, a compact JSON file for client tooling is also emitted from the same metadata
+ * input. The extra file intentionally contains only client-relevant message fields.
+ */
 @CacheableTask
 abstract class AsteriaGenerateGatewayProtocolTask : DefaultTask() {
     @get:Input

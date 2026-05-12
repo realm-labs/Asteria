@@ -18,12 +18,25 @@ data class ConfigPublicationManifest(
     val components: List<ConfigPublicationComponentManifest> = emptyList(),
 )
 
+/**
+ * Manifest entry for one raw artifact uploaded under a publication revision.
+ *
+ * [checksum] is a SHA-256 hex digest of the exact bytes stored in the config center. Consumers verify both [size] and
+ * [checksum] before exposing a publication bundle to loaders.
+ */
 data class ConfigPublicationArtifactManifest(
     val path: String,
     val size: Long,
     val checksum: String,
 )
 
+/**
+ * Runtime component metadata captured during publication validation.
+ *
+ * Dependencies use manifest table names. Consumers validate that every dependency is present in
+ * [ConfigPublicationManifest.tables] before accepting the manifest, which catches stale or malformed publication
+ * records before runtime loading begins.
+ */
 data class ConfigPublicationComponentManifest(
     val name: String,
     val type: String,

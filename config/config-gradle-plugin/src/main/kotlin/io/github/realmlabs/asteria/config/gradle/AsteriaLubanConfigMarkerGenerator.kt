@@ -1,10 +1,21 @@
 package io.github.realmlabs.asteria.config.gradle
 
+import io.github.realmlabs.asteria.config.gradle.AsteriaLubanConfigMarkerGenerator.buildSources
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 
+/**
+ * Generates Kotlin marker sources from Luban table metadata.
+ *
+ * The generated markers carry `@AsteriaConfigTable` annotations so the KSP processor can create normal Asteria table
+ * references and accessors without depending on Luban internals. Large metadata sets are split into chunks while the
+ * catalog annotation remains in the main file.
+ */
 object AsteriaLubanConfigMarkerGenerator {
+    /**
+     * Writes generated marker sources to [LubanMarkerGeneratorConfig.outputDirectory].
+     */
     fun generate(config: LubanMarkerGeneratorConfig, tables: List<LubanConfigTableSpec>): Path {
         require(tables.isNotEmpty()) { "Luban config marker metadata must contain at least one table" }
         val packageDirectory = config.outputDirectory
@@ -17,12 +28,20 @@ object AsteriaLubanConfigMarkerGenerator {
         return packageDirectory.resolve("${config.fileName}.kt")
     }
 
+    /**
+     * Builds a single marker source file.
+     *
+     * Call [buildSources] when metadata may exceed the chunk threshold.
+     */
     fun buildSource(config: LubanMarkerGeneratorConfig, tables: List<LubanConfigTableSpec>): String {
         val sortedTables = tables.sortedBy { it.name }
         validateTables(sortedTables)
         return buildSingleSource(config, sortedTables)
     }
 
+    /**
+     * Builds all marker source files, chunking table markers when needed.
+     */
     fun buildSources(
         config: LubanMarkerGeneratorConfig,
         tables: List<LubanConfigTableSpec>,
@@ -126,11 +145,17 @@ object AsteriaLubanConfigMarkerGenerator {
     private const val MARKER_CHUNK_SIZE = 200
 }
 
+/**
+ * One generated Kotlin source file and its logical file name without `.kt`.
+ */
 data class LubanMarkerGeneratedSource(
     val fileName: String,
     val source: String,
 )
 
+/**
+ * Naming and output configuration for Luban marker generation.
+ */
 data class LubanMarkerGeneratorConfig(
     val outputDirectory: Path,
     val packageName: String,
@@ -146,6 +171,12 @@ data class LubanMarkerGeneratorConfig(
     }
 }
 
+/**
+ * Table metadata consumed by [AsteriaLubanConfigMarkerGenerator].
+ *
+ * Class-name properties must be fully qualified names visible to the target source set. Blank [refName] and
+ * [propertyName] values let the downstream KSP generator derive stable Kotlin names from [name].
+ */
 data class LubanConfigTableSpec(
     val name: String,
     val shape: LubanConfigTableShape = LubanConfigTableShape.KEYED,
@@ -176,6 +207,9 @@ data class LubanConfigTableSpec(
     }
 }
 
+/**
+ * Table shape declared by Luban metadata before it is translated to `AsteriaConfigTableShape`.
+ */
 enum class LubanConfigTableShape {
     KEYED,
     LIST,

@@ -1,10 +1,19 @@
 package io.github.realmlabs.asteria.script
 
+/**
+ * Execution boundary used by policy, routing, and idempotency checks.
+ */
 enum class ScriptExecutionScope {
     Node,
     Actor,
 }
 
+/**
+ * Metadata keys consumed by the default script policy.
+ *
+ * Applications may add their own attributes, but these keys have framework meaning for approval, permission,
+ * signature, and template checks.
+ */
 object ScriptSecurityAttributes {
     const val APPROVED_BY: String = "script.approvedBy"
     const val APPROVAL_TICKET: String = "script.approvalTicket"
@@ -13,6 +22,11 @@ object ScriptSecurityAttributes {
     const val TEMPLATE_ID: String = "script.templateId"
 }
 
+/**
+ * Concrete authorization input for one node or actor script run.
+ *
+ * [nodeAddress] and [actorPath] narrow the execution key after routing expands a broader command into a single target.
+ */
 data class ScriptExecutionRequest(
     val executionId: String,
     val target: ScriptTarget,
@@ -27,6 +41,9 @@ data class ScriptExecutionRequest(
     }
 }
 
+/**
+ * Policy decision returned before execution starts.
+ */
 sealed interface ScriptAuthorization {
     data object Allowed : ScriptAuthorization
 
@@ -37,14 +54,23 @@ sealed interface ScriptAuthorization {
     }
 }
 
+/**
+ * Authorizes a concrete script execution before the runner compiles or dispatches it.
+ */
 fun interface ScriptPolicy {
     suspend fun authorize(request: ScriptExecutionRequest): ScriptAuthorization
 }
 
+/**
+ * Resolves permission grants for script policy checks.
+ */
 fun interface ScriptPermissionAuthorizer {
     suspend fun isAllowed(request: ScriptExecutionRequest, permission: String): Boolean
 }
 
+/**
+ * Permission authorizer that reads comma-separated grants from [ScriptSecurityAttributes.PERMISSIONS].
+ */
 object MetadataScriptPermissionAuthorizer : ScriptPermissionAuthorizer {
     override suspend fun isAllowed(request: ScriptExecutionRequest, permission: String): Boolean {
         return request.metadata.attributes[ScriptSecurityAttributes.PERMISSIONS]
@@ -55,14 +81,28 @@ object MetadataScriptPermissionAuthorizer : ScriptPermissionAuthorizer {
     }
 }
 
+/**
+ * Verifies the signature attribute for a complete execution request.
+ */
 fun interface ScriptSignatureVerifier {
     suspend fun verify(request: ScriptExecutionRequest, signature: String): Boolean
 }
 
+/**
+ * Optional catalog lookup for template-gated script submissions.
+ *
+ * Returning `null` means the catalog cannot decide and the default policy will allow the template id to proceed.
+ */
 fun interface ScriptTemplateCatalog {
     suspend fun exists(templateId: String): Boolean?
 }
 
+/**
+ * Receives lifecycle events emitted by [ScriptRunner].
+ *
+ * Hooks are best-effort and run in the caller coroutine. Implementations should avoid throwing unless audit failure
+ * must fail the script request.
+ */
 interface ScriptAuditSink {
     suspend fun started(request: ScriptExecutionRequest) {
     }
@@ -80,8 +120,14 @@ interface ScriptAuditSink {
     }
 }
 
+/**
+ * Audit sink for deployments that handle script audit outside this module.
+ */
 object NoopScriptAuditSink : ScriptAuditSink
 
+/**
+ * Fan-out audit sink that records each event to all configured sinks in order.
+ */
 class CompositeScriptAuditSink(
     private val sinks: List<ScriptAuditSink>,
 ) : ScriptAuditSink {
@@ -106,6 +152,12 @@ class CompositeScriptAuditSink(
     }
 }
 
+/**
+ * Conservative policy implementation for ad-hoc script execution.
+ *
+ * The policy can gate by scope, engine, target type, artifact size, approval metadata, signature, template existence,
+ * required permissions, and a simple forbidden-token scan over script bytes. It is a submission guard, not a sandbox.
+ */
 class DefaultScriptPolicy(
     private val allowNodeScripts: Boolean = false,
     private val allowActorScripts: Boolean = false,
@@ -201,6 +253,12 @@ class DefaultScriptPolicy(
     }
 }
 
+/**
+ * Runs a script after authorization and records idempotent lifecycle state.
+ *
+ * A request that is already running returns a failed result without invoking the executor. A completed request with the
+ * same execution key replays the stored result.
+ */
 class ScriptRunner(
     private val executor: ScriptExecutor,
     private val policy: ScriptPolicy,
@@ -288,6 +346,9 @@ class ScriptRunner(
     }
 }
 
+/**
+ * Stable policy target key used by `DefaultScriptPolicy` target allow-lists and permission mappings.
+ */
 fun ScriptTarget.policyType(): String {
     return when (this) {
         ScriptTarget.AllNodes -> "all-nodes"

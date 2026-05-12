@@ -40,15 +40,24 @@ data class ProtobufBroadcastPayload(
     }
 }
 
+/**
+ * Encodes a protobuf message for [BroadcastBus] using a string-keyed registry.
+ */
 fun ProtobufMessageRegistry<String>.encodeBroadcast(message: GeneratedMessage): ProtobufBroadcastPayload {
     val encoded = encode(message)
     return ProtobufBroadcastPayload(encoded.key, encoded.payload)
 }
 
+/**
+ * Decodes a protobuf broadcast payload back to a generated message.
+ */
 fun ProtobufMessageRegistry<String>.decodeBroadcast(payload: ProtobufBroadcastPayload): GeneratedMessage {
     return decode(payload.type, payload.payload).message
 }
 
+/**
+ * Publishes a protobuf message as a broadcast payload.
+ */
 fun BroadcastBus.publishProto(
     topic: BroadcastTopic,
     registry: ProtobufMessageRegistry<String>,
@@ -59,6 +68,9 @@ fun BroadcastBus.publishProto(
     publish(topic, registry.encodeBroadcast(message), ttlMillis = ttlMillis, traceId = traceId)
 }
 
+/**
+ * Subscribes to protobuf broadcasts of type [M] and ignores other payload types on the same topic.
+ */
 inline fun <reified M : GeneratedMessage> BroadcastBus.subscribeProto(
     topic: BroadcastTopic,
     registry: ProtobufMessageRegistry<String>,
@@ -67,6 +79,9 @@ inline fun <reified M : GeneratedMessage> BroadcastBus.subscribeProto(
     return subscribeProto(topic, registry, M::class, handler)
 }
 
+/**
+ * Subscribes to protobuf broadcasts for [messageClass] and ignores other payload types on the same topic.
+ */
 fun <M : GeneratedMessage> BroadcastBus.subscribeProto(
     topic: BroadcastTopic,
     registry: ProtobufMessageRegistry<String>,

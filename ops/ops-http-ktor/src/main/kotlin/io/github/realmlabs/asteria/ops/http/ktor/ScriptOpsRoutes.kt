@@ -13,6 +13,9 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlin.time.Duration.Companion.milliseconds
 
+/**
+ * Registers node-local script execution, job inspection, retry, and cancellation routes.
+ */
 fun Route.scriptOpsRoutes(
     services: ServiceRegistry,
     options: NodeLocalOpsHttpOptions,

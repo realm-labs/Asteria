@@ -2,6 +2,9 @@ package io.github.realmlabs.asteria.rpc.protobuf
 
 import com.google.protobuf.GeneratedMessage
 
+/**
+ * Mutable builder for [ProtobufRpcEntityIdRegistry].
+ */
 class ProtobufRpcEntityIdRegistryBuilder {
     private val entityIds: MutableList<ProtobufRpcEntityId<out GeneratedMessage>> = mutableListOf()
 
@@ -21,6 +24,9 @@ class ProtobufRpcEntityIdRegistryBuilder {
     }
 }
 
+/**
+ * Builds an RPC entity-id registry from a DSL block.
+ */
 fun protobufRpcEntityIdRegistry(
     configure: ProtobufRpcEntityIdRegistryBuilder.() -> Unit,
 ): ProtobufRpcEntityIdRegistry {

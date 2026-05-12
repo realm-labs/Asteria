@@ -8,6 +8,12 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.*
 
+/**
+ * Cacheable Gradle task that generates the RPC protobuf protocol registry sources.
+ *
+ * The task is skipped when [generationEnabled] is false. [metadataFile] is required when enabled, while
+ * [descriptorSetFile] is optional and is passed through to the generator when available.
+ */
 @CacheableTask
 abstract class AsteriaGenerateRpcProtocolTask : DefaultTask() {
     @get:Input

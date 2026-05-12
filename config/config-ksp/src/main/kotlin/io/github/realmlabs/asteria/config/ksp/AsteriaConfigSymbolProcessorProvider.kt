@@ -9,6 +9,13 @@ import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
 import io.github.realmlabs.asteria.config.annotations.*
 
+/**
+ * KSP entry point for Asteria config table accessor and change-handler generation.
+ *
+ * The processor is aggregating: it scans all `@AsteriaConfigTable` and `@AsteriaConfigChangeHandler` symbols, emits
+ * generated Kotlin sources, and writes a small JSON snapshot under `META-INF/asteria/codegen-snapshots/config` for
+ * build tooling diagnostics.
+ */
 class AsteriaConfigSymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
         return AsteriaConfigSymbolProcessor(environment.codeGenerator, environment.logger, environment.options)

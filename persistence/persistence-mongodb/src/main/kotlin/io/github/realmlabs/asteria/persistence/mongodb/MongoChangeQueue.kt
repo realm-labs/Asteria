@@ -23,6 +23,12 @@ sealed class MongoChangeOp {
 }
 
 fun interface MongoChangeQueue {
+    /**
+     * Records one dirty operation.
+     *
+     * Implementations may merge or journal the operation immediately. Callers should treat enqueue as the durability
+     * boundary configured by the queue's journal.
+     */
     fun enqueue(op: MongoChangeOp)
 }
 
@@ -64,6 +70,9 @@ class MongoPendingWriteQueue(
         enqueue(op, journal.append(op))
     }
 
+    /**
+     * Replays a recovered journal entry without appending a second journal record.
+     */
     fun replay(entry: MongoJournalEntry) {
         enqueue(entry.op, entry.sequence)
     }

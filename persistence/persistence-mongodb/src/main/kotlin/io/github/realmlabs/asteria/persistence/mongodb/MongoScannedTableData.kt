@@ -6,8 +6,16 @@ import io.github.realmlabs.asteria.persistence.AutoFlushMemData
  * Common contract for scanned Mongo row tables.
  */
 interface MongoScannedTable {
+    /**
+     * Performs bounded scan/flush work for one scheduler tick.
+     */
     suspend fun tick(policy: MongoScanFlushPolicy): MongoScanFlushProgress
 
+    /**
+     * Scans loaded rows and flushes all currently known dirty rows.
+     *
+     * Returning false means at least one row still has pending writes and should remain loaded.
+     */
     suspend fun drain(): Boolean
 }
 
@@ -19,8 +27,14 @@ interface MongoScannedTable {
  * normal data lifecycle.
  */
 interface MongoScannedTableData : AutoFlushMemData {
+    /**
+     * Shared scheduling policy applied to all [scannedTables].
+     */
     val scanFlushPolicy: MongoScanFlushPolicy
 
+    /**
+     * Tables owned by this data unit and included in tick/flush/drain lifecycle calls.
+     */
     val scannedTables: Iterable<MongoScannedTable>
 
     override suspend fun tick() {

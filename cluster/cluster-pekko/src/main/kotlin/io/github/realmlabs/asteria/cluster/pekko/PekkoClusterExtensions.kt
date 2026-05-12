@@ -16,6 +16,12 @@ import org.apache.pekko.cluster.singleton.ClusterSingletonProxy
 import org.apache.pekko.cluster.singleton.ClusterSingletonProxySettings
 import java.util.*
 
+/**
+ * Starts a Pekko shard region from an Asteria entity spec.
+ *
+ * The spec must provide actor props and a handoff message unless they are passed explicitly. Role restrictions are
+ * applied to [ClusterShardingSettings] when the entity declares a role.
+ */
 fun ActorSystem.startAsteriaSharding(
     spec: EntitySpec<*>,
     props: Props,
@@ -37,6 +43,9 @@ fun ActorSystem.startAsteriaSharding(
     )
 }
 
+/**
+ * Starts a proxy for an Asteria shard region.
+ */
 fun ActorSystem.startAsteriaShardingProxy(
     kind: String,
     role: RoleKey?,
@@ -45,6 +54,9 @@ fun ActorSystem.startAsteriaShardingProxy(
     return ClusterSharding.get(this).startProxy(kind, role.toOptionalRole(), extractor)
 }
 
+/**
+ * Starts a Pekko cluster singleton manager from an Asteria singleton spec.
+ */
 fun ActorSystem.startAsteriaSingleton(
     spec: SingletonSpec,
     props: Props,
@@ -56,6 +68,9 @@ fun ActorSystem.startAsteriaSingleton(
     return actorOf(ClusterSingletonManager.props(props, handoffMessage, settings), spec.name.value)
 }
 
+/**
+ * Starts the application-facing proxy for an Asteria cluster singleton.
+ */
 fun ActorSystem.startAsteriaSingletonProxy(
     name: String,
     role: RoleKey,

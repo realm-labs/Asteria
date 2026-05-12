@@ -11,12 +11,21 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
 
+/**
+ * Returns the Pekko logger scoped to the actor system and actor class.
+ */
 fun AbstractActor.actorLogger(): LoggingAdapter = Logging.getLogger(context.system, javaClass)
 
+/**
+ * Sends [message] with `noSender`, matching fire-and-forget actor commands.
+ */
 infix fun ActorRef.tell(message: Any) {
     tell(message, ActorRef.noSender())
 }
 
+/**
+ * Suspends until this actor replies or [timeout] expires.
+ */
 suspend fun ActorRef.askAny(
     message: Any,
     timeout: Duration = 3.seconds,
@@ -24,6 +33,9 @@ suspend fun ActorRef.askAny(
     return Patterns.ask(this, message, timeout.toJavaDuration()).await()
 }
 
+/**
+ * Typed ask helper with tracing, metrics, and response type validation.
+ */
 suspend inline fun <M : Any, reified R : Any> ActorRef.ask(
     message: M,
     timeout: Duration = 3.seconds,

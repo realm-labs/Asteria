@@ -18,6 +18,12 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
 
+/**
+ * Pekko integration that exposes local patch control through an actor and registers cluster patch clients.
+ *
+ * The module prefers an installed cluster view service when available; otherwise it asks live Pekko members for their
+ * local patch status. Remote operations are bounded by [timeout] and surface timeout failures as node results.
+ */
 class PekkoPatchControlModule(
     private val timeout: Duration = 10.seconds,
     private val nodeProvider: PatchNodeProvider? = null,
@@ -78,6 +84,11 @@ class PekkoPatchControlModule(
     }
 }
 
+/**
+ * Adapts the configured cluster view into patch nodes.
+ *
+ * Nodes without an address or version are skipped because patch compatibility cannot be evaluated safely.
+ */
 class ClusterViewPatchNodeProvider(
     private val view: ClusterViewService,
     private val fallbackEnvironment: PatchEnvironment? = null,
@@ -113,6 +124,9 @@ class ClusterViewPatchNodeProvider(
     }
 }
 
+/**
+ * Builds the local patch environment from Pekko cluster and runtime node metadata.
+ */
 class PekkoPatchEnvironmentProvider(
     private val version: String,
     private val appName: String? = null,
@@ -138,6 +152,9 @@ class PekkoPatchEnvironmentProvider(
     }
 }
 
+/**
+ * Discovers patch-capable nodes by asking each active Pekko cluster member for local status.
+ */
 class PekkoPatchNodeProvider(
     private val system: ActorSystem,
     private val timeout: Duration = 10.seconds,
@@ -167,6 +184,9 @@ class PekkoPatchNodeProvider(
     }
 }
 
+/**
+ * Sends patch apply and disable commands to a node's Pekko patch control actor.
+ */
 class PekkoPatchNodeClient(
     private val system: ActorSystem,
     private val timeout: Duration = 10.seconds,

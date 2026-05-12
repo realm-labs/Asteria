@@ -5,14 +5,26 @@ import io.github.realmlabs.asteria.patch.*
 import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 
+/**
+ * Handles one event for a specific dispatcher context.
+ *
+ * Handlers run synchronously on the thread or actor turn that invokes the dispatcher. Use [publisher] for nested
+ * publishes so depth and publish-count limits are enforced by the current dispatch session.
+ */
 fun interface EventHandler<C : HandlerContext, in E : GameEvent> {
     fun handle(context: C, event: E, publisher: EventPublisher<C>)
 }
 
+/**
+ * Publishes nested events during an active dispatch session.
+ */
 interface EventPublisher<C : HandlerContext> {
     fun publish(event: GameEvent): EventPublishReceipt
 }
 
+/**
+ * Stable key for a replaceable event handle.
+ */
 @JvmInline
 value class EventHandleKey(
     val value: String,
@@ -26,10 +38,16 @@ value class EventHandleKey(
     }
 }
 
+/**
+ * Builds the default key for a handler type and optional topic.
+ */
 fun eventHandleKey(handlerType: KClass<*>, topic: EventTopic? = null): EventHandleKey {
     return eventHandleKey(handlerType, topic?.path)
 }
 
+/**
+ * Builds the default key for a handler type and optional topic path.
+ */
 fun eventHandleKey(handlerType: KClass<*>, topicPath: String?): EventHandleKey {
     val handlerName = requireNotNull(handlerType.qualifiedName ?: handlerType.simpleName) {
         "event handler type must have a name"
@@ -37,6 +55,12 @@ fun eventHandleKey(handlerType: KClass<*>, topicPath: String?): EventHandleKey {
     return EventHandleKey(topicPath?.let { "$handlerName#$it" } ?: handlerName)
 }
 
+/**
+ * Runtime handle for one generated or manually registered event handler.
+ *
+ * A handle may match an exact event type, a topic, or both through separate registrations. [order] is compared after
+ * all event-type and topic matches are collected.
+ */
 class EventHandle<C : HandlerContext> private constructor(
     val key: EventHandleKey,
     val eventType: KClass<out GameEvent>?,
@@ -74,6 +98,9 @@ class EventHandle<C : HandlerContext> private constructor(
     }
 }
 
+/**
+ * Read-only index of event handles used by [EventRouter].
+ */
 interface EventHandleRegistry<C : HandlerContext> {
     fun handlersFor(eventType: KClass<out GameEvent>): List<EventHandle<C>>
 
@@ -82,6 +109,9 @@ interface EventHandleRegistry<C : HandlerContext> {
     fun all(): List<EventHandle<C>>
 }
 
+/**
+ * Immutable event-handle registry.
+ */
 class DefaultEventHandleRegistry<C : HandlerContext>(
     handles: Iterable<EventHandle<C>> = emptyList(),
 ) : EventHandleRegistry<C> {
@@ -108,6 +138,9 @@ class DefaultEventHandleRegistry<C : HandlerContext>(
     }
 }
 
+/**
+ * Event-handle registry that can be modified through the runtime patch system.
+ */
 class PatchableEventHandleRegistry<C : HandlerContext>(
     handles: Iterable<EventHandle<C>> = emptyList(),
 ) : EventHandleRegistry<C>, PatchSlotRegistry<EventHandleKey, EventHandle<C>> {
@@ -176,6 +209,9 @@ class PatchableEventHandleRegistry<C : HandlerContext>(
     }
 }
 
+/**
+ * Builder for manual event dispatcher registration.
+ */
 class EventHandleRegistryBuilder<C : HandlerContext> {
     private val handles = mutableListOf<EventHandle<C>>()
 
@@ -216,6 +252,9 @@ fun <C : HandlerContext> eventHandlers(
     return EventHandleRegistryBuilder<C>().apply(configure).build()
 }
 
+/**
+ * Runtime patch entry point for replacing event handles.
+ */
 val RuntimePatchInstallContext.eventHandlers: RuntimePatchEventHandlerReplacements
     get() = RuntimePatchEventHandlerReplacements(this)
 
@@ -250,11 +289,17 @@ class RuntimePatchEventHandlerReplacements internal constructor(
     }
 }
 
+/**
+ * Controls how dispatch continues after a handler throws.
+ */
 enum class EventDispatchFailurePolicy {
     FAIL_FAST,
     CONTINUE,
 }
 
+/**
+ * Safety limits and failure behavior for event dispatch sessions.
+ */
 data class EventDispatchOptions(
     val failurePolicy: EventDispatchFailurePolicy = EventDispatchFailurePolicy.FAIL_FAST,
     val maxNestedDepth: Int = 32,
@@ -266,6 +311,9 @@ data class EventDispatchOptions(
     }
 }
 
+/**
+ * Thrown when nested publishes exceed [EventDispatchOptions] limits.
+ */
 class EventDispatchLimitExceededException(
     message: String,
 ) : IllegalStateException(message)
@@ -278,11 +326,17 @@ private class EventDispatchSession(
     var aborted: Boolean = false
 }
 
+/**
+ * Handler failure captured when dispatch continues after errors.
+ */
 data class EventHandlerFailure<C : HandlerContext>(
     val handle: EventHandle<C>,
     val error: Throwable,
 )
 
+/**
+ * Receipt returned when an event is accepted by a dispatcher or queue.
+ */
 data class EventPublishReceipt(
     val sessionId: Long,
     val event: GameEvent,
@@ -290,6 +344,9 @@ data class EventPublishReceipt(
     val scheduledHandlers: Int,
 )
 
+/**
+ * Completed result for immediate event dispatch.
+ */
 data class EventDispatchResult<C : HandlerContext>(
     val receipt: EventPublishReceipt,
     val event: GameEvent,
@@ -298,12 +355,21 @@ data class EventDispatchResult<C : HandlerContext>(
     val failures: List<EventHandlerFailure<C>>,
 )
 
+/**
+ * Routing result before handlers are invoked.
+ */
 data class EventRoute<C : HandlerContext>(
     val event: GameEvent,
     val matchedTopics: Set<EventTopic>,
     val handlers: List<EventHandle<C>>,
 )
 
+/**
+ * Matches events to exact-type handlers and topic handlers.
+ *
+ * Topic matching includes each event topic and all of its ancestors, then de-duplicates handles by identity so a handle
+ * registered through multiple matching paths still runs once.
+ */
 class EventRouter<C : HandlerContext>(
     private val handles: EventHandleRegistry<C>,
 ) {
@@ -322,6 +388,13 @@ class EventRouter<C : HandlerContext>(
     }
 }
 
+/**
+ * Immediate, depth-first event dispatcher.
+ *
+ * Nested publishes run before the current handler returns to its caller because [EventPublisher.publish] recursively
+ * enters the same dispatch session. This class is not internally synchronized; use it from one actor turn/thread or
+ * protect it externally.
+ */
 class EventDispatcher<C : HandlerContext>(
     handles: EventHandleRegistry<C>,
     private val options: EventDispatchOptions = EventDispatchOptions(),
@@ -409,12 +482,21 @@ class EventDispatcher<C : HandlerContext>(
     }
 }
 
+/**
+ * Result from one [QueuedEventDispatcher.pump] call.
+ */
 data class EventPumpResult<C : HandlerContext>(
     val invokedHandlers: List<EventHandle<C>>,
     val failures: List<EventHandlerFailure<C>>,
     val remainingHandlers: Int,
 )
 
+/**
+ * Queue-backed event dispatcher for actor-friendly incremental processing.
+ *
+ * [publish] only enqueues matching handlers and asks [schedulePump] to arrange future pumping. Call [pump] from the
+ * owning actor or serialized executor; the dispatcher keeps mutable queue/session state and is not thread-safe.
+ */
 class QueuedEventDispatcher<C : HandlerContext>(
     handles: EventHandleRegistry<C>,
     private val options: EventDispatchOptions = EventDispatchOptions(),

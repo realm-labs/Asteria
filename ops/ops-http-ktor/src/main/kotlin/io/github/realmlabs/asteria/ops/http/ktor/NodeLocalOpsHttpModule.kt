@@ -65,6 +65,12 @@ class NodeLocalOpsHttpModule private constructor(
     }
 }
 
+/**
+ * Runtime options for the node-local OPS HTTP module.
+ *
+ * Defaults bind to loopback and require both a bearer token and operator header. Mutating routes can also require an
+ * explicit reason header so audit events carry operator intent.
+ */
 data class NodeLocalOpsHttpOptions(
     val enabled: Boolean = true,
     val host: String = "127.0.0.1",
@@ -89,6 +95,9 @@ data class NodeLocalOpsHttpOptions(
     }
 }
 
+/**
+ * Builder for node-local OPS HTTP options.
+ */
 @AsteriaDsl
 class NodeLocalOpsHttpBuilder {
     var enabled: Boolean = true
@@ -182,6 +191,9 @@ private fun NodeLocalOpsHttpOptions.tokenValidator(): NodeLocalOpsTokenValidator
     }
 }
 
+/**
+ * Executes one authenticated OPS action with optional mutation reason enforcement and audit recording.
+ */
 suspend fun <T> ApplicationCall.executeOpsAction(
     action: String,
     options: NodeLocalOpsHttpOptions,

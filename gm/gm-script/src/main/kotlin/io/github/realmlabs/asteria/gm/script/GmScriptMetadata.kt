@@ -5,6 +5,9 @@ import io.github.realmlabs.asteria.cluster.pekko.SingletonActorRegistry
 import io.github.realmlabs.asteria.script.ScriptEngineRegistry
 import io.github.realmlabs.asteria.script.ScriptTarget
 
+/**
+ * Metadata used by GM clients to build safe script submission forms.
+ */
 data class GmScriptMetadata(
     val engines: List<String>,
     val targetTypes: List<String>,
@@ -13,6 +16,9 @@ data class GmScriptMetadata(
     val templates: List<GmScriptTemplateDescriptor> = emptyList(),
 )
 
+/**
+ * Script template exposed to GM operators.
+ */
 data class GmScriptTemplateDescriptor(
     val id: String,
     val name: String,
@@ -25,10 +31,16 @@ data class GmScriptTemplateDescriptor(
     }
 }
 
+/**
+ * Optional source of pre-approved or reusable script templates.
+ */
 interface GmScriptTemplateCatalog {
     suspend fun listTemplates(): List<GmScriptTemplateDescriptor> = emptyList()
 }
 
+/**
+ * Assembles script engines, routable targets, and templates for GM clients.
+ */
 class GmScriptMetadataProvider(
     private val engineRegistry: ScriptEngineRegistry? = null,
     private val routeRegistry: GmScriptRouteRegistryView = GmScriptRouteRegistryView(),
@@ -45,6 +57,12 @@ class GmScriptMetadataProvider(
     }
 }
 
+/**
+ * Read-only view of actor routing registries available from the GM node.
+ *
+ * Validation is intentionally local to the GM node and only proves that an entity kind or singleton is known here; it
+ * does not prove that a specific runtime target is alive.
+ */
 class GmScriptRouteRegistryView(
     private val entityShards: EntityShardRegistry? = null,
     private val singletonActors: SingletonActorRegistry? = null,

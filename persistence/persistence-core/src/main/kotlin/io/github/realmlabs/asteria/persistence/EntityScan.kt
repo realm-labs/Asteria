@@ -53,14 +53,23 @@ data class EntityScanSnapshot(
  * Describes how to capture and compare one entity type.
  */
 interface EntityScanPlan<E : Any> {
+    /**
+     * Captures the comparable state for [entity].
+     */
     fun capture(entity: E): EntityScanSnapshot
 
+    /**
+     * Compares two captured states and returns logical changes needed to make storage match [currentEntity].
+     */
     fun diff(
         previous: EntityScanSnapshot,
         current: EntityScanSnapshot,
         currentEntity: E,
     ): List<FieldChange>
 
+    /**
+     * Converts a snapshot into full-field set operations, typically for upsert/create flows.
+     */
     fun setAll(snapshot: EntityScanSnapshot, currentEntity: E): List<FieldChange>
 }
 

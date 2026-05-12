@@ -60,8 +60,22 @@ annotation class AsteriaConfigTable(
     val propertyName: String = "",
 )
 
+/**
+ * Runtime table shape expected by generated refs and accessors.
+ */
 enum class AsteriaConfigTableShape {
+    /**
+     * Table is addressable by a typed key and generates a `ConfigTableRef<K, R>`.
+     */
     KEYED,
+
+    /**
+     * Table is ordered row data without key lookup and generates a `RowConfigTableRef<R>`.
+     */
     LIST,
+
+    /**
+     * Table contains one row object and generates a `RowConfigTableRef<R>`.
+     */
     SINGLETON,
 }

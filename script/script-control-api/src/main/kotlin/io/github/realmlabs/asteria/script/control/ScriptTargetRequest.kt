@@ -5,6 +5,12 @@ import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.core.SingletonName
 import io.github.realmlabs.asteria.script.ScriptTarget
 
+/**
+ * Wire representation of [ScriptTarget] used by HTTP and control-plane APIs.
+ *
+ * [type] is one of `all-nodes`, `role`, `nodes`, `actor-paths`, `entity`, or `singleton`. Only the fields required by
+ * that target type are read; missing or blank required values fail conversion.
+ */
 data class ScriptTargetRequest(
     val type: String,
     val role: String? = null,
@@ -15,6 +21,9 @@ data class ScriptTargetRequest(
     val name: String? = null,
 )
 
+/**
+ * Converts a control-plane target request to the runtime routing model.
+ */
 fun ScriptTargetRequest.toScriptTarget(): ScriptTarget {
     return when (type) {
         "all-nodes" -> ScriptTarget.AllNodes

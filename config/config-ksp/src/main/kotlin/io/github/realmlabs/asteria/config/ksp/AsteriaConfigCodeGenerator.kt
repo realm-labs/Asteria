@@ -3,8 +3,22 @@ package io.github.realmlabs.asteria.config.ksp
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import io.github.realmlabs.asteria.config.annotations.AsteriaConfigTableShape
+import io.github.realmlabs.asteria.config.ksp.AsteriaConfigCodeGenerator.buildFiles
 
+/**
+ * Builds KotlinPoet files for generated config table references and accessors.
+ *
+ * The generator is deterministic: table models are sorted by table name, duplicate table/ref/accessor names fail
+ * before files are emitted, and large table catalogs are split into extension chunks to keep generated files small
+ * enough for practical Kotlin compilation.
+ */
 object AsteriaConfigCodeGenerator {
+    /**
+     * Builds every file needed for a generated accessor catalog.
+     *
+     * The first file always contains the table reference object and accessor class. When the table count exceeds the
+     * chunk threshold, extension properties are emitted into additional files.
+     */
     fun buildFiles(config: ConfigCodegenConfig, tables: List<ConfigTableModel>): List<ConfigGeneratedFile> {
         val sortedTables = tables.sortedBy { it.tableName }
         validateTables(sortedTables)
@@ -19,6 +33,12 @@ object AsteriaConfigCodeGenerator {
         return listOf(mainFile) + chunkFiles
     }
 
+    /**
+     * Builds a single-file accessor catalog.
+     *
+     * This is kept for tests and small generated outputs. Production KSP processing should prefer [buildFiles] so
+     * large catalogs can be chunked automatically.
+     */
     fun buildFile(config: ConfigCodegenConfig, tables: List<ConfigTableModel>): FileSpec {
         val sortedTables = tables.sortedBy { it.tableName }
         validateTables(sortedTables)
@@ -243,11 +263,17 @@ object AsteriaConfigCodeGenerator {
     private const val TABLE_EXTENSION_CHUNK_SIZE = 200
 }
 
+/**
+ * One generated Kotlin file and its logical file name without `.kt`.
+ */
 data class ConfigGeneratedFile(
     val fileName: String,
     val file: FileSpec,
 )
 
+/**
+ * Naming configuration for generated config table accessors.
+ */
 data class ConfigCodegenConfig(
     val packageName: String,
     val tablesObjectName: String,
@@ -260,6 +286,13 @@ data class ConfigCodegenConfig(
     }
 }
 
+/**
+ * Table metadata consumed by [AsteriaConfigCodeGenerator].
+ *
+ * [tableName] must match the name present in a runtime snapshot. [refName] becomes a property on the generated tables
+ * object, while [propertyName] becomes an accessor on generated `ConfigSnapshot`, `ConfigService`, and accessor-class
+ * APIs.
+ */
 data class ConfigTableModel(
     val tableName: String,
     val shape: AsteriaConfigTableShape = AsteriaConfigTableShape.KEYED,
@@ -291,6 +324,12 @@ data class ConfigTableModel(
     }
 }
 
+/**
+ * Concrete table implementation requested by generated accessors.
+ *
+ * [typeArgumentCount] is the number of generic parameters declared by [rawType]. A value of zero means the raw type is
+ * already concrete; otherwise the generator supplies key/row or row type arguments according to table shape.
+ */
 data class ConfigAccessorTableType(
     val rawType: ClassName,
     val typeArgumentCount: Int,

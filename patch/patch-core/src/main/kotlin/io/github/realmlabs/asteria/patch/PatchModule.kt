@@ -11,6 +11,12 @@ import org.slf4j.LoggerFactory
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
+/**
+ * Installs runtime patch services and keeps the local node reconciled with enabled patches.
+ *
+ * On start, the module can expire incompatible patches, apply enabled patches, then continue reconciliation on a fixed
+ * interval and any configured triggers. Cluster node providers/clients may be supplied directly or by integrations.
+ */
 class PatchModule private constructor(
     private val options: PatchModuleOptions,
 ) : AsteriaModule {
@@ -182,6 +188,9 @@ class PatchModule private constructor(
     }
 }
 
+/**
+ * Configuration snapshot used to build [PatchModule].
+ */
 data class PatchModuleOptions(
     val environment: PatchEnvironment?,
     val version: String?,
@@ -197,10 +206,16 @@ data class PatchModuleOptions(
     val reconcileInterval: Duration?,
 )
 
+/**
+ * Derives the local patch environment from the runtime module context.
+ */
 fun interface PatchEnvironmentProvider {
     suspend fun environment(context: ModuleContext): PatchEnvironment
 }
 
+/**
+ * DSL builder for patch module dependencies and lifecycle policy.
+ */
 class PatchModuleBuilder {
     var environment: PatchEnvironment? = null
     var version: String? = null

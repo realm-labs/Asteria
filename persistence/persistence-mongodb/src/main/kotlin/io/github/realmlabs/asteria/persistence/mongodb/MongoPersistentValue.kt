@@ -6,9 +6,18 @@ import org.bson.Document
  * Value that can provide its Mongo-safe persistent representation.
  */
 interface MongoPersistentValue {
+    /**
+     * Converts this value into the shape written to Mongo or into a parent Mongo document.
+     */
     fun toMongoValue(): Any?
 }
 
+/**
+ * Normalizes Kotlin values into Mongo-safe values for dirty writes and hashing.
+ *
+ * Maps become [Document] with encoded keys, enums become names, primitive arrays become lists, and tracked values
+ * delegate to [MongoPersistentValue.toMongoValue].
+ */
 fun mongoValueOf(value: Any?): Any? {
     return when (value) {
         is MongoPersistentValue -> value.toMongoValue()

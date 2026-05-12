@@ -93,10 +93,19 @@ class NettyGatewayMessageHandler<I : Any>(
     }
 }
 
+/**
+ * Receives native decoded Netty messages after gateway session lookup has completed.
+ */
 fun interface NettyGatewayMessageReceiver<I : Any> {
     suspend fun receive(context: NettyGatewayMessageContext<I>)
 }
 
+/**
+ * Context passed to a [NettyGatewayMessageReceiver].
+ *
+ * The [context] is the Netty channel context for advanced pipeline operations. [session] is the registered gateway
+ * session associated with the channel.
+ */
 data class NettyGatewayMessageContext<I : Any>(
     val context: ChannelHandlerContext,
     val session: GatewaySession,

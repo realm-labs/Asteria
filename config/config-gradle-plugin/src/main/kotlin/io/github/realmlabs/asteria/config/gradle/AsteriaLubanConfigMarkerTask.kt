@@ -10,6 +10,12 @@ import org.gradle.api.tasks.*
 import java.io.File
 import javax.inject.Inject
 
+/**
+ * Cacheable Gradle task that turns Luban table metadata JSON into annotation marker sources.
+ *
+ * The task is a no-op when marker generation is disabled. When enabled, it deletes the previous generated output
+ * directory before writing fresh sources so stale table markers cannot survive metadata changes.
+ */
 @CacheableTask
 abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
     @get:Inject
@@ -42,6 +48,9 @@ abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
         onlyIf { generationEnabled.get() }
     }
 
+    /**
+     * Reads metadata, validates table specs, and writes generated marker sources.
+     */
     @TaskAction
     fun generate() {
         val metadata = metadataFile.orNull?.asFile

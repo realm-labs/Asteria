@@ -65,6 +65,12 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
         dirtyRows.remove(row.id)
     }
 
+    /**
+     * Flushes a bounded number of dirty loaded rows.
+     *
+     * Failed rows are put back into the dirty queue for a later retry. Rows missing from the loaded map are discarded
+     * from the queue because they no longer have an attached runtime.
+     */
     suspend fun flushSome(budget: MongoFlushBudget): MongoFlushProgress {
         val start = TimeSource.Monotonic.markNow()
         var attemptedRows = 0
@@ -89,6 +95,11 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
         return MongoFlushProgress(attemptedRows, flushedRows, failedRows)
     }
 
+    /**
+     * Deletes a currently loaded row by enqueueing a document delete and flushing it immediately.
+     *
+     * The row is detached only after Mongo accepts the delete. A false result leaves the row loaded for retry.
+     */
     suspend fun deleteLoaded(key: ID): Boolean {
         val row = rowsById[key] ?: return true
         val runtime = runtime(row)
@@ -117,6 +128,11 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
         return runtime.flushSafely()
     }
 
+    /**
+     * Runs a database-side query and returns only document ids.
+     *
+     * Use the returned keys with [use] before mutating rows so changes go through the loaded row runtime.
+     */
     suspend fun queryKeys(filter: Bson = Document()): List<ID> {
         return collection.find(filter).toList().map { it.id }
     }
@@ -145,6 +161,9 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
         return collection.find(filter).toList()
     }
 
+    /**
+     * Attaches a raw Mongo entity to a tracked wrapper using the row runtime [context].
+     */
     protected abstract fun wrap(context: MongoTrackContext, entity: E): T
 
     protected fun runtime(row: T): MongoTrackedDocumentRuntime {

@@ -33,6 +33,9 @@ class MongoScannedDocumentRuntime<ID : Any, E : Entity<ID>>(
         this.lease = lease
     }
 
+    /**
+     * Captures the baseline snapshot for an already persisted entity.
+     */
     fun attachLoaded(entity: E) {
         snapshot = scanPlan.capture(entity)
     }
@@ -54,6 +57,12 @@ class MongoScannedDocumentRuntime<ID : Any, E : Entity<ID>>(
         snapshot = EntityScanSnapshot.Empty
     }
 
+    /**
+     * Compares [entity] with the last snapshot and enqueues changed fields.
+     *
+     * The snapshot advances after enqueue succeeds. Flush failures are handled by the pending-write queue, not by
+     * rolling the scan snapshot back.
+     */
     fun scan(entity: E): MongoScanResult {
         val startedAt = System.nanoTime()
         return try {

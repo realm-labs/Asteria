@@ -7,12 +7,18 @@ import io.github.realmlabs.asteria.core.SingletonName
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.actor.ActorSystem
 
+/**
+ * Pekko runtime services registered by [PekkoRuntimeModule].
+ */
 data class PekkoRuntime(
     val system: ActorSystem,
     val node: RuntimeNodeConfig? = null,
     val topology: ClusterTopology? = null,
 )
 
+/**
+ * Registry of application-facing shard region or proxy refs by entity kind.
+ */
 class EntityShardRegistry {
     private val shards: MutableMap<EntityKind, ActorRef> = linkedMapOf()
 
@@ -30,6 +36,9 @@ class EntityShardRegistry {
     fun all(): Map<EntityKind, ActorRef> = shards.toMap()
 }
 
+/**
+ * Registry of application-facing singleton proxy refs by singleton name.
+ */
 class SingletonActorRegistry {
     private val singletons: MutableMap<SingletonName, ActorRef> = linkedMapOf()
 

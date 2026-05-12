@@ -11,6 +11,12 @@ import io.opentelemetry.api.metrics.ObservableDoubleGauge
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.TimeSource
 
+/**
+ * OpenTelemetry-backed [Metrics] facade.
+ *
+ * Counters and timers are cached by metric name and receive tags as recording attributes. Gauges are callback
+ * instruments and are retained for the lifetime of this metrics object.
+ */
 class OpenTelemetryMetrics(
     private val meter: Meter,
 ) : Metrics {

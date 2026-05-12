@@ -6,6 +6,9 @@ import io.github.realmlabs.asteria.script.policyType
 import java.time.Instant
 import java.util.*
 
+/**
+ * Audit event taxonomy emitted by script job orchestration.
+ */
 enum class ScriptJobAuditEventType {
     JobSubmitted,
     JobResumed,
@@ -20,6 +23,12 @@ enum class ScriptJobAuditEventType {
     ItemStaleFinishIgnored,
 }
 
+/**
+ * Durable audit envelope for job and item lifecycle changes.
+ *
+ * [attributes] carries command metadata and compact result summaries. Audit sinks should treat it as diagnostic context
+ * and avoid using it as the source of truth for job state.
+ */
 data class ScriptJobAuditEvent(
     val id: String = UUID.randomUUID().toString(),
     val occurredAt: Instant = Instant.now(),
@@ -41,6 +50,9 @@ data class ScriptJobAuditEvent(
     }
 }
 
+/**
+ * Receives script job audit events.
+ */
 fun interface ScriptJobAuditSink {
     suspend fun record(event: ScriptJobAuditEvent)
 }
@@ -49,6 +61,9 @@ object NoopScriptJobAuditSink : ScriptJobAuditSink {
     override suspend fun record(event: ScriptJobAuditEvent) = Unit
 }
 
+/**
+ * Sequentially forwards job audit events to multiple sinks.
+ */
 class CompositeScriptJobAuditSink(
     private val sinks: List<ScriptJobAuditSink>,
 ) : ScriptJobAuditSink {

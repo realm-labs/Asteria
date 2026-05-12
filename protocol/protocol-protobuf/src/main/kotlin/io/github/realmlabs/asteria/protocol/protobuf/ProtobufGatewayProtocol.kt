@@ -24,6 +24,9 @@ class ProtobufGatewayProtocol(
         ProtobufGatewayRouteResolver(protocolRegistry, routeRegistry)
 }
 
+/**
+ * Contribution hook used by generated modules to extend a gateway protocol builder.
+ */
 fun interface ProtobufGatewayProtocolContributor {
     fun contribute(builder: ProtobufGatewayProtocolBuilder)
 }
@@ -50,6 +53,12 @@ class ProtobufGatewayRouteResolver(
     }
 }
 
+/**
+ * Builder for gateway protobuf metadata and message routes.
+ *
+ * Client and bidirectional messages must have a route target because they can enter the server from the gateway.
+ * Server-only messages are registered only for outbound encoding.
+ */
 class ProtobufGatewayProtocolBuilder {
     private val protocolMappings: MutableList<ProtoMapping<out GeneratedMessage>> = mutableListOf()
     private val routes = RouteRegistryBuilder()
@@ -134,6 +143,9 @@ class ProtobufGatewayProtocolBuilder {
     }
 }
 
+/**
+ * Builds a gateway protobuf protocol with route validation.
+ */
 fun protobufGatewayProtocol(
     configure: ProtobufGatewayProtocolBuilder.() -> Unit,
 ): ProtobufGatewayProtocol {

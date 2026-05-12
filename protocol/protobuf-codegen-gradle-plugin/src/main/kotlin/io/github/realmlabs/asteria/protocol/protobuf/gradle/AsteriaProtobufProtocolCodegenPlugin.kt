@@ -4,6 +4,12 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
+/**
+ * Gradle plugin that wires protobuf protocol code generation into Kotlin JVM projects.
+ *
+ * Tasks are registered once the Kotlin plugin is present, generated Kotlin/resources are added to `main`, and protobuf
+ * generation tasks are ordered after `generateProto` when the Google protobuf plugin is also applied.
+ */
 class AsteriaProtobufProtocolCodegenPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create(

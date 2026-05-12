@@ -76,6 +76,12 @@ class DataManager<ID : Any>(
         }
     }
 
+    /**
+     * Runs [block] with multiple distinct data units loaded under the same access window.
+     *
+     * This overload has the same lease and idle-touch semantics as single-type [use]. Duplicate types are rejected
+     * because they would make block argument identity ambiguous.
+     */
     suspend fun <A : MemData, B : MemData, R> use(
         firstType: KClass<A>,
         secondType: KClass<B>,
@@ -126,6 +132,12 @@ class DataManager<ID : Any>(
         }
     }
 
+    /**
+     * Returns a data unit that must already be loaded.
+     *
+     * This is intended for code paths that are already inside a controlled lifecycle phase. It does not load lazy data
+     * and does not refresh idle timestamps.
+     */
     fun <T : MemData> requireLoaded(type: KClass<T>): T {
         @Suppress("UNCHECKED_CAST")
         return loadedDataByType[type]?.data as? T ?: error("mem data ${type.qualifiedName} not loaded")
@@ -143,6 +155,12 @@ class DataManager<ID : Any>(
         unloadIdle()
     }
 
+    /**
+     * Flushes currently loaded auto-flush data once.
+     *
+     * The manager keeps iterating after failures and returns false if any data unit reports failure. Exceptions are
+     * recorded and rethrown by the manager's operation wrapper.
+     */
     suspend fun flush(): Boolean = measured("flush", baseTags()) {
         var success = true
         loadedDataByType.values
@@ -154,6 +172,12 @@ class DataManager<ID : Any>(
         success
     }
 
+    /**
+     * Requests a clean state from all currently loaded auto-flush data.
+     *
+     * [drain] is stronger than ordinary [flush] for implementations that distinguish bounded tick work from full
+     * unload/shutdown work. The manager returns false if any data unit cannot become clean.
+     */
     suspend fun drain(): Boolean = measured("drain", baseTags()) {
         var success = true
         loadedDataByType.values

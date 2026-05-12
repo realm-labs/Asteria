@@ -5,6 +5,12 @@ import io.github.realmlabs.asteria.patch.*
 import java.time.Instant
 import java.util.jar.JarInputStream
 
+/**
+ * GM-facing facade for runtime patch management.
+ *
+ * Implementations are responsible for preserving the GM authorization/audit boundary at the caller. Methods here
+ * perform patch storage, desired-state changes, cluster fan-out, and result inspection.
+ */
 interface GmPatchOperations {
     suspend fun create(
         request: GmPatchCreateRequest,
@@ -28,6 +34,12 @@ interface GmPatchOperations {
     suspend fun disable(id: PatchId): Boolean
 }
 
+/**
+ * Default patch facade backed by the runtime patch repository and application services.
+ *
+ * Creation stores artifact bytes when a writable artifact store is configured, infers requirements from jar manifest
+ * attributes when the request does not provide them, and validates that requirement constraints match selected nodes.
+ */
 class DefaultGmPatchOperations(
     private val repository: RuntimePatchRepository,
     private val applications: PatchApplicationService,
@@ -183,6 +195,12 @@ class DefaultGmPatchOperations(
     }
 }
 
+/**
+ * Request used by GM to create or register a runtime patch.
+ *
+ * [target] selects the nodes that should receive the patch. [requirements] adds capabilities that selected nodes must
+ * satisfy before creation is accepted; when empty, jar manifest attributes may supply requirements.
+ */
 data class GmPatchCreateRequest(
     val id: PatchId,
     val name: String,

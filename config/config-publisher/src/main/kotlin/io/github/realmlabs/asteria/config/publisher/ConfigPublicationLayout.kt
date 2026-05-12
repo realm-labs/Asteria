@@ -13,22 +13,47 @@ import io.github.realmlabs.asteria.config.center.configPath
 data class ConfigPublicationLayout(
     val root: ConfigPath = configPath("/asteria/config"),
 ) {
+    /**
+     * Mutable pointer to the revision that runtime consumers should load.
+     */
     val currentPath: ConfigPath = root / "current"
+
+    /**
+     * Root for immutable per-revision manifests and raw artifacts.
+     */
     val revisionsPath: ConfigPath = root / "revisions"
+
+    /**
+     * Root for lightweight publication records used by operational listing and pruning.
+     */
     val historyPath: ConfigPath = root / "history"
 
+    /**
+     * Directory path for immutable data belonging to [revision].
+     */
     fun revisionPath(revision: ConfigRevision): ConfigPath {
         return revisionsPath / revision.version.toConfigPathSegment()
     }
 
+    /**
+     * Path of the manifest for [revision].
+     */
     fun manifestPath(revision: ConfigRevision): ConfigPath {
         return revisionPath(revision) / "manifest"
     }
 
+    /**
+     * Root path containing raw artifacts for [revision].
+     */
     fun artifactsPath(revision: ConfigRevision): ConfigPath {
         return revisionPath(revision) / "artifacts"
     }
 
+    /**
+     * Path of one raw artifact under [revision].
+     *
+     * [relativePath] is validated with [ConfigPublicationArtifact] path rules before it is appended.
+     */
     fun artifactPath(
         revision: ConfigRevision,
         relativePath: String,
@@ -37,6 +62,9 @@ data class ConfigPublicationLayout(
         return artifactsPath(revision) / relativePath
     }
 
+    /**
+     * Path of the lightweight history record for [revision].
+     */
     fun historyRecordPath(revision: ConfigRevision): ConfigPath {
         return historyPath / revision.version.toConfigPathSegment()
     }

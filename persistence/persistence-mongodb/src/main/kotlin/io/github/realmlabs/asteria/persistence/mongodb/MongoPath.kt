@@ -36,6 +36,9 @@ data class MongoPath(
         return copy(fieldPath = "$fieldPath.$childPath")
     }
 
+    /**
+     * Counts logical data segments for deciding when to fall back to boundary writes.
+     */
     fun dataDepth(): Int {
         val parts = fieldPath.split(".")
         return if (parts.firstOrNull() == "data") parts.size - 1 else parts.size

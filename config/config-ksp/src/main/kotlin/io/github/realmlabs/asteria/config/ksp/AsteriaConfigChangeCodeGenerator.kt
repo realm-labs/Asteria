@@ -2,8 +2,18 @@ package io.github.realmlabs.asteria.config.ksp
 
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
+import io.github.realmlabs.asteria.config.ksp.AsteriaConfigChangeCodeGenerator.buildFiles
 
+/**
+ * Builds generated aggregators for annotated config change handlers.
+ *
+ * The generated object exposes an `ALL` list of zero-argument handler instances. Large handler sets are split into
+ * internal chunks and then re-aggregated by the public object to keep source files and initializer methods small.
+ */
 object AsteriaConfigChangeCodeGenerator {
+    /**
+     * Builds every file needed for a generated handler aggregation object.
+     */
     fun buildFiles(
         config: ConfigChangeCodegenConfig,
         handlers: List<ConfigChangeHandlerModel>,
@@ -21,6 +31,12 @@ object AsteriaConfigChangeCodeGenerator {
                 }
     }
 
+    /**
+     * Builds only the public aggregation file.
+     *
+     * For chunked outputs this file references chunk files, so callers that write generated sources should use
+     * [buildFiles] unless they know the handler set is small.
+     */
     fun buildFile(
         config: ConfigChangeCodegenConfig,
         handlers: List<ConfigChangeHandlerModel>,
@@ -130,11 +146,17 @@ object AsteriaConfigChangeCodeGenerator {
     private val LIST = ClassName("kotlin.collections", "List")
 }
 
+/**
+ * One generated Kotlin file and its logical file name without `.kt`.
+ */
 data class ConfigChangeGeneratedFile(
     val fileName: String,
     val file: FileSpec,
 )
 
+/**
+ * Naming and receiver-type configuration for generated change handler aggregation.
+ */
 data class ConfigChangeCodegenConfig(
     val packageName: String,
     val className: String,
@@ -146,6 +168,9 @@ data class ConfigChangeCodegenConfig(
     }
 }
 
+/**
+ * Public handler class that can be instantiated by the generated aggregation object.
+ */
 data class ConfigChangeHandlerModel(
     val handlerType: ClassName,
 )

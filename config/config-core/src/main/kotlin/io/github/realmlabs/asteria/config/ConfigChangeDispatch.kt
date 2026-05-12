@@ -1,5 +1,9 @@
 package io.github.realmlabs.asteria.config
 
+import io.github.realmlabs.asteria.config.ConfigChangeFailureHandler.Companion.IGNORE
+import io.github.realmlabs.asteria.config.ConfigChangeFailureHandler.Companion.THROW
+
+
 /**
  * Handles config-derived state for one receiver type.
  *
@@ -148,12 +152,24 @@ class ConfigChangeTask internal constructor(
     }
 }
 
+/**
+ * Failure raised while applying one config change handler task.
+ *
+ * The dispatcher catches handler exceptions inside the submitted task and forwards this value to the configured
+ * [ConfigChangeFailureHandler]. Executor failures that happen before task submission are not wrapped here.
+ */
 data class ConfigChangeFailure(
     val revision: ConfigRevision,
     val handler: String,
     val cause: Throwable,
 )
 
+/**
+ * Handles exceptions thrown by [ConfigChangeHandler.handle].
+ *
+ * The default [THROW] policy rethrows the original cause from the handler task. Use [IGNORE] only when the receiver can
+ * tolerate stale derived state or when failures are reported through another channel.
+ */
 fun interface ConfigChangeFailureHandler<in R : Any> {
     fun handle(
         receiver: R,
@@ -173,8 +189,17 @@ fun interface ConfigChangeFailureHandler<in R : Any> {
  * field depending on the receiver lifecycle.
  */
 interface ConfigRevisionTracker {
+    /**
+     * Last config revision that was fully submitted for this receiver, or `null` before the first dispatch.
+     */
     fun currentRevision(): String?
 
+    /**
+     * Records a revision after dispatch submission.
+     *
+     * Implementations that persist this value should update it atomically with receiver state when they need stronger
+     * exactly-once semantics than [ConfigChangeDispatcher.dispatchIfNew] can provide by itself.
+     */
     fun updateRevision(revision: String)
 }
 

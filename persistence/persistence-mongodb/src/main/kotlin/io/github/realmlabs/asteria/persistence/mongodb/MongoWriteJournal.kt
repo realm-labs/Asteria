@@ -19,10 +19,21 @@ import kotlin.concurrent.thread
  * advanced before a crash.
  */
 interface MongoWriteJournal : AutoCloseable {
+    /**
+     * Appends one dirty operation and returns its sequence, or null when journaling is disabled.
+     */
     fun append(op: MongoChangeOp): Long?
 
+    /**
+     * Acknowledges journal entries whose writes reached Mongo.
+     *
+     * Implementations advance the durable checkpoint only across contiguous acknowledged sequences.
+     */
     fun ack(sequences: Iterable<Long>)
 
+    /**
+     * Returns entries after the durable checkpoint for startup replay.
+     */
     fun recover(): List<MongoJournalEntry>
 
     override fun close() = Unit
@@ -36,6 +47,9 @@ object NoopMongoWriteJournal : MongoWriteJournal {
     override fun recover(): List<MongoJournalEntry> = emptyList()
 }
 
+/**
+ * One WAL entry with its monotonic sequence number.
+ */
 data class MongoJournalEntry(
     val sequence: Long,
     val op: MongoChangeOp,
@@ -57,13 +71,37 @@ enum class MongoJournalWriteMode {
 }
 
 data class MongoJournalPolicy(
+    /**
+     * Enables local WAL creation.
+     */
     val enabled: Boolean = false,
+    /**
+     * Directory containing `active.wal` and `checkpoint`.
+     */
     val directory: Path = Path.of("data", "journal", "mongodb"),
+    /**
+     * Chooses caller-thread writes or background buffered writes.
+     */
     val writeMode: MongoJournalWriteMode = MongoJournalWriteMode.SYNC,
+    /**
+     * Forces the WAL channel after append or background batch write.
+     */
     val forceOnAppend: Boolean = true,
+    /**
+     * Replays uncheckpointed WAL entries from [MongoJournalRuntime.recoverOnStart].
+     */
     val recoverOnStart: Boolean = true,
+    /**
+     * WAL size at which checkpointed entries may be compacted away.
+     */
     val compactThresholdBytes: Long = 64L * 1024 * 1024,
+    /**
+     * Maximum queued lines for [MongoJournalWriteMode.BUFFERED].
+     */
     val bufferedQueueCapacity: Int = 8192,
+    /**
+     * Background writer poll interval for [MongoJournalWriteMode.BUFFERED].
+     */
     val bufferedPollMillis: Long = 50,
 )
 

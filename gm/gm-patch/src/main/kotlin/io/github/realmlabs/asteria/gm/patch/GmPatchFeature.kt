@@ -2,6 +2,9 @@ package io.github.realmlabs.asteria.gm.patch
 
 import io.github.realmlabs.asteria.gm.core.*
 
+/**
+ * Action keys contributed by the patch GM feature.
+ */
 object GmPatchActions {
     val Read: GmAction = GmAction("gm.patch.read")
     val Create: GmAction = GmAction("gm.patch.create")
@@ -10,6 +13,9 @@ object GmPatchActions {
     val Disable: GmAction = GmAction("gm.patch.disable")
 }
 
+/**
+ * Built-in GM feature descriptor for runtime patch administration.
+ */
 class GmPatchFeature : GmFeature {
     override val descriptor: GmFeatureDescriptor = GmFeatureDescriptor(
         id = GmFeatureId("asteria.patch"),

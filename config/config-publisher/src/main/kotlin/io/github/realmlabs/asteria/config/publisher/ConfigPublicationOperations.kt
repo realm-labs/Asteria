@@ -17,10 +17,19 @@ class ConfigPublicationOperations(
     private val codec: ConfigCodec = JacksonConfigCodec(),
     private val clock: Clock = Clock.systemUTC(),
 ) {
+    /**
+     * Reads the current pointer, or `null` when no publication has been promoted yet.
+     */
     suspend fun current(): CurrentConfigPublication? {
         return repository().get<CurrentConfigPublication>(layout.currentPath)?.value
     }
 
+    /**
+     * Lists known publication history records, newest first.
+     *
+     * The list is based on records under [ConfigPublicationLayout.historyPath]; orphaned revision directories without a
+     * history record are intentionally not discovered by this operation.
+     */
     suspend fun history(): List<ConfigPublicationRecord> {
         return repository()
             .children<ConfigPublicationRecord>(layout.historyPath)
@@ -30,6 +39,12 @@ class ConfigPublicationOperations(
             .sortedWith(compareByDescending<ConfigPublicationRecord> { it.publishedAt }.thenByDescending { it.revision.version })
     }
 
+    /**
+     * Loads the immutable manifest for [revision].
+     *
+     * Missing manifests are reported as [ConfigPublicationNotFoundException] so callers can distinguish absent
+     * publication data from validation errors while loading a complete bundle.
+     */
     suspend fun manifest(revision: ConfigRevision): ConfigPublicationManifest {
         return repository().get<ConfigPublicationManifest>(layout.manifestPath(revision))?.value
             ?: throw ConfigPublicationNotFoundException(layout.manifestPath(revision))
@@ -136,6 +151,12 @@ class ConfigPublicationOperations(
     }
 }
 
+/**
+ * Result of pruning publication history and immutable revision data.
+ *
+ * [deletedRevisions] contains only revisions that had history records and were selected for deletion.
+ * [retainedRevisions] is the retention set calculated from `retainLatest` plus the optional current revision.
+ */
 data class ConfigPublicationPruneResult(
     val deletedRevisions: List<ConfigRevision>,
     val retainedRevisions: List<ConfigRevision>,

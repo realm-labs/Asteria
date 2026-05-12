@@ -64,6 +64,11 @@ class ZookeeperConfigCenterModule private constructor(
     }
 }
 
+/**
+ * Immutable options for [ZookeeperConfigCenterModule].
+ *
+ * [connectionString] and [retryPolicy] are only used when the module creates its own Curator client.
+ */
 data class ZookeeperConfigCenterModuleOptions(
     val connectionString: String?,
     val client: AsyncCuratorFramework?,
@@ -71,9 +76,19 @@ data class ZookeeperConfigCenterModuleOptions(
     val codec: ConfigCodec,
 )
 
+/**
+ * DSL for installing a ZooKeeper-backed config center.
+ */
 @AsteriaDsl
 class ZookeeperConfigCenterModuleBuilder {
+    /**
+     * ZooKeeper connection string used when the module owns the Curator client.
+     */
     var connectionString: String? = null
+
+    /**
+     * Curator retry policy used for module-owned clients.
+     */
     var retryPolicy: RetryPolicy = ExponentialBackoffRetry(1000, 3)
 
     private var client: AsyncCuratorFramework? = null

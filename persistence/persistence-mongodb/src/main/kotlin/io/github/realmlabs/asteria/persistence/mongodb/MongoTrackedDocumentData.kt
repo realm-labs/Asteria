@@ -11,6 +11,9 @@ import kotlin.reflect.KClass
 
 /**
  * Base class for one tracked Mongo document owned by an actor.
+ *
+ * The loaded value is a generated or hand-written wrapper. Mutating wrapper properties enqueues Mongo patches
+ * immediately; [flush] only drains the runtime queue.
  */
 abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrackedDocument<ID, E>>(
     protected val scope: DataScope<ID>,
@@ -50,6 +53,11 @@ abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrack
         return requireNotNull(value) { "tracked document $collectionName:${scope.entityId} is not loaded" }
     }
 
+    /**
+     * Enqueues a document delete and flushes it immediately.
+     *
+     * A false result leaves [value] attached so the caller can retry later.
+     */
     protected suspend fun deleteValue(): Boolean {
         if (value == null) return true
         runtime.enqueueDelete()

@@ -8,6 +8,12 @@ import io.netty.channel.ChannelHandler.Sharable
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.MessageToMessageCodec
 
+/**
+ * Netty codec between [BinaryGatewayPacket] and protobuf messages.
+ *
+ * Inbound packets are decoded to [ClientProtoEnvelope] and direction-checked by [ProtobufProtocolRegistry]. Outbound
+ * protobuf messages are encoded with their server-to-client protocol id.
+ */
 @Sharable
 class NettyProtobufCodec(
     private val registry: ProtobufProtocolRegistry,

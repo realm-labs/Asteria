@@ -5,6 +5,12 @@ import io.github.realmlabs.asteria.core.AsteriaDsl
 import io.github.realmlabs.asteria.core.AsteriaModule
 import io.github.realmlabs.asteria.core.ModuleContext
 
+/**
+ * Installs the [ClusterTopologyProvider] used by cluster startup modules.
+ *
+ * By default the provider reads topology from the runtime config repository. Tests or embedded deployments can inject a
+ * provider directly through [ClusterConfigModuleBuilder.provider].
+ */
 class ClusterConfigModule private constructor(
     private val options: ClusterConfigModuleOptions,
 ) : AsteriaModule {
@@ -25,11 +31,17 @@ class ClusterConfigModule private constructor(
     }
 }
 
+/**
+ * Resolved options for [ClusterConfigModule].
+ */
 data class ClusterConfigModuleOptions(
     val layout: ClusterConfigLayout,
     val provider: ClusterTopologyProvider?,
 )
 
+/**
+ * DSL for configuring cluster topology lookup.
+ */
 @AsteriaDsl
 class ClusterConfigModuleBuilder {
     var layout: ClusterConfigLayout = ClusterConfigLayout.default("asteria")

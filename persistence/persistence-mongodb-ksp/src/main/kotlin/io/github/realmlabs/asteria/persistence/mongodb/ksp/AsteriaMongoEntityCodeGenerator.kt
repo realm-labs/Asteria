@@ -3,6 +3,9 @@ package io.github.realmlabs.asteria.persistence.mongodb.ksp
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 
+/**
+ * Fully validated input used to generate one tracked document wrapper and helper object.
+ */
 data class MongoEntityCodegenModel(
     val packageName: String,
     val entityType: ClassName,
@@ -14,12 +17,18 @@ data class MongoEntityCodegenModel(
     val nestedObjects: List<MongoNestedObjectModel> = emptyList(),
 )
 
+/**
+ * Model for a nested project data class that needs generated dirty tracking inside a parent document.
+ */
 data class MongoNestedObjectModel(
     val sourceType: ClassName,
     val wrapperType: ClassName,
     val properties: List<MongoEntityPropertyModel>,
 )
 
+/**
+ * Property-level mapping and tracking metadata used by the Mongo wrapper generator.
+ */
 data class MongoEntityPropertyModel(
     val name: String,
     val fieldName: String,
@@ -31,6 +40,9 @@ data class MongoEntityPropertyModel(
     val scanWholeField: Boolean = false,
 )
 
+/**
+ * Persistence shape recognized by the generator.
+ */
 enum class MongoEntityPropertyKind {
     Value,
     Object,
@@ -39,7 +51,16 @@ enum class MongoEntityPropertyKind {
     Set,
 }
 
+/**
+ * Generates KotlinPoet files for tracked wrappers, nested wrappers, collection facades, and scan helpers.
+ */
 object AsteriaMongoEntityCodeGenerator {
+    /**
+     * Builds the generated Kotlin file for one Mongo entity model.
+     *
+     * Nullable collection properties are rejected because tracked collection delegates require a concrete mutable
+     * instance to wrap.
+     */
     fun buildFile(model: MongoEntityCodegenModel): FileSpec {
         require(model.properties.none { property -> property.type.isNullableCollectionType() }) {
             "Nullable Mongo collection properties are not supported"

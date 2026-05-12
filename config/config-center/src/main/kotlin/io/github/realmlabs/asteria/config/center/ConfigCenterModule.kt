@@ -35,11 +35,17 @@ class ConfigCenterModule private constructor(
     }
 }
 
+/**
+ * Immutable options for [ConfigCenterModule].
+ */
 data class ConfigCenterModuleOptions(
     val store: ConfigStore?,
     val codec: ConfigCodec,
 )
 
+/**
+ * DSL for registering a backend-neutral config center.
+ */
 @AsteriaDsl
 class ConfigCenterModuleBuilder {
     private var store: ConfigStore? = null

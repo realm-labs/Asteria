@@ -1,5 +1,12 @@
 package io.github.realmlabs.asteria.observability
 
+/**
+ * Minimal tracing facade used by framework modules.
+ *
+ * [span] preserves context across coroutine suspension points when the implementation supports it. [spanBlocking] is
+ * for synchronous actor or callback code where suspending is not possible. Implementations should record thrown errors
+ * before rethrowing them so framework control flow is unchanged.
+ */
 interface Tracer {
     suspend fun <T> span(
         name: String,
@@ -16,6 +23,9 @@ interface Tracer {
     fun currentContext(): TraceContext
 }
 
+/**
+ * Mutable view of the span currently being executed.
+ */
 interface TraceScope {
     val context: TraceContext
 
@@ -24,6 +34,9 @@ interface TraceScope {
     fun error(error: Throwable)
 }
 
+/**
+ * Tracer implementation used when no tracing backend has been installed.
+ */
 object NoopTracer : Tracer {
     private val context = TraceContext()
 

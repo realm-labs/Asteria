@@ -29,7 +29,14 @@ data class LubanPreloadOptions(
 }
 
 interface LubanLoadReport {
+    /**
+     * Normalized Luban data files that were actually requested while constructing the root tables object.
+     */
     val files: List<String>
+
+    /**
+     * SHA-256 checksum over requested file names and bytes, sorted by file name.
+     */
     val checksum: String
 }
 
@@ -42,10 +49,22 @@ interface LubanLoadReport {
  * usually typed table entries plus any derived components that validators or game code expect.
  */
 interface LubanSnapshotBridge<T : Any, L : Any> {
+    /**
+     * Luban-generated loader interface that contains the `load(String)` method used by generated tables.
+     */
     val loaderType: KClass<L>
 
+    /**
+     * Constructs the Luban root tables object using the supplied dynamic loader proxy.
+     */
     fun createTables(loader: L): T
 
+    /**
+     * Converts the Luban root object into Asteria snapshot entries.
+     *
+     * Implementations usually wrap Luban tables as typed [SnapshotEntry.Table] values and may also add process-local
+     * components derived from those tables.
+     */
     fun buildEntries(tables: T): List<SnapshotEntry>
 }
 
@@ -56,6 +75,9 @@ interface LubanSnapshotBridge<T : Any, L : Any> {
  * publication jobs can use [DirectoryLubanDataSource].
  */
 interface LubanDataSource {
+    /**
+     * Lists files with [extension] and returns their raw bytes keyed by normalized relative file name.
+     */
     suspend fun list(extension: String): Map<String, ByteArray>
 }
 

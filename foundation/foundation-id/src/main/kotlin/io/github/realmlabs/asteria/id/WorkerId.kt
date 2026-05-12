@@ -3,6 +3,12 @@ package io.github.realmlabs.asteria.id
 import java.io.Serializable
 import kotlin.time.Instant
 
+/**
+ * Numeric worker id used by distributed ID generators.
+ *
+ * The value is deliberately constrained only to non-negative here. Generator implementations, such as
+ * [SnowflakeIdGenerator], may impose a smaller upper bound based on their bit layout.
+ */
 @JvmInline
 value class WorkerId(val value: Int) : Serializable {
     init {
@@ -12,6 +18,9 @@ value class WorkerId(val value: Int) : Serializable {
     override fun toString(): String = value.toString()
 }
 
+/**
+ * Inclusive range from which a [WorkerIdRepository] may lease worker ids.
+ */
 data class WorkerIdRange(
     val start: WorkerId,
     val endInclusive: WorkerId,
@@ -37,6 +46,12 @@ data class WorkerIdRange(
     }
 }
 
+/**
+ * Stable owner identity used to reacquire or renew a worker-id lease.
+ *
+ * Use a value that identifies the running process or pod strongly enough for your deployment. Reusing an owner lets a
+ * process recover its previous unexpired lease when the repository implementation supports it.
+ */
 @JvmInline
 value class WorkerIdOwner(val value: String) : Serializable {
     init {
@@ -46,6 +61,13 @@ value class WorkerIdOwner(val value: String) : Serializable {
     override fun toString(): String = value
 }
 
+/**
+ * Time-bounded ownership proof for one [WorkerId].
+ *
+ * The [token] is the fencing value that distinguishes this lease from a later lease for the same numeric id. Code that
+ * renews or releases a lease must pass the full object back to the repository so stale owners cannot modify newer
+ * ownership.
+ */
 data class WorkerIdLease(
     val id: WorkerId,
     val owner: WorkerIdOwner,

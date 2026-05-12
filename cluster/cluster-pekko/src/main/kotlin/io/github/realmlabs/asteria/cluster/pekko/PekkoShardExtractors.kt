@@ -2,7 +2,13 @@ package io.github.realmlabs.asteria.cluster.pekko
 
 import io.github.realmlabs.asteria.message.ShardMessage
 
+/**
+ * Factory methods for common Pekko sharding message extractors.
+ */
 object PekkoShardExtractors {
+    /**
+     * Extracts [ShardMessage.id] as the entity id and hashes it to a shard.
+     */
     fun shardMessageByEntityIdHash(shardCount: Int): PekkoMessageExtractor<ShardMessage<*>> {
         validateShardCount(shardCount)
         return PekkoMessageExtractor(
@@ -12,6 +18,9 @@ object PekkoShardExtractors {
         )
     }
 
+    /**
+     * Extracts a `Long` [ShardMessage.id] and maps it to a shard with modulo arithmetic.
+     */
     fun longShardMessageByModulo(shardCount: Int): PekkoMessageExtractor<ShardMessage<Long>> {
         validateShardCount(shardCount)
         return PekkoMessageExtractor(
@@ -21,6 +30,9 @@ object PekkoShardExtractors {
         )
     }
 
+    /**
+     * Builds an extractor for arbitrary messages whose entity id can be represented as a string.
+     */
     inline fun <reified M : Any> byEntityIdHash(
         shardCount: Int,
         noinline entityIdResolver: (M) -> String,
@@ -34,6 +46,9 @@ object PekkoShardExtractors {
         )
     }
 
+    /**
+     * Builds an extractor for arbitrary messages whose entity id is a numeric value.
+     */
     inline fun <reified M : Any> byLongModulo(
         shardCount: Int,
         noinline entityIdResolver: (M) -> Long,
@@ -49,6 +64,9 @@ object PekkoShardExtractors {
         )
     }
 
+    /**
+     * Validates shard counts before they are passed to Pekko sharding.
+     */
     fun validateShardCount(shardCount: Int) {
         require(shardCount > 0) { "shardCount must be greater than zero" }
     }

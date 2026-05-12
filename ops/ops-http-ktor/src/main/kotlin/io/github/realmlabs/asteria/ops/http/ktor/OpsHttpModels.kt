@@ -10,10 +10,19 @@ import io.github.realmlabs.asteria.script.job.ScriptJobExecutionAttributes
 import io.github.realmlabs.asteria.script.job.ScriptJobRetryFailedItemsRequest
 import java.util.*
 
+/**
+ * Standard error body for node-local OPS HTTP failures.
+ */
 data class OpsErrorResponse(
     val error: String,
 )
 
+/**
+ * JSON request for immediate script execution or asynchronous job submission.
+ *
+ * The caller identity is not trusted from the body; [toCommand] injects the authenticated principal into script
+ * metadata and enforces the configured script byte limit.
+ */
 data class OpsScriptExecutionRequest(
     val executionId: String? = null,
     val target: ScriptTargetRequest,
@@ -46,12 +55,18 @@ data class OpsScriptExecutionRequest(
     }
 }
 
+/**
+ * Target metadata advertised by the node-local script endpoint.
+ */
 data class OpsScriptTargetCapabilitiesResponse(
     val supportedTargetTypes: List<String> = listOf("all-nodes", "role", "nodes", "actor-paths", "entity", "singleton"),
     val entityKinds: List<String> = emptyList(),
     val singletons: List<String> = emptyList(),
 )
 
+/**
+ * Optional execution controls translated into script job metadata.
+ */
 data class OpsScriptExecutionOptionsRequest(
     val maxConcurrentItems: Int? = null,
 ) {
@@ -66,6 +81,12 @@ data class OpsScriptExecutionOptionsRequest(
     }
 }
 
+/**
+ * Script artifact payload accepted by JSON OPS requests.
+ *
+ * At least one body representation is required: callers may provide source text for simple scripts or base64 for binary
+ * artifacts. Multipart requests should use `artifact` file upload instead.
+ */
 data class OpsScriptArtifactRequest(
     val name: String = "ops-script",
     val engine: String,
@@ -93,6 +114,9 @@ data class OpsScriptArtifactRequest(
     }
 }
 
+/**
+ * Operator metadata and external resources attached to an OPS script command.
+ */
 data class OpsScriptMetadataRequest(
     val reason: String? = null,
     val attributes: Map<String, String> = emptyMap(),
@@ -110,6 +134,9 @@ data class OpsScriptMetadataRequest(
     }
 }
 
+/**
+ * Resource reference accepted by OPS HTTP and resolved later by script runtime helpers.
+ */
 data class OpsScriptResourceRequest(
     val name: String,
     val uri: String,
@@ -142,6 +169,9 @@ data class OpsScriptResourceRequest(
     }
 }
 
+/**
+ * Body for job or item cancellation requests.
+ */
 data class OpsScriptCancelRequest(
     val reason: String? = null,
 ) {
@@ -150,6 +180,9 @@ data class OpsScriptCancelRequest(
     }
 }
 
+/**
+ * Body for retrying one failed item.
+ */
 data class OpsScriptRetryItemRequest(
     val timeoutMillis: Long = 3_000,
 ) {
@@ -158,6 +191,9 @@ data class OpsScriptRetryItemRequest(
     }
 }
 
+/**
+ * Body for retrying a bounded set of failed items.
+ */
 data class OpsScriptRetryFailedItemsRequest(
     val error: String? = null,
     val limit: Int = 100,
@@ -174,6 +210,9 @@ data class OpsScriptRetryFailedItemsRequest(
     }
 }
 
+/**
+ * Converts the authenticated OPS principal to namespaced script metadata attributes.
+ */
 fun NodeLocalOpsPrincipal.toMetadataAttributes(): Map<String, String> {
     return buildMap {
         put("ops.source", source)

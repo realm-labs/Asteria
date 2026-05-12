@@ -12,6 +12,8 @@ package io.github.realmlabs.asteria.persistence.mongodb.annotations
 annotation class AsteriaMongoEntity(
     /**
      * Mongo collection name.
+     *
+     * The processor uses this literal in generated helper factories and write paths.
      */
     val collection: String,
     /**
@@ -36,6 +38,8 @@ annotation class AsteriaMongoId
 
 /**
  * Overrides the Mongo field name used by the generated wrapper.
+ *
+ * Leave [name] blank to use the Kotlin property name. Dynamic map keys are still escaped separately at runtime.
  */
 @Target(AnnotationTarget.PROPERTY)
 @Retention(AnnotationRetention.BINARY)

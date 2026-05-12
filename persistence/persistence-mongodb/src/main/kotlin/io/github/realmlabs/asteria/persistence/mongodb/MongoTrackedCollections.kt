@@ -11,6 +11,12 @@ class MongoTrackedMapDelegate<K, V>(
     operator fun getValue(thisRef: Any?, property: KProperty<*>): MutableMap<K, V> = value
 }
 
+/**
+ * Tracks map writes with per-key `$set`/`$unset` operations when possible.
+ *
+ * Map keys are encoded with [MongoPath.encodePathPart]. Mutating a nested value is tracked by wrapping that value, or by
+ * rewriting the nearest dirty boundary for structures that cannot produce stable descendant updates.
+ */
 fun <K, V> mongoTrackedMap(
     path: MongoPath,
     initialValue: MutableMap<K, V>,
@@ -33,6 +39,9 @@ fun <K, V> mongoTrackedMap(
     )
 }
 
+/**
+ * MutableMap implementation that mirrors ordinary map semantics while recording Mongo patch operations.
+ */
 class MongoTrackedMutableMap<K, V>(
     private val path: MongoPath,
     initialValue: MutableMap<K, V>,
@@ -179,6 +188,12 @@ class MongoTrackedListDelegate<E>(
     operator fun getValue(thisRef: Any?, property: KProperty<*>): MutableList<E> = value
 }
 
+/**
+ * Tracks mutable list writes while preserving Mongo's positional update constraints.
+ *
+ * Element replacement writes a positional field when the index is stable. Insertions, removals, and clear rewrite the
+ * whole list because subsequent element indexes may shift.
+ */
 fun <E> mongoTrackedList(
     path: MongoPath,
     initialValue: MutableList<E>,
@@ -201,6 +216,9 @@ fun <E> mongoTrackedList(
     )
 }
 
+/**
+ * MutableList implementation that records Mongo writes for in-place list changes.
+ */
 class MongoTrackedMutableList<E>(
     private val path: MongoPath,
     initialValue: MutableList<E>,
@@ -270,6 +288,11 @@ class MongoTrackedSetDelegate<E>(
     operator fun getValue(thisRef: Any?, property: KProperty<*>): MutableSet<E> = value
 }
 
+/**
+ * Tracks mutable set writes as whole-field updates.
+ *
+ * Sets are persisted as arrays, so any add/remove/clear rewrites the whole set value.
+ */
 fun <E> mongoTrackedSet(
     path: MongoPath,
     initialValue: MutableSet<E>,
@@ -283,6 +306,9 @@ fun <E> mongoTrackedSet(
     )
 }
 
+/**
+ * MutableSet implementation that records whole-field Mongo writes for set changes.
+ */
 class MongoTrackedMutableSet<E>(
     private val path: MongoPath,
     initialValue: MutableSet<E>,

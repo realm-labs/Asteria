@@ -17,8 +17,14 @@ abstract class KeyedDataTable<K : Any, R : Any>(
 ) {
     private val rows: MutableMap<K, LoadedRow<K, R>> = linkedMapOf()
 
+    /**
+     * Number of rows currently attached to this actor-local cache.
+     */
     fun loadedCount(): Int = rows.size
 
+    /**
+     * Snapshot of keys currently attached to this actor-local cache.
+     */
     fun loadedKeys(): Set<K> = rows.keys.toSet()
 
     /**
@@ -58,6 +64,11 @@ abstract class KeyedDataTable<K : Any, R : Any>(
         return loaded
     }
 
+    /**
+     * Flushes all loaded rows once.
+     *
+     * A false result means at least one row remains dirty and should stay loaded for retry.
+     */
     suspend fun flush(): Boolean {
         return rows.values.all { flushRow(it.row) }
     }
@@ -75,12 +86,25 @@ abstract class KeyedDataTable<K : Any, R : Any>(
 
     protected abstract suspend fun loadRow(key: K): R?
 
+    /**
+     * Loads all rows from durable storage for [loadAllIntoMemory].
+     *
+     * Implementations may leave this unsupported when full-table loading would be unsafe or too expensive.
+     */
     protected open suspend fun loadAllRows(): Iterable<R> {
         error("loadAllIntoMemory is not supported by ${this::class.qualifiedName}")
     }
 
+    /**
+     * Extracts the stable cache key from a loaded row.
+     */
     protected abstract fun keyOf(row: R): K
 
+    /**
+     * Flushes one row before ordinary table flush or idle unload.
+     *
+     * Returning false keeps the row loaded and moves its idle timestamp forward so a later tick can retry.
+     */
     protected open suspend fun flushRow(row: R): Boolean = true
 
     /**
@@ -95,6 +119,9 @@ abstract class KeyedDataTable<K : Any, R : Any>(
         rows[key] = bindRow(key, row)
     }
 
+    /**
+     * Removes a loaded row, invalidates its lease, and invokes [afterUnload].
+     */
     protected fun dropLoaded(key: K): R? {
         val loaded = rows.remove(key) ?: return null
         loaded.lease.invalidate()
@@ -102,11 +129,19 @@ abstract class KeyedDataTable<K : Any, R : Any>(
         return loaded.row
     }
 
+    /**
+     * Binds a row lease when a row enters the cache.
+     *
+     * Override this when the row delegates lease propagation to generated wrappers or nested runtime objects.
+     */
     protected open fun bindLease(row: R, lease: DataLease) {
         require(row is DataLeaseAware) { "row must implement DataLeaseAware" }
         row.bindLease(lease)
     }
 
+    /**
+     * Hook called after a row lease is invalidated and the row is removed from the cache.
+     */
     protected open fun afterUnload(row: R) = Unit
 
     private fun bindRow(key: K, row: R): LoadedRow<K, R> {

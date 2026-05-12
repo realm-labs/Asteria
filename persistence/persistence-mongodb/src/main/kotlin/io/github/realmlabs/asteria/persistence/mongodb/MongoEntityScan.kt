@@ -7,6 +7,9 @@ import java.math.BigInteger
 
 /**
  * Creates a Mongo-oriented hash scan plan.
+ *
+ * The resulting plan emits database-agnostic [FieldChange] values; [MongoFieldChangeEncoder] turns them into Mongo
+ * dirty operations when a scanned runtime detects differences.
  */
 fun <E : Any> mongoScanPlan(vararg fields: ScannedField<E>): EntityScanPlan<E> {
     return FieldHashScanPlan(fields.asIterable())
@@ -14,6 +17,8 @@ fun <E : Any> mongoScanPlan(vararg fields: ScannedField<E>): EntityScanPlan<E> {
 
 /**
  * Tracks one top-level field as a whole value.
+ *
+ * Any hash change writes the entire field.
  */
 fun <E : Any> mongoScannedField(
     fieldName: String,
@@ -24,6 +29,9 @@ fun <E : Any> mongoScannedField(
 
 /**
  * Tracks one map-like field by individual keys.
+ *
+ * Key additions, removals, and changed values become per-key field changes. The map itself may be null, which is
+ * treated the same as an empty map for per-key scanning.
  */
 fun <E : Any> mongoScannedMapField(
     fieldName: String,
@@ -46,6 +54,9 @@ fun <E : Any> mongoScannedMapField(
  * Converts database-agnostic scan changes into Mongo update operations.
  */
 object MongoFieldChangeEncoder {
+    /**
+     * Encodes one logical scan change as a Mongo dirty operation for [documentId].
+     */
     fun encode(collectionName: String, documentId: Any?, change: FieldChange): MongoChangeOp {
         val path = MongoPath(collectionName, documentId, change.path.toMongoFieldPath())
         return when (change) {
@@ -55,6 +66,9 @@ object MongoFieldChangeEncoder {
     }
 }
 
+/**
+ * Encodes a logical [FieldPath] as a Mongo update path.
+ */
 fun FieldPath.toMongoFieldPath(): String {
     return parts.joinToString(".") { part -> MongoPath.encodePathPart(part) }
 }
@@ -67,6 +81,9 @@ fun FieldPath.toMongoFieldPath(): String {
  * same hash across scans.
  */
 object MongoStableHasher {
+    /**
+     * Computes a stable hash of the Mongo-persistent representation of [value].
+     */
     fun hash(value: Any?): Long {
         val state = HashState()
         state.writeValue(value)

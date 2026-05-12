@@ -7,6 +7,12 @@ import org.apache.pekko.cluster.Cluster
 import org.apache.pekko.cluster.Member
 import org.apache.pekko.cluster.MemberStatus
 
+/**
+ * Cluster view service backed by Pekko membership state plus static topology.
+ *
+ * Configured nodes that are not currently members are reported as expected. Live members that are not present in the
+ * static topology are included as discovered nodes so operators can see both planned and actual cluster shape.
+ */
 class PekkoClusterViewService(
     private val system: ActorSystem,
     private val topology: ClusterTopology,

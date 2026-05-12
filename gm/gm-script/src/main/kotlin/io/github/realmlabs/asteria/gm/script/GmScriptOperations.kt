@@ -5,6 +5,12 @@ import io.github.realmlabs.asteria.script.job.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * GM-facing facade for script job submission and control.
+ *
+ * Implementations should be called only after GM authorization. Submissions create script jobs instead of direct
+ * fire-and-forget dispatch so operators can inspect item status, retry failures, export results, and cancel work.
+ */
 interface GmScriptOperations {
     suspend fun submit(
         command: ScriptExecutionCommand,
@@ -58,6 +64,9 @@ interface GmScriptOperations {
     ): ScriptJobItem?
 }
 
+/**
+ * [GmScriptOperations] adapter backed by [ScriptJobService].
+ */
 class ScriptJobGmScriptOperations(
     private val jobs: ScriptJobService,
 ) : GmScriptOperations {

@@ -9,6 +9,9 @@ import io.github.realmlabs.asteria.persistence.DataLeaseAware
 
 /**
  * Dirty tracking runtime for one Mongo document.
+ *
+ * Generated wrappers enqueue changes into [queue]. [flush] drains and bulk-writes that queue; on failure the flusher
+ * requeues writes that were not known to succeed. A bound lease prevents writes after the owning row is unloaded.
  */
 class MongoTrackedDocumentRuntime(
     private val collectionName: String,
@@ -31,6 +34,9 @@ class MongoTrackedDocumentRuntime(
         this.lease = lease
     }
 
+    /**
+     * Enqueues all document fields except `_id` as `$set` operations for an upsert.
+     */
     fun enqueueCreated(document: MongoTrackedDocument<*, *>) {
         val persistentValue = document.toMongoValue()
         require(persistentValue is Map<*, *>) {

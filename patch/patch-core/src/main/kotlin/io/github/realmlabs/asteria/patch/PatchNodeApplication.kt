@@ -9,6 +9,12 @@ import kotlinx.coroutines.sync.withLock
 import java.io.Serializable
 import java.time.Instant
 
+/**
+ * Runtime view of one node that can receive patch operations.
+ *
+ * [address] is the transport address understood by the configured [PatchNodeClient]. The role, module, and capability
+ * sets are converted into a [PatchEnvironment] and used to select compatible patch targets.
+ */
 data class PatchNode(
     val nodeId: String?,
     val address: String,
@@ -40,6 +46,9 @@ data class PatchNode(
     }
 }
 
+/**
+ * Reachability state used by cluster patch orchestration.
+ */
 enum class PatchNodeStatus {
     Expected,
     Reachable,
@@ -47,10 +56,16 @@ enum class PatchNodeStatus {
     Removed,
 }
 
+/**
+ * Supplies the current set of nodes that should be considered for cluster patch operations.
+ */
 fun interface PatchNodeProvider {
     suspend fun nodes(): List<PatchNode>
 }
 
+/**
+ * Single-node provider for runtimes without a cluster view.
+ */
 class LocalPatchNodeProvider(
     private val environment: PatchEnvironment,
 ) : PatchNodeProvider {
@@ -67,6 +82,9 @@ class LocalPatchNodeProvider(
     }
 }
 
+/**
+ * Transport abstraction for applying or disabling a patch on a selected node.
+ */
 interface PatchNodeClient {
     suspend fun apply(
         node: PatchNode,
@@ -79,6 +97,9 @@ interface PatchNodeClient {
     ): Boolean
 }
 
+/**
+ * In-process node client used when patch orchestration targets the local node.
+ */
 class LocalPatchNodeClient(
     private val service: PatchApplicationService,
 ) : PatchNodeClient {
@@ -97,6 +118,9 @@ class LocalPatchNodeClient(
     }
 }
 
+/**
+ * Stores per-node patch attempts for audit, retry diagnostics, and GM/OPS result inspection.
+ */
 interface RuntimePatchNodeResultRepository {
     suspend fun nextAttempt(
         patchId: PatchId,
@@ -108,6 +132,9 @@ interface RuntimePatchNodeResultRepository {
     suspend fun list(query: RuntimePatchNodeResultQuery = RuntimePatchNodeResultQuery()): List<RuntimePatchNodeResult>
 }
 
+/**
+ * Filter for persisted node-level patch results.
+ */
 data class RuntimePatchNodeResultQuery(
     val patchId: PatchId? = null,
     val address: String? = null,
@@ -118,6 +145,9 @@ data class RuntimePatchNodeResultQuery(
     }
 }
 
+/**
+ * Volatile node result repository suitable for tests and single-process deployments.
+ */
 class InMemoryRuntimePatchNodeResultRepository : RuntimePatchNodeResultRepository {
     private val lock = Mutex()
     private val results: MutableList<RuntimePatchNodeResult> = mutableListOf()
@@ -151,6 +181,12 @@ class InMemoryRuntimePatchNodeResultRepository : RuntimePatchNodeResultRepositor
     }
 }
 
+/**
+ * Outcome of one patch operation attempted against one node.
+ *
+ * [attempt] is scoped to the patch id and node address. [status] distinguishes transport failures from ignored or
+ * removed patches so cluster operations can report partial success precisely.
+ */
 data class RuntimePatchNodeResult(
     val patchId: PatchId,
     val nodeId: String?,
@@ -179,6 +215,9 @@ data class RuntimePatchNodeResult(
     }
 }
 
+/**
+ * Node-level status recorded for an apply or disable operation.
+ */
 enum class RuntimePatchNodeStatus {
     Applied,
     Removed,
@@ -187,6 +226,9 @@ enum class RuntimePatchNodeStatus {
     Unreachable,
 }
 
+/**
+ * Cluster-level response for an apply or disable request.
+ */
 data class PatchClusterApplyResult(
     val patchId: PatchId,
     val requestedAt: Instant,
@@ -208,6 +250,12 @@ private fun RuntimePatchNodeStatus.isSuccessful(): Boolean {
     }
 }
 
+/**
+ * Coordinates applying and disabling repository patches across selected nodes.
+ *
+ * The service filters nodes by patch compatibility and target before invoking [PatchNodeClient]. Each node attempt is
+ * persisted even when the remote call fails or the node is unreachable.
+ */
 class PatchClusterApplicationService(
     private val repository: RuntimePatchRepository,
     private val nodes: PatchNodeProvider,

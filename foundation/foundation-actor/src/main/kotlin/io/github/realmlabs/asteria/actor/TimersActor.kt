@@ -6,10 +6,19 @@ import org.apache.pekko.actor.TimerScheduler
 import kotlin.time.Duration
 import kotlin.time.toJavaDuration
 
+/**
+ * Callback applied to a Pekko [TimerScheduler] inside the timer actor.
+ */
 typealias TimerInteractionBlock = (TimerScheduler) -> Unit
 
+/**
+ * Message used by [ActorTimerSupport] to mutate timer state on the timer actor.
+ */
 data class TimerInteraction(val block: TimerInteractionBlock)
 
+/**
+ * Child actor that owns a Pekko timer scheduler and forwards fired timer messages to its parent.
+ */
 class TimersActor : AbstractActorWithTimers() {
     companion object {
         fun props(): Props = Props.create(TimersActor::class.java)

@@ -18,6 +18,12 @@ import org.bson.Document
 import org.bson.conversions.Bson
 import org.slf4j.LoggerFactory
 
+/**
+ * MongoDB-backed runtime patch repository.
+ *
+ * Revisions are allocated from a separate counter document so updates that change a descriptor receive a monotonically
+ * increasing revision. Call [ensureIndexes] during application startup for predictable query performance.
+ */
 class MongoRuntimePatchRepository(
     database: MongoDatabase,
     patchesCollectionName: String = "runtime_patches",
@@ -28,6 +34,9 @@ class MongoRuntimePatchRepository(
     private val patches: MongoCollection<Document> = database.getCollection(patchesCollectionName)
     private val counters: MongoCollection<Document> = database.getCollection(countersCollectionName)
 
+    /**
+     * Creates indexes used by status, compatibility, and revision-ordered patch queries.
+     */
     suspend fun ensureIndexes() {
         measured("ensure_indexes") {
             patches.createIndex(Indexes.ascending("status"))

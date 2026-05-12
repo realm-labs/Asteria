@@ -6,6 +6,12 @@ import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 import javax.inject.Inject
 
+/**
+ * Gradle extension for generated protobuf gateway and RPC protocol registries.
+ *
+ * The plugin can generate either side independently. When [addDependencies] is true it also adds the runtime Asteria
+ * artifacts needed by generated sources, using [asteriaVersion] outside the multi-project build.
+ */
 abstract class AsteriaProtobufProtocolCodegenExtension @Inject constructor(
     objects: ObjectFactory,
 ) {
@@ -26,6 +32,9 @@ abstract class AsteriaProtobufProtocolCodegenExtension @Inject constructor(
     }
 }
 
+/**
+ * Gateway protocol generation settings.
+ */
 abstract class GatewayProtocolCodegenExtension @Inject constructor(
     objects: ObjectFactory,
 ) {
@@ -38,6 +47,9 @@ abstract class GatewayProtocolCodegenExtension @Inject constructor(
     val clientMetadataFile: RegularFileProperty = objects.fileProperty()
 }
 
+/**
+ * RPC protocol generation settings.
+ */
 abstract class RpcProtocolCodegenExtension @Inject constructor(
     objects: ObjectFactory,
 ) {
