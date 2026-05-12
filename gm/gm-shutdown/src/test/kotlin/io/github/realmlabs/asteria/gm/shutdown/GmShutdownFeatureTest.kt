@@ -5,6 +5,7 @@ import io.github.realmlabs.asteria.gm.core.GmRiskLevel
 import io.github.realmlabs.asteria.gm.core.discoverGmFeatures
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class GmShutdownFeatureTest {
@@ -24,7 +25,7 @@ class GmShutdownFeatureTest {
         assertContains(actions, GmShutdownActions.Prepare)
         assertContains(actions, GmShutdownActions.Start)
         assertContains(actions, GmShutdownActions.Force)
-        assertTrue(feature.actions.single { it.key == GmShutdownActions.Start }.risk == GmRiskLevel.High)
-        assertTrue(feature.actions.single { it.key == GmShutdownActions.Force }.risk == GmRiskLevel.High)
+        assertEquals(feature.actions.single { it.key == GmShutdownActions.Start }.risk, GmRiskLevel.High)
+        assertEquals(feature.actions.single { it.key == GmShutdownActions.Force }.risk, GmRiskLevel.High)
     }
 }

@@ -5,6 +5,7 @@ import io.github.realmlabs.asteria.gm.core.GmRiskLevel
 import io.github.realmlabs.asteria.gm.core.discoverGmFeatures
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class GmClusterFeatureTest {
@@ -24,6 +25,6 @@ class GmClusterFeatureTest {
         assertContains(actions, GmClusterActions.Join)
         assertContains(actions, GmClusterActions.Down)
         assertContains(actions, GmClusterActions.ManagementRaw)
-        assertTrue(feature.actions.single { it.key == GmClusterActions.Down }.risk == GmRiskLevel.High)
+        assertEquals(feature.actions.single { it.key == GmClusterActions.Down }.risk, GmRiskLevel.High)
     }
 }

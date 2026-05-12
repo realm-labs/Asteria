@@ -92,10 +92,8 @@ class ZookeeperWorkerIdRepositoryTest {
                 ExponentialBackoffRetry(100, 3),
             )
             client.start()
-            try {
+            client.use { client ->
                 block(client)
-            } finally {
-                client.close()
             }
         }
     }

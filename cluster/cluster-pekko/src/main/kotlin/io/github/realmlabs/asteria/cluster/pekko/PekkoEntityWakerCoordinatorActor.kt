@@ -309,12 +309,12 @@ internal class PekkoEntityWakerCoordinatorActor(
     private fun activeMembers(role: RoleKey?): List<Member> {
         return cluster.state().members
             .filter { member -> member.status() != MemberStatus.removed() }
-            .filter { member -> role == null || role.value in member.getRoles() }
+            .filter { member -> role == null || role.value in member.roles }
     }
 
     companion object {
         const val STOP: String = "stop-pekko-entity-waker"
-        private val ClusterEventInitialState = org.apache.pekko.cluster.ClusterEvent.initialStateAsEvents()
+        private val ClusterEventInitialState = initialStateAsEvents()
 
         fun props(
             runtime: NodeRuntime,

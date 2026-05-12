@@ -205,9 +205,8 @@ class EventDispatcherTest {
 
     @Test
     fun `dispatcher fails fast when nested publish depth exceeds limit`() {
-        lateinit var dispatcher: EventDispatcher<DefaultHandlerContext>
-        dispatcher = EventDispatcher(
-            eventHandlers<DefaultHandlerContext> {
+        val dispatcher = EventDispatcher(
+            eventHandlers {
                 onTopic(PlayerEvents.Progression.Level.changed) { _, _, publisher ->
                     publisher.publish(PlayerLevelChanged(oldLevel = 2, newLevel = 3))
                 }
@@ -227,7 +226,7 @@ class EventDispatcherTest {
         lateinit var dispatcher: EventDispatcher<DefaultHandlerContext>
         var nextLevel = 2
         dispatcher = EventDispatcher(
-            eventHandlers<DefaultHandlerContext> {
+            eventHandlers {
                 onTopic(PlayerEvents.Progression.Level.changed) { _, _, publisher ->
                     nextLevel += 1
                     publisher.publish(PlayerLevelChanged(oldLevel = nextLevel - 1, newLevel = nextLevel))

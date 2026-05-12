@@ -67,15 +67,13 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
     @Test
     fun `failed flush keeps pending write queued`(): Unit = runBlocking {
         val client = MongoClient.create("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=50")
-        try {
+        client.use { client ->
             val runtime = runtimeFor(id = 1, database = client.getDatabase("unreachable"))
 
             runtime.enqueueCreated(TestEntity(1, "alice", linkedMapOf("a" to 1)))
 
             assertFalse(runtime.flushSafely())
             assertTrue(runtime.pendingWrites().isNotEmpty())
-        } finally {
-            client.close()
         }
     }
 
@@ -116,7 +114,7 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
     @Test
     fun `failed idle unload keeps loaded scanned row`(): Unit = runBlocking {
         val client = MongoClient.create("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=50")
-        try {
+        client.use { client ->
             val clock = MutableTableClock()
             val table = table(client.getDatabase("unreachable"), RowCachePolicy(1.seconds), clock)
 
@@ -125,8 +123,6 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
             table.unloadIdle()
 
             assertEquals(1, table.loadedCount())
-        } finally {
-            client.close()
         }
     }
 
@@ -298,7 +294,7 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
         private var mongoContainer: MongoDBContainer? = null
 
         fun mongo(): MongoDBContainer {
-            assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is not available")
+            assumeTrue(DockerClientFactory.instance().isDockerAvailable, "Docker is not available")
             return mongoContainer ?: MongoDBContainer(DockerImageName.parse("mongo:7.0.14"))
                 .also { container ->
                     container.start()
@@ -307,7 +303,7 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
         }
 
         val SCAN_PLAN = mongoScanPlan(
-            mongoScannedField<TestEntity>("name") { entity -> entity.name },
+            mongoScannedField("name") { entity -> entity.name },
             mongoScannedMapField<TestEntity>("bag") { entity -> entity.bag },
         )
     }

@@ -61,7 +61,7 @@ class PekkoClusterViewService(
             address = address().toString(),
             appName = appName,
             version = appVersion().toString(),
-            roles = getRoles().mapTo(linkedSetOf(), ::RoleKey),
+            roles = roles.mapTo(linkedSetOf(), ::RoleKey),
             status = ClusterViewNodeStatus.Reachable,
             configured = false,
             attributes = mapOf(

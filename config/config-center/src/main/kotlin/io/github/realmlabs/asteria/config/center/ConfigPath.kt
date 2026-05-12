@@ -29,7 +29,7 @@ value class ConfigPath(val value: String) {
                 return null
             }
             val parent = value.substringBeforeLast("/", missingDelimiterValue = "/")
-            return ConfigPath(if (parent.isBlank()) "/" else parent)
+            return ConfigPath(parent.ifBlank { "/" })
         }
 
     /**

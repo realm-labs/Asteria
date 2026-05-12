@@ -353,9 +353,7 @@ private class MongoJournalFiles(
         return Files.readAllLines(walFile, StandardCharsets.UTF_8)
             .asSequence()
             .filter { it.isNotBlank() }
-            .map(MongoJournalCodec::decodeLine)
-            .map { it.sequence }
-            .maxOrNull() ?: 0
+            .map(MongoJournalCodec::decodeLine).maxOfOrNull { it.sequence } ?: 0
     }
 
     fun readEntriesAfter(checkpoint: Long): List<MongoJournalEntry> {
@@ -413,13 +411,13 @@ private object MongoJournalCodec {
     }
 
     private fun decode(document: Document): MongoJournalEntry {
-        val sequence = (document.get("seq") as Number).toLong()
+        val sequence = (document["seq"] as Number).toLong()
         val key = MongoDocumentKey(
             collection = document.getString("collection"),
-            documentId = document.get("documentId"),
+            documentId = document["documentId"],
         )
         val op = when (document.getString("op")) {
-            "set" -> MongoChangeOp.Set(key.path(document.getString("fieldPath")), document.get("value"))
+            "set" -> MongoChangeOp.Set(key.path(document.getString("fieldPath")), document["value"])
             "unset" -> MongoChangeOp.Unset(key.path(document.getString("fieldPath")))
             "delete" -> MongoChangeOp.Delete(key)
             else -> error("unknown Mongo journal op ${document.getString("op")}")

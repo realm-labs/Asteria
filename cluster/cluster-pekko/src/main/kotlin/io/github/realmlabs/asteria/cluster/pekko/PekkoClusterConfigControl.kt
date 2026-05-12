@@ -115,7 +115,7 @@ class PekkoClusterConfigControlService(
         return when (target) {
             ClusterConfigReloadTarget.All -> MemberSelection(members, emptyList())
             is ClusterConfigReloadTarget.Role -> MemberSelection(
-                selected = members.filter { target.role in it.getRoles() },
+                selected = members.filter { target.role in it.roles },
                 missing = emptyList(),
             )
 
@@ -258,7 +258,7 @@ private fun Member.unreachableStatus(error: Throwable): ClusterConfigNodeStatus 
     return ClusterConfigNodeStatus(
         nodeId = uniqueAddress().longUid().toString(),
         address = address().toString(),
-        roles = getRoles().toSet(),
+        roles = roles.toSet(),
         revision = null,
         reachable = false,
         message = error.message ?: error::class.qualifiedName ?: "unknown",
@@ -269,7 +269,7 @@ private fun Member.reloadFailure(error: Throwable): ClusterConfigNodeReloadResul
     return ClusterConfigNodeReloadResult(
         nodeId = uniqueAddress().longUid().toString(),
         address = address().toString(),
-        roles = getRoles().toSet(),
+        roles = roles.toSet(),
         previousRevision = null,
         currentRevision = null,
         status = if (error is TimeoutException) {

@@ -1,10 +1,6 @@
 package io.github.realmlabs.asteria.persistence.mongodb
 
-import net.jqwik.api.Arbitraries
-import net.jqwik.api.Arbitrary
-import net.jqwik.api.ForAll
-import net.jqwik.api.Provide
-import net.jqwik.api.Property
+import net.jqwik.api.*
 import org.bson.Document
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -104,7 +100,7 @@ class MongoPersistencePropertyTest {
         )
         val childMap = Arbitraries.maps(pathSegments(), leaf).ofMaxSize(6)
         val childList = leaf.list().ofMaxSize(6)
-        val value = Arbitraries.oneOf<Any>(leaf, childMap, childList)
+        val value = Arbitraries.oneOf(leaf, childMap, childList)
         return Arbitraries.maps(pathSegments(), value).ofMaxSize(10)
     }
 

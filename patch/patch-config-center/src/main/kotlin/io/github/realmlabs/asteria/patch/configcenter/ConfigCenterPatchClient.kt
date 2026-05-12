@@ -11,14 +11,11 @@ internal class ConfigCenterPatchClient(
 ) {
     suspend fun incrementCounter(path: ConfigPath): Long {
         while (true) {
-            val current = store.get(path)
-            if (current == null) {
-                try {
-                    store.put(path, "1".toByteArray(UTF_8))
-                    return 1
-                } catch (_: ConfigRevisionMismatchException) {
-                    continue
-                }
+            val current = store.get(path) ?: try {
+                store.put(path, "1".toByteArray(UTF_8))
+                return 1
+            } catch (_: ConfigRevisionMismatchException) {
+                continue
             }
             val next = current.bytes.toString(UTF_8).toLong() + 1
             try {

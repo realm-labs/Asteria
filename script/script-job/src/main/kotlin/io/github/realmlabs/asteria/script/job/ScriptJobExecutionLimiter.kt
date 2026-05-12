@@ -214,9 +214,8 @@ class RepositoryScriptJobExecutionLimiter(
         startedAtMillis: Long = System.currentTimeMillis(),
     ): Long {
         var now = startedAtMillis
-        val leaseUntilMillis = currentLeaseUntilMillis
         while (currentCoroutineContext().isActive) {
-            if (now >= leaseUntilMillis) {
+            if (now >= currentLeaseUntilMillis) {
                 throw ScriptJobPermitLeaseLostException(lease)
             }
             val nextLeaseUntilMillis = now + leaseDuration.inWholeMilliseconds
@@ -236,10 +235,10 @@ class RepositoryScriptJobExecutionLimiter(
                 throw error
             } catch (error: Throwable) {
                 now = System.currentTimeMillis()
-                if (now >= leaseUntilMillis) {
+                if (now >= currentLeaseUntilMillis) {
                     throw ScriptJobPermitLeaseLostException(lease, error)
                 }
-                delay(retryDelayBeforeLeaseExpiry(now, leaseUntilMillis))
+                delay(retryDelayBeforeLeaseExpiry(now, currentLeaseUntilMillis))
                 now = System.currentTimeMillis()
             }
         }

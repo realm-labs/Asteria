@@ -14,11 +14,7 @@ import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.MongoDBContainer
 import org.testcontainers.utility.DockerImageName
 import java.util.*
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
+import kotlin.test.*
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -123,7 +119,7 @@ class MongoKeyedDocumentTableIntegrationTest {
         private var mongoContainer: MongoDBContainer? = null
 
         fun mongo(): MongoDBContainer {
-            assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is not available")
+            assumeTrue(DockerClientFactory.instance().isDockerAvailable, "Docker is not available")
             return mongoContainer ?: MongoDBContainer(DockerImageName.parse("mongo:7.0.14"))
                 .also { container ->
                     container.start()

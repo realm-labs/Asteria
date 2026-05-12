@@ -230,15 +230,15 @@ class MongoTrackedDocumentIntegrationTest {
             collectionName = COLLECTION,
             documentId = id,
             scanPlan = mongoScanPlan(
-                mongoScannedField<ScannedPlayerEntity>("name") { entity -> entity.name },
-                mongoScannedField<ScannedPlayerEntity>("profile") { entity -> entity.profile.toDocument() },
-                mongoScannedMapField<ScannedPlayerEntity>("bag") { entity ->
+                mongoScannedField("name") { entity -> entity.name },
+                mongoScannedField("profile") { entity -> entity.profile.toDocument() },
+                mongoScannedMapField("bag") { entity ->
                     entity.bag.mapValues { (_, value) -> value.toDocument() }
                 },
-                mongoScannedField<ScannedPlayerEntity>("quests") { entity ->
+                mongoScannedField("quests") { entity ->
                     entity.quests.map { value -> value.toDocument() }
                 },
-                mongoScannedField<ScannedPlayerEntity>("tags") { entity -> entity.tags.toList() },
+                mongoScannedField("tags") { entity -> entity.tags.toList() },
             ),
             database = database,
         )
@@ -719,7 +719,7 @@ class MongoTrackedDocumentIntegrationTest {
         private var mongoContainer: MongoDBContainer? = null
 
         fun mongo(): MongoDBContainer {
-            assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is not available")
+            assumeTrue(DockerClientFactory.instance().isDockerAvailable, "Docker is not available")
             return mongoContainer ?: MongoDBContainer(DockerImageName.parse("mongo:7.0.14"))
                 .also { container ->
                     container.start()

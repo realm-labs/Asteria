@@ -29,7 +29,7 @@ data class GameTimeRange(
      * Returns true when [instant] is inside `[start, end)`.
      */
     fun contains(instant: Instant): Boolean {
-        return instant >= start && instant < end
+        return instant in start..<end
     }
 
     /**
@@ -118,7 +118,7 @@ data class WeeklyTimeWindow(
         return if (start < end) {
             point in start until end
         } else {
-            point >= start || point < end
+            point !in end..<start
         }
     }
 }

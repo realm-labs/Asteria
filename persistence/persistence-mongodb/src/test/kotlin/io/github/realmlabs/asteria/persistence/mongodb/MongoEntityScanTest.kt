@@ -83,10 +83,10 @@ class MongoEntityScanTest {
     @Test
     fun `generated mongo scan helpers detect nested object list set and map changes`() {
         val plan = mongoScanPlan(
-            mongoScannedField<ComplexEntity>("profile") { entity -> entity.profile },
-            mongoScannedMapField<ComplexEntity>("bag") { entity -> entity.bag },
-            mongoScannedField<ComplexEntity>("quests") { entity -> entity.quests },
-            mongoScannedField<ComplexEntity>("tags") { entity -> entity.tags },
+            mongoScannedField("profile") { entity -> entity.profile },
+            mongoScannedMapField("bag") { entity -> entity.bag },
+            mongoScannedField("quests") { entity -> entity.quests },
+            mongoScannedField("tags") { entity -> entity.tags },
             mongoScannedMapField<ComplexEntity>("counters") { entity -> entity.counters },
         )
         val before = ComplexEntity(

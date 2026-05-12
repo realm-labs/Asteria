@@ -19,7 +19,7 @@ class ScriptExecutionStoreTest {
 
     @Test
     fun completedExecutionIsReplayedBeforeTtlExpires() = runBlocking {
-        var now = 0L
+        val now = 0L
         val store = InMemoryScriptExecutionStore(
             completedResultTtl = 10.milliseconds,
             currentTimeMillis = { now },

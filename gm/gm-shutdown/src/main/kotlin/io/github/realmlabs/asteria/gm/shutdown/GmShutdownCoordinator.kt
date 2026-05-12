@@ -189,7 +189,7 @@ class GmShutdownCoordinator(
                 state = state,
                 completedAt = now(),
                 result = result,
-                error = result.takeIf { it.outcome == GmShutdownStepOutcome.Failed }?.message,
+                error = result.takeIf { stepResult -> stepResult.outcome == GmShutdownStepOutcome.Failed }?.message,
             )
         }
         return if (result.outcome == GmShutdownStepOutcome.Failed && !step.continueOnFailure) {

@@ -503,7 +503,7 @@ object AsteriaMongoEntityCodeGenerator {
 
     private fun buildToMongoValue(model: MongoEntityCodegenModel): FunSpec {
         val documentType = ClassName("org.bson", "Document")
-        val entries = buildList<CodeBlock> {
+        val entries = buildList {
             add(CodeBlock.of("%S to %M(id)", "_id", MONGO_VALUE_OF))
             model.properties
                 .filterNot { it.name == model.id.name }

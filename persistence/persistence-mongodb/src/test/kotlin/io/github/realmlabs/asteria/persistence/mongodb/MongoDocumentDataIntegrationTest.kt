@@ -5,12 +5,7 @@ import com.mongodb.kotlin.client.coroutine.MongoClient
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.core.EntityKind
 import io.github.realmlabs.asteria.core.ServiceRegistry
-import io.github.realmlabs.asteria.persistence.DataBucket
-import io.github.realmlabs.asteria.persistence.DataManager
-import io.github.realmlabs.asteria.persistence.DataScope
-import io.github.realmlabs.asteria.persistence.Entity
-import io.github.realmlabs.asteria.persistence.dataModule
-import io.github.realmlabs.asteria.persistence.getOrLoad
+import io.github.realmlabs.asteria.persistence.*
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import org.bson.Document
@@ -20,11 +15,7 @@ import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.MongoDBContainer
 import org.testcontainers.utility.DockerImageName
 import java.util.*
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class MongoDocumentDataIntegrationTest {
     @Test
@@ -113,7 +104,7 @@ class MongoDocumentDataIntegrationTest {
         private var mongoContainer: MongoDBContainer? = null
 
         fun mongo(): MongoDBContainer {
-            assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is not available")
+            assumeTrue(DockerClientFactory.instance().isDockerAvailable, "Docker is not available")
             return mongoContainer ?: MongoDBContainer(DockerImageName.parse("mongo:7.0.14"))
                 .also { container ->
                     container.start()

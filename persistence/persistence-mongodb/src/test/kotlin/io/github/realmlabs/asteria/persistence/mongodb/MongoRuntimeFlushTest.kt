@@ -141,7 +141,7 @@ class MongoRuntimeFlushTest {
                     "bulkWrite" -> {
                         bulkWriteCalls += 1
                         if (bulkWriteCalls == 1) {
-                            ErrorPublisher<BulkWriteResult>(IllegalStateException("first bulk write failed"))
+                            ErrorPublisher(IllegalStateException("first bulk write failed"))
                         } else {
                             ValuePublisher(acknowledgedBulkWriteResult())
                         }

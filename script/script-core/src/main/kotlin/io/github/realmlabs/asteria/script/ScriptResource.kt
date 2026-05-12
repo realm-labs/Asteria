@@ -329,19 +329,17 @@ private fun parseCsvLine(line: String, delimiter: Char): List<String> {
     var quoted = false
     var index = 0
     while (index < line.length) {
-        val char = line[index]
-        when {
-            char == '"' && quoted && index + 1 < line.length && line[index + 1] == '"' -> {
+        when (val char = line[index]) {
+            '"' if quoted && index + 1 < line.length && line[index + 1] == '"' -> {
                 current.append('"')
                 index += 1
             }
 
-            char == '"' -> quoted = !quoted
-            char == delimiter && !quoted -> {
+            '"' -> quoted = !quoted
+            delimiter if !quoted -> {
                 values += current.toString()
                 current.clear()
             }
-
             else -> current.append(char)
         }
         index += 1
@@ -351,6 +349,7 @@ private fun parseCsvLine(line: String, delimiter: Char): List<String> {
 }
 
 private fun verifyScriptResourceChecksum(ref: ScriptResourceRef, path: Path) {
+    // TODO remove unused checksum
     val checksum = ref.checksum ?: return
     require(isScriptResourceChecksumValid(ref, path)) {
         "script resource ${ref.name} checksum mismatch"

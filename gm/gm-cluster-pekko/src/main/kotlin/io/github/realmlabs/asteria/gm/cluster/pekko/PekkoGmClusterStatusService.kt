@@ -17,7 +17,7 @@ class PekkoGmClusterStatusService(
         val cluster = Cluster.get(system)
         val selfAddress = cluster.selfAddress()
         return GmClusterStatus(
-            nodes = cluster.state().getMembers().map { member ->
+            nodes = cluster.state().members.map { member ->
                 member.toGmNode(selfAddress == member.address())
             },
         )
@@ -29,7 +29,7 @@ private fun Member.toGmNode(self: Boolean): GmClusterNode {
         nodeId = uniqueAddress().longUid().toString(),
         address = address().toString(),
         status = status().toString(),
-        roles = getRoles().toSet(),
+        roles = roles.toSet(),
         attributes = mapOf(
             "dataCenter" to dataCenter(),
             "appVersion" to appVersion().toString(),

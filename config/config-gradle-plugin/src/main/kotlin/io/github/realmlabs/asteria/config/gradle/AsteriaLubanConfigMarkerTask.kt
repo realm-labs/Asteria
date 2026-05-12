@@ -72,8 +72,7 @@ abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
     }
 
     private fun readTables(file: File): List<LubanConfigTableSpec> {
-        val root = JsonSlurper().parse(file)
-        val tableValues = when (root) {
+        val tableValues = when (val root = JsonSlurper().parse(file)) {
             is List<*> -> root
             is Map<*, *> -> root["tables"] as? List<*>
                 ?: error("Luban config marker metadata must contain a tables array")
