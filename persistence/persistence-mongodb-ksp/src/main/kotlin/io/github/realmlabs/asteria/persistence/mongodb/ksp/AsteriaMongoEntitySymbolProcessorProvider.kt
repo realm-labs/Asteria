@@ -263,7 +263,6 @@ private class AsteriaMongoEntitySymbolProcessor(
         if (qualifiedName in SET_TYPES) {
             return null
         }
-        val declaration = valueType.declaration as? KSClassDeclaration ?: return null
         val nestedWrapperType = nestedWrapperType(valueType, generatedPackage, wrapperPrefix, nestedObjects, visiting)
         return nestedWrapperType
     }

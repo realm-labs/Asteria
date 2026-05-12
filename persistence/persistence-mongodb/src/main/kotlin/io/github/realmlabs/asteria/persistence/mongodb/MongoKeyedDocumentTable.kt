@@ -24,12 +24,11 @@ abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTracke
     private val collectionName: String,
     entityType: KClass<E>,
     cachePolicy: RowCachePolicy,
-    database: MongoDatabase,
+    private val database: MongoDatabase,
     private val journal: MongoWriteJournal = NoopMongoWriteJournal,
     clock: Clock = Clock.System,
 ) : KeyedDataTable<ID, T>(cachePolicy, clock) {
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
-    private val database: MongoDatabase = database
     private val runtimes: MutableMap<T, MongoTrackedDocumentRuntime> = IdentityHashMap()
     private val rowsById: MutableMap<ID, T> = linkedMapOf()
     private val dirtyRows: DirtyRowQueue<ID> = DirtyRowQueue()

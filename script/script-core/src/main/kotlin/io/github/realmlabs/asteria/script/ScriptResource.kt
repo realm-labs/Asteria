@@ -349,8 +349,7 @@ private fun parseCsvLine(line: String, delimiter: Char): List<String> {
 }
 
 private fun verifyScriptResourceChecksum(ref: ScriptResourceRef, path: Path) {
-    // TODO remove unused checksum
-    val checksum = ref.checksum ?: return
+    if (ref.checksum == null) return
     require(isScriptResourceChecksumValid(ref, path)) {
         "script resource ${ref.name} checksum mismatch"
     }

@@ -29,7 +29,7 @@ class NettyGatewayMessageHandlerTest {
             transport = GatewayTransportKind.TCP,
             scope = this,
             handler = transportHandler,
-            receiver = NettyGatewayMessageReceiver {
+            receiver = {
                 received.complete(it.session.id.value to it.message)
             },
         )

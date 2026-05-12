@@ -8,7 +8,7 @@ import kotlin.test.assertFailsWith
 class ProtobufMessageRegistryTest {
     @Test
     fun `registry encodes and decodes message by generic key`() {
-        val registry = protobufMessageRegistry<String> {
+        val registry = protobufMessageRegistry {
             message("google.protobuf.StringValue", StringValue::class, StringValue.parser())
         }
         val message = StringValue.of("hello")
@@ -23,7 +23,7 @@ class ProtobufMessageRegistryTest {
     @Test
     fun `registry rejects duplicate keys`() {
         assertFailsWith<IllegalStateException> {
-            protobufMessageRegistry<String> {
+            protobufMessageRegistry {
                 message("string", StringValue::class, StringValue.parser())
                 message("string", StringValue::class, StringValue.parser())
             }
@@ -32,7 +32,7 @@ class ProtobufMessageRegistryTest {
 
     @Test
     fun `registry rejects unknown key`() {
-        val registry = protobufMessageRegistry<String> {
+        val registry = protobufMessageRegistry {
             message("string", StringValue::class, StringValue.parser())
         }
 

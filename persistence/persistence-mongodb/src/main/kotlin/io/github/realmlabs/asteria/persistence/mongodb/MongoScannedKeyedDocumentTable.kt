@@ -27,13 +27,12 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
     entityType: KClass<E>,
     private val scanPlan: EntityScanPlan<E>,
     cachePolicy: RowCachePolicy,
-    database: MongoDatabase,
+    private val database: MongoDatabase,
     private val journal: MongoWriteJournal = NoopMongoWriteJournal,
     private val metrics: Metrics = NoopMetrics,
     clock: Clock = Clock.System,
 ) : KeyedDataTable<ID, E>(cachePolicy, clock), MongoScannedTable {
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
-    private val database: MongoDatabase = database
     private val runtimes: MutableMap<E, MongoScannedDocumentRuntime<ID, E>> = IdentityHashMap()
     private val rowsById: MutableMap<ID, E> = linkedMapOf()
     private val dirtyRows: DirtyRowQueue<ID> = DirtyRowQueue()

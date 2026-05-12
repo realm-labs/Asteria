@@ -214,7 +214,7 @@ class DataManagerTest {
         )
 
         assertFailsWith<IllegalStateException> {
-            manager.use(GuardedData::class, GuardedData::class) { _, _ -> Unit }
+            manager.use(GuardedData::class, GuardedData::class) { _, _ -> }
         }
     }
 

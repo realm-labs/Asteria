@@ -100,7 +100,7 @@ class MongoTrackedMutableMap<K, V>(
         queue.enqueueSet(path, emptyMap<K, V>(), currentDirtyTarget())
     }
 
-    override fun toMongoValue(): Any? {
+    override fun toMongoValue(): Any {
         return Document(
             backing.entries.associate { (key, value) ->
                 MongoPath.encodePathPart(key) to persistentValue(value)
@@ -269,7 +269,7 @@ class MongoTrackedMutableList<E>(
         queue.enqueueSet(path, emptyList<E>(), currentDirtyTarget())
     }
 
-    override fun toMongoValue(): Any? = backing.map(persistentValue)
+    override fun toMongoValue(): Any = backing.map(persistentValue)
 
     @Suppress("UNCHECKED_CAST")
     private fun trackValue(index: Int, value: E): E {
@@ -345,7 +345,7 @@ class MongoTrackedMutableSet<E>(
         return TrackedIterator(backing.iterator())
     }
 
-    override fun toMongoValue(): Any? = backing.map(persistentValue)
+    override fun toMongoValue(): Any = backing.map(persistentValue)
 
     @Suppress("UNCHECKED_CAST")
     private fun trackValue(value: E): E {

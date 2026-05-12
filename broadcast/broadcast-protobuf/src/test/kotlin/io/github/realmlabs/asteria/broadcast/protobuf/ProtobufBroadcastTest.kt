@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 class ProtobufBroadcastTest {
     @Test
     fun `broadcast bus can publish and subscribe protobuf payloads`() {
-        val registry = protobufMessageRegistry<String> {
+        val registry = protobufMessageRegistry {
             message("google.protobuf.StringValue", StringValue::class, StringValue.parser())
         }
         val bus = LocalBroadcastBus()
@@ -25,7 +25,7 @@ class ProtobufBroadcastTest {
 
     @Test
     fun `protobuf subscriber ignores non protobuf broadcast payloads`() {
-        val registry = protobufMessageRegistry<String> {
+        val registry = protobufMessageRegistry {
             message("google.protobuf.StringValue", StringValue::class, StringValue.parser())
         }
         val bus = LocalBroadcastBus()

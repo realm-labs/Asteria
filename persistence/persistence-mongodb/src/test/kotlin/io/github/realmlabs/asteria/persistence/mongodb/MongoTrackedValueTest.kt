@@ -250,7 +250,7 @@ private class TestState(
 
     var level: Int by mongoTrackedValue(ctx.path("level"), level, ctx.queue)
 
-    override fun toMongoValue(): Any? {
+    override fun toMongoValue(): Any {
         return Document(mapOf("_id" to id, "name" to name, "level" to level))
     }
 

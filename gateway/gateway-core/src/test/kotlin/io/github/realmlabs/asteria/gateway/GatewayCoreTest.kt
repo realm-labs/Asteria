@@ -28,10 +28,10 @@ class GatewayCoreTest {
         val context = GatewaySessionContext(session)
         var forwarded: Pair<GatewayRoute, String>? = null
         val dispatcher = GatewayMessageDispatcher<String>(
-            routeResolver = GatewayRouteResolver { _, packet ->
+            routeResolver = { _, packet ->
                 GatewayRoute(RouteTarget.GatewayLocal, entityId = packet)
             },
-            forwarder = GatewayForwarder { _, route, packet ->
+            forwarder = { _, route, packet ->
                 forwarded = route to packet
             },
         )
@@ -54,8 +54,8 @@ class GatewayCoreTest {
             lifecycle = lifecycle,
             receiver = GatewayFrameReceiver { context, frame ->
                 GatewayMessageDispatcher<String>(
-                    routeResolver = GatewayRouteResolver { _, _ -> GatewayRoute(RouteTarget.GatewayLocal) },
-                    forwarder = GatewayForwarder { _, _, packet -> forwarded = packet },
+                    routeResolver = { _, _ -> GatewayRoute(RouteTarget.GatewayLocal) },
+                    forwarder = { _, _, packet -> forwarded = packet },
                 ).dispatch(context, frame.bytes.decodeToString())
             },
         )

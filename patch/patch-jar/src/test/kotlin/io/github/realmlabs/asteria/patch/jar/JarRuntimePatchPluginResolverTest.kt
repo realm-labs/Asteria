@@ -35,7 +35,6 @@ class JarRuntimePatchPluginResolverTest {
         )
 
         assertIs<TestPatchPlugin>(plugin)
-        Unit
     }
 
     @Test

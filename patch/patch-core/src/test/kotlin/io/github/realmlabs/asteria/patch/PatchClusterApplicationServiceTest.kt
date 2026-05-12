@@ -16,7 +16,7 @@ class PatchClusterApplicationServiceTest {
         val results = InMemoryRuntimePatchNodeResultRepository()
         val service = PatchClusterApplicationService(
             repository = repository,
-            nodes = PatchNodeProvider {
+            nodes = {
                 listOf(
                     node("player-1", "pekko://game@127.0.0.1:2551", "player"),
                     node("world-1", "pekko://game@127.0.0.1:2552", "world"),
@@ -39,7 +39,7 @@ class PatchClusterApplicationServiceTest {
         val patch = patch("broken")
         val service = PatchClusterApplicationService(
             repository = InMemoryRuntimePatchRepository(listOf(patch)),
-            nodes = PatchNodeProvider { listOf(node("player-1", "pekko://game@127.0.0.1:2551", "player")) },
+            nodes = { listOf(node("player-1", "pekko://game@127.0.0.1:2551", "player")) },
             client = nodeClient { _, _ -> error("boom") },
         )
 
@@ -59,7 +59,7 @@ class PatchClusterApplicationServiceTest {
         var calls = 0
         val service = PatchClusterApplicationService(
             repository = InMemoryRuntimePatchRepository(listOf(patch)),
-            nodes = PatchNodeProvider {
+            nodes = {
                 listOf(
                     node(
                         nodeId = "player-1",
@@ -87,7 +87,7 @@ class PatchClusterApplicationServiceTest {
         val patch = patch("disable")
         val service = PatchClusterApplicationService(
             repository = InMemoryRuntimePatchRepository(listOf(patch)),
-            nodes = PatchNodeProvider { listOf(node("player-1", "pekko://game@127.0.0.1:2551", "player")) },
+            nodes = { listOf(node("player-1", "pekko://game@127.0.0.1:2551", "player")) },
             client = object : PatchNodeClient {
                 override suspend fun apply(
                     node: PatchNode,

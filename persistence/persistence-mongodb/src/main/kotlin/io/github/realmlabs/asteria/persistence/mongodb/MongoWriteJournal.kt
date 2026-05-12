@@ -338,7 +338,7 @@ class BufferedFileMongoWriteJournal(
 }
 
 private class MongoJournalFiles(
-    private val directory: Path,
+    directory: Path,
 ) {
     val walFile: Path = directory.resolve("active.wal")
     private val checkpointFile: Path = directory.resolve("checkpoint")

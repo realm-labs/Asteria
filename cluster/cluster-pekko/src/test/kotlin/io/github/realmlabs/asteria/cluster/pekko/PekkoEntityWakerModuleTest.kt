@@ -31,7 +31,7 @@ class PekkoEntityWakerModuleTest {
             install(
                 PekkoEntityWakerModule {
                     coordinatorRole("world")
-                    task<Long>("world") {
+                    task("world") {
                         kind("world")
                         targets { listOf(101L, 102L, 103L) }
                         message { WakeEntity(it) }
@@ -85,7 +85,7 @@ class PekkoEntityWakerModuleTest {
             install(
                 PekkoEntityWakerModule {
                     coordinatorRole("world")
-                    task<Long>("world") {
+                    task("world") {
                         kind("world")
                         targets { listOf(201L) }
                         message { WakeEntity(it) }
@@ -193,7 +193,7 @@ class PekkoEntityWakerModuleTest {
                 PekkoEntityWakerModule {
                     coordinatorRole("world")
                     reconcileOnStart = false
-                    task<Long>("world") {
+                    task("world") {
                         kind("world")
                         targets { listOf(301L) }
                         message { WakeEntity(it) }

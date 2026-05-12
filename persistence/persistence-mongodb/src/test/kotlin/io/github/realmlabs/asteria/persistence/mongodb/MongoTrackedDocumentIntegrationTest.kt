@@ -376,7 +376,7 @@ class MongoTrackedDocumentIntegrationTest {
     )
 
     private class TrackedPlayer(
-        private val ctx: MongoTrackContext,
+        ctx: MongoTrackContext,
         entity: PlayerEntity,
     ) : MongoTrackedObjectSupport(ctx.queue), MongoTrackedDocument<Int, PlayerEntity> {
         override val id: Int = entity.id
@@ -401,7 +401,7 @@ class MongoTrackedDocumentIntegrationTest {
             )
         }
 
-        override fun toMongoValue(): Any? {
+        override fun toMongoValue(): Any {
             return mapOf(
                 "_id" to mongoValueOf(id),
                 "name" to mongoValueOf(name),
@@ -663,7 +663,7 @@ class MongoTrackedDocumentIntegrationTest {
     }
 
     private class TrackedProfile(
-        private val path: MongoPath,
+        path: MongoPath,
         entity: Profile,
         queue: MongoChangeQueue,
     ) : MongoTrackedObjectSupport(queue) {
@@ -672,13 +672,13 @@ class MongoTrackedDocumentIntegrationTest {
 
         fun toEntity(): Profile = Profile(nickname, avatar)
 
-        override fun toMongoValue(): Any? {
+        override fun toMongoValue(): Any {
             return Document(mapOf("nickname" to mongoValueOf(nickname), "avatar" to mongoValueOf(avatar)))
         }
     }
 
     private class TrackedItemStack(
-        private val path: MongoPath,
+        path: MongoPath,
         entity: ItemStack,
         queue: MongoChangeQueue,
         private val dirtyTargetProvider: () -> MongoDirtyTarget? = { null },
@@ -688,7 +688,7 @@ class MongoTrackedDocumentIntegrationTest {
 
         fun toEntity(): ItemStack = ItemStack(itemId, count)
 
-        override fun toMongoValue(): Any? {
+        override fun toMongoValue(): Any {
             return Document(mapOf("itemId" to mongoValueOf(itemId), "count" to mongoValueOf(count)))
         }
 
@@ -696,7 +696,7 @@ class MongoTrackedDocumentIntegrationTest {
     }
 
     private class TrackedQuestState(
-        private val path: MongoPath,
+        path: MongoPath,
         entity: QuestState,
         queue: MongoChangeQueue,
         private val dirtyTargetProvider: () -> MongoDirtyTarget? = { null },
@@ -706,7 +706,7 @@ class MongoTrackedDocumentIntegrationTest {
 
         fun toEntity(): QuestState = QuestState(questId, status)
 
-        override fun toMongoValue(): Any? {
+        override fun toMongoValue(): Any {
             return Document(mapOf("questId" to mongoValueOf(questId), "status" to mongoValueOf(status)))
         }
 

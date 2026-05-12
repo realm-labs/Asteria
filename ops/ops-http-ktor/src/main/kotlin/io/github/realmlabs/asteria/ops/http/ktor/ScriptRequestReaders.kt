@@ -59,8 +59,8 @@ private suspend fun ApplicationCall.receiveMultipartOpsScriptCommand(
     var artifactName: String? = null
     var engine: String? = null
     var artifactBytes: ByteArray? = null
-    var metadata: OpsScriptMetadataRequest = OpsScriptMetadataRequest()
-    var options: OpsScriptExecutionOptionsRequest = OpsScriptExecutionOptionsRequest()
+    var metadata = OpsScriptMetadataRequest()
+    var options = OpsScriptExecutionOptionsRequest()
     var timeoutMillis: Long = 3_000
 
     receiveMultipart().forEachPart { part ->

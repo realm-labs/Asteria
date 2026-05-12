@@ -156,7 +156,7 @@ private class KeyedTrackedDocument(
         return KeyedDocumentEntity(id, name)
     }
 
-    override fun toMongoValue(): Any? {
+    override fun toMongoValue(): Any {
         return Document(mapOf("_id" to id, "name" to name))
     }
 }
