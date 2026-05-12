@@ -242,7 +242,7 @@ private class PekkoClusterConfigControlActor(
     }
 }
 
-private sealed interface PekkoClusterConfigControlMessage : Serializable {
+internal sealed interface PekkoClusterConfigControlMessage : Serializable {
     data object GetStatus : PekkoClusterConfigControlMessage {
         private fun readResolve(): Any = GetStatus
     }
