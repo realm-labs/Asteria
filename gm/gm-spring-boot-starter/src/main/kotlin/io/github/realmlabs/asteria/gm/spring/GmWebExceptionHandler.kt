@@ -2,6 +2,7 @@ package io.github.realmlabs.asteria.gm.spring
 
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 
@@ -31,5 +32,17 @@ class GmWebExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.FORBIDDEN)
             .body(GmErrorResponse("gm.access_denied", error.message ?: "GM access denied"))
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun requestBodyNotReadable(error: HttpMessageNotReadableException): ResponseEntity<GmErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(
+                GmErrorResponse(
+                    code = "gm.bad_request",
+                    message = error.mostSpecificCause.message ?: "invalid GM request body",
+                ),
+            )
     }
 }
