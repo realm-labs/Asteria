@@ -272,6 +272,7 @@ only mark the node as `ready-to-exit` and let the deployment system scale down o
 - `gm-spring-boot-starter`: feature metadata API, principal support, exception handling.
 - `gm-script-spring-boot-starter`: script submit, query, retry, and cancel HTTP APIs.
 - `gm-config-spring-boot-starter`: config snapshot query and cluster config control.
+- `gm-config-center-spring-boot-starter`: read-only raw `ConfigStore` tree browsing and safe entry previews.
 - `gm-cluster-spring-boot-starter`: cluster status and actor query.
 - `gm-patch-spring-boot-starter`: patch management.
 

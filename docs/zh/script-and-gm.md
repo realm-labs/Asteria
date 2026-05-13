@@ -250,6 +250,7 @@ drain
 - `gm-spring-boot-starter`：feature 元数据 API、principal、异常处理。
 - `gm-script-spring-boot-starter`：脚本提交、查询、重试、取消等 HTTP API。
 - `gm-config-spring-boot-starter`：配置快照查询和集群配置控制。
+- `gm-config-center-spring-boot-starter`：底层 `ConfigStore` 只读树浏览和 entry 安全预览。
 - `gm-cluster-spring-boot-starter`：集群状态和 actor 查询。
 - `gm-patch-spring-boot-starter`：补丁管理。
 

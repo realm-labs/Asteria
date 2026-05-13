@@ -244,6 +244,10 @@ Backend revision semantics differ: etcd revisions are monotonic, ZooKeeper revis
 watches are closer to children-change notifications. Do not treat backend revisions as the unified config version; use
 the publication manifest version.
 
+For GM inspection of the backing config center, add `gm-config-center-spring-boot-starter`. It exposes a read-only raw
+`ConfigStore` browser for direct children, path revisions, sizes, checksums, and bounded previews. This is separate from
+`gm-config-spring-boot-starter` and its `/gm/api/config/...` APIs, which inspect the loaded config snapshot.
+
 ## Common Mistakes
 
 - Do not treat cluster host, port, seed, or role topology as normal hot-reload config. A running Pekko actor system does

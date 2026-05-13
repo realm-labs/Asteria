@@ -60,6 +60,8 @@ include(
     "gm:gm-script",
     "gm:gm-script-spring-boot-starter",
     "gm:gm-config",
+    "gm:gm-config-center",
+    "gm:gm-config-center-spring-boot-starter",
     "gm:gm-config-spring-boot-starter",
     "gm:gm-cluster",
     "gm:gm-shutdown",

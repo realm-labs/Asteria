@@ -230,6 +230,10 @@ current 变化后读取对应版本的完整 artifact。
 znode version，Nacos 的树形 watch 更接近 children 变化通知。业务不要把这些后端 revision 当成统一的配置版本号，配置版本应来自发布
 manifest。
 
+GM 侧如果需要查看底层配置中心内容，可以引入 `gm-config-center-spring-boot-starter`。它暴露的是原始 `ConfigStore`
+只读浏览接口：列直接 children、查看 path revision、大小、checksum 和受限 preview；这和
+`gm-config-spring-boot-starter` 的 `/gm/api/config/...` 已加载配置快照浏览不是同一个能力。
+
 ## 常见误用
 
 - 不要把集群节点 host、port、seed 这类启动拓扑当成普通热更配置。运行中的 Pekko actor system 不会因为配置表变化自动换端口或
