@@ -3,6 +3,7 @@ package io.github.realmlabs.asteria.gm.script.spring
 import io.github.realmlabs.asteria.script.ScriptTarget
 import io.github.realmlabs.asteria.script.control.ScriptTargetRequest
 import io.github.realmlabs.asteria.script.job.ScriptJobExecutionAttributes
+import tools.jackson.databind.json.JsonMapper
 import java.util.*
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -10,6 +11,43 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class GmScriptHttpModelsTest {
+    @Test
+    fun `jackson 3 deserializes submit request with kotlin module`() {
+        val mapper = JsonMapper.builder().findAndAddModules().build()
+        val request = mapper.readValue(
+            """
+            {
+              "executionId": "exec-1",
+              "target": {
+                "type": "entity",
+                "kind": "PlayerActor",
+                "ids": ["1001"]
+              },
+              "artifact": {
+                "name": "x",
+                "engine": "jar",
+                "bodyBase64": "cHJpbnRsbigiaGkiKQ=="
+              },
+              "options": {
+                "maxConcurrentItems": 64
+              }
+            }
+            """.trimIndent(),
+            GmScriptSubmitRequest::class.java,
+        )
+
+        assertEquals("exec-1", request.executionId)
+        assertEquals("entity", request.target.type)
+        assertEquals("PlayerActor", request.target.kind)
+        assertEquals(listOf("1001"), request.target.ids)
+        assertEquals("x", request.artifact.name)
+        assertEquals("jar", request.artifact.engine)
+        assertEquals("cHJpbnRsbigiaGkiKQ==", request.artifact.bodyBase64)
+        assertEquals(64, request.options.maxConcurrentItems)
+        assertEquals(GmScriptMetadataRequest(), request.metadata)
+        assertEquals(3_000, request.timeoutMillis)
+    }
+
     @Test
     fun `converts submit request to internal script command`() {
         val body = "println(\"hello\")".encodeToByteArray()
