@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
+import java.time.Instant
 import kotlin.reflect.KClass
 import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
@@ -120,8 +121,23 @@ class ConfigCenterTest {
         assertEquals(TestConfig("jackson"), codec.decode<TestConfig>(bytes))
     }
 
+    @Test
+    fun `jackson codec writes instants as iso strings`() {
+        val codec = JacksonConfigCodec()
+        val bytes = codec.encode(TimeConfig(Instant.parse("2026-05-13T12:34:56.789Z")))
+        val json = bytes.decodeToString()
+
+        assertTrue(json.contains(""""publishedAt":"2026-05-13T12:34:56.789Z""""))
+        assertFalse(json.contains("E"))
+        assertEquals(TimeConfig(Instant.parse("2026-05-13T12:34:56.789Z")), codec.decode<TimeConfig>(bytes))
+    }
+
     data class TestConfig(
         val value: String,
+    )
+
+    data class TimeConfig(
+        val publishedAt: Instant,
     )
 
     object TestCodec : ConfigCodec {
