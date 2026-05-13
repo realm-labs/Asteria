@@ -276,6 +276,29 @@ only mark the node as `ready-to-exit` and let the deployment system scale down o
 - `gm-cluster-spring-boot-starter`: cluster status and actor query.
 - `gm-patch-spring-boot-starter`: patch management.
 
+GM HTTP DTOs use Kotlin data classes and value classes. Spring Boot 4 uses Jackson 3, so the HTTP mapper must register
+`tools.jackson.module.kotlin.KotlinModule`; otherwise constructor parameters, default values, and value class fields can
+be handled incorrectly. `gm-spring-boot-starter` provides this module bean automatically so Boot's HTTP `JsonMapper`
+uses it.
+
+Applications that do not use the GM starter but manually register GM controllers or reuse GM DTOs must add and register
+the module themselves:
+
+```kotlin
+dependencies {
+    implementation("tools.jackson.module:jackson-module-kotlin")
+}
+
+@Configuration(proxyBeanMethods = false)
+class GmJacksonConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(KotlinModule::class)
+    fun kotlinModule(): KotlinModule {
+        return KotlinModule.Builder().build()
+    }
+}
+```
+
 Security is provided by the business Spring application. The framework provides action, operation, resource, and audit
 models, but
 does not decide login, approval, MFA, or ticket workflow.

@@ -8,9 +8,12 @@ dependencies {
     api(project(":observability:observability-core"))
     implementation(libs.kotlinx.coroutines.reactor)
     api(libs.spring.boot.autoconfigure)
+    api(libs.spring.boot.jackson)
     api(libs.spring.web)
     api(libs.jakarta.servlet.api)
     api(libs.jackson3.module.kotlin)
 
     implementation(libs.slf4j.api)
+    testImplementation(libs.assertj.core)
+    testImplementation(libs.spring.boot.test)
 }

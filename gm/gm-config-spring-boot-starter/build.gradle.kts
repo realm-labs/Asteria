@@ -6,4 +6,7 @@ dependencies {
     api(project(":gm:gm-config"))
     api(project(":cluster:cluster-config"))
     api(project(":gm:gm-spring-boot-starter"))
+
+    testImplementation(libs.assertj.core)
+    testImplementation(libs.spring.boot.test)
 }

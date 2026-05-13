@@ -254,6 +254,27 @@ drain
 - `gm-cluster-spring-boot-starter`：集群状态和 actor 查询。
 - `gm-patch-spring-boot-starter`：补丁管理。
 
+GM HTTP DTO 使用 Kotlin data class 和 value class。Spring Boot 4 使用 Jackson 3 时，需要注册
+`tools.jackson.module.kotlin.KotlinModule`，否则默认值、构造参数和 value class 字段可能被错误处理。
+`gm-spring-boot-starter` 会自动提供这个 module bean，并让 Boot 的 HTTP `JsonMapper` 拾取它。
+
+如果业务没有引入 GM starter，而是手动注册 GM controller 或复用 GM DTO，需要自己添加依赖并注册 module：
+
+```kotlin
+dependencies {
+    implementation("tools.jackson.module:jackson-module-kotlin")
+}
+
+@Configuration(proxyBeanMethods = false)
+class GmJacksonConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(KotlinModule::class)
+    fun kotlinModule(): KotlinModule {
+        return KotlinModule.Builder().build()
+    }
+}
+```
+
 安全边界由业务 Spring 应用接入。框架提供 action、operation、resource 和审计模型，不替业务决定登录、审批、MFA 或工单流程。
 
 默认 noop principal resolver 不会解析用户，GM HTTP 接口会认证失败。接入 starter 时，业务至少需要提供自己的

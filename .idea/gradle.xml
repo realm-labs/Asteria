@@ -66,6 +66,8 @@
             <option value="$PROJECT_DIR$/gm/gm-cluster-pekko-management-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-cluster-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-config" />
+            <option value="$PROJECT_DIR$/gm/gm-config-center" />
+            <option value="$PROJECT_DIR$/gm/gm-config-center-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-config-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-core" />
             <option value="$PROJECT_DIR$/gm/gm-patch" />
