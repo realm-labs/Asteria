@@ -247,12 +247,17 @@ drain
 
 ## Spring starter
 
+- `gm-admin-spring-boot-starter`：常用 GM HTTP 能力聚合入口，包含基础、脚本、配置、配置中心、集群和补丁 API。
 - `gm-spring-boot-starter`：feature 元数据 API、principal、异常处理。
 - `gm-script-spring-boot-starter`：脚本提交、查询、重试、取消等 HTTP API。
 - `gm-config-spring-boot-starter`：配置快照查询和集群配置控制。
 - `gm-config-center-spring-boot-starter`：底层 `ConfigStore` 只读树浏览和 entry 安全预览。
 - `gm-cluster-spring-boot-starter`：集群状态和 actor 查询。
 - `gm-patch-spring-boot-starter`：补丁管理。
+
+业务后台通常直接引入 `gm-admin-spring-boot-starter`；需要裁剪 HTTP 接口或依赖时，再改用细粒度 starter。
+Pekko management 集群适配是具体运行时扩展，不包含在聚合 starter 中，需要时额外引入
+`gm-cluster-pekko-management-spring-boot-starter`。
 
 GM HTTP DTO 使用 Kotlin data class 和 value class。Spring Boot 4 使用 Jackson 3 时，需要注册
 `tools.jackson.module.kotlin.KotlinModule`，否则默认值、构造参数和 value class 字段可能被错误处理。

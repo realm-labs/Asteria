@@ -60,6 +60,7 @@
             <option value="$PROJECT_DIR$/gateway/gateway-netty" />
             <option value="$PROJECT_DIR$/gateway/gateway-pekko" />
             <option value="$PROJECT_DIR$/gm" />
+            <option value="$PROJECT_DIR$/gm/gm-admin-spring-boot-starter" />
             <option value="$PROJECT_DIR$/gm/gm-cluster" />
             <option value="$PROJECT_DIR$/gm/gm-cluster-pekko" />
             <option value="$PROJECT_DIR$/gm/gm-cluster-pekko-management" />

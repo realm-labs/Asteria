@@ -269,12 +269,19 @@ only mark the node as `ready-to-exit` and let the deployment system scale down o
 
 ## Spring Starters
 
+- `gm-admin-spring-boot-starter`: aggregate entry point for common GM HTTP capabilities, including base, script,
+  config, config-center, cluster, and patch APIs.
 - `gm-spring-boot-starter`: feature metadata API, principal support, exception handling.
 - `gm-script-spring-boot-starter`: script submit, query, retry, and cancel HTTP APIs.
 - `gm-config-spring-boot-starter`: config snapshot query and cluster config control.
 - `gm-config-center-spring-boot-starter`: read-only raw `ConfigStore` tree browsing and safe entry previews.
 - `gm-cluster-spring-boot-starter`: cluster status and actor query.
 - `gm-patch-spring-boot-starter`: patch management.
+
+Business admin applications usually depend on `gm-admin-spring-boot-starter` directly. Use the fine-grained starters
+when an application needs to trim HTTP APIs or dependencies. Pekko management cluster support is a runtime-specific
+extension and is not included in the aggregate starter; add `gm-cluster-pekko-management-spring-boot-starter` when
+needed.
 
 GM HTTP DTOs use Kotlin data classes and value classes. Spring Boot 4 uses Jackson 3, so the HTTP mapper must register
 `tools.jackson.module.kotlin.KotlinModule`; otherwise constructor parameters, default values, and value class fields can

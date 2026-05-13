@@ -57,6 +57,7 @@ include(
     "gm:gm-patch",
     "gm:gm-patch-spring-boot-starter",
     "gm:gm-spring-boot-starter",
+    "gm:gm-admin-spring-boot-starter",
     "gm:gm-script",
     "gm:gm-script-spring-boot-starter",
     "gm:gm-config",
