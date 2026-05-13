@@ -1,16 +1,10 @@
 package io.github.realmlabs.asteria.gm.configcenter
 
-import io.github.realmlabs.asteria.config.center.ConfigPath
-import io.github.realmlabs.asteria.config.center.InMemoryConfigStore
-import io.github.realmlabs.asteria.config.center.configPath
+import io.github.realmlabs.asteria.config.center.*
 import io.github.realmlabs.asteria.gm.core.discoverGmFeatures
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class ConfigCenterBrowserTest {
     @Test
@@ -138,6 +132,18 @@ class ConfigCenterBrowserTest {
     }
 
     @Test
+    fun `store failures are exposed as unavailable causes`() = runBlocking {
+        val cause = IllegalStateException("zk no auth")
+        val browser = ConfigCenterBrowser(FailingReadStore(cause))
+
+        val error = assertFailsWith<ConfigCenterBrowserUnavailableException> {
+            browser.entry("/antares/value")
+        }
+
+        assertEquals(cause, error.cause)
+    }
+
+    @Test
     fun `custom decoder can override built in preview`() = runBlocking {
         val store = InMemoryConfigStore()
         store.put(configPath("/typed/value"), "raw".encodeToByteArray())
@@ -169,5 +175,37 @@ class ConfigCenterBrowserTest {
         val features = discoverGmFeatures()
 
         assertTrue(features.any { it.descriptor.id.value == "asteria.config-center" })
+    }
+
+    private class FailingReadStore(
+        private val error: RuntimeException,
+    ) : ConfigStore {
+        override suspend fun get(path: ConfigPath): ConfigEntry? {
+            throw error
+        }
+
+        override suspend fun children(path: ConfigPath): List<ConfigEntry> {
+            throw error
+        }
+
+        override fun watch(path: ConfigPath, mode: ConfigWatchMode): ConfigWatch {
+            return object : ConfigWatch {
+                override val events = emptyFlow<io.github.realmlabs.asteria.config.center.ConfigEvent>()
+
+                override fun close() = Unit
+            }
+        }
+
+        override suspend fun put(
+            path: ConfigPath,
+            bytes: ByteArray,
+            expectedRevision: ConfigRevision?,
+        ): ConfigRevision {
+            error("not supported")
+        }
+
+        override suspend fun delete(path: ConfigPath, expectedRevision: ConfigRevision?) {
+            error("not supported")
+        }
     }
 }

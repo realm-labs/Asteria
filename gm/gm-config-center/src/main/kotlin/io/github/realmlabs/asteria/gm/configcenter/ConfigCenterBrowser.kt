@@ -79,8 +79,8 @@ class ConfigCenterBrowser(
             store.get(path)
         } catch (error: ConfigCenterBrowserException) {
             throw error
-        } catch (_: Exception) {
-            throw ConfigCenterBrowserUnavailableException("config center entry is unavailable")
+        } catch (error: Exception) {
+            throw ConfigCenterBrowserUnavailableException("config center entry is unavailable", error)
         }
     }
 
@@ -89,8 +89,8 @@ class ConfigCenterBrowser(
             store.children(path)
         } catch (error: ConfigCenterBrowserException) {
             throw error
-        } catch (_: Exception) {
-            throw ConfigCenterBrowserUnavailableException("config center children are unavailable")
+        } catch (error: Exception) {
+            throw ConfigCenterBrowserUnavailableException("config center children are unavailable", error)
         }
     }
 
@@ -136,7 +136,10 @@ class ConfigCenterBrowser(
 /**
  * Base class for browser failures with sanitized messages.
  */
-sealed class ConfigCenterBrowserException(message: String) : RuntimeException(message)
+sealed class ConfigCenterBrowserException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 /**
  * Raised when a path is outside the configured read boundary.
@@ -146,4 +149,7 @@ class ConfigCenterBrowserAccessException(message: String) : ConfigCenterBrowserE
 /**
  * Raised when the backing ConfigStore cannot serve a read.
  */
-class ConfigCenterBrowserUnavailableException(message: String) : ConfigCenterBrowserException(message)
+class ConfigCenterBrowserUnavailableException(
+    message: String,
+    cause: Throwable? = null,
+) : ConfigCenterBrowserException(message, cause)
