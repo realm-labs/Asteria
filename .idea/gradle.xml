@@ -51,6 +51,7 @@
             <option value="$PROJECT_DIR$/foundation/foundation-id-etcd" />
             <option value="$PROJECT_DIR$/foundation/foundation-id-mongodb" />
             <option value="$PROJECT_DIR$/foundation/foundation-id-zookeeper" />
+            <option value="$PROJECT_DIR$/foundation/foundation-ksp-support" />
             <option value="$PROJECT_DIR$/foundation/foundation-message" />
             <option value="$PROJECT_DIR$/foundation/foundation-message-gradle-plugin" />
             <option value="$PROJECT_DIR$/foundation/foundation-message-ksp" />
