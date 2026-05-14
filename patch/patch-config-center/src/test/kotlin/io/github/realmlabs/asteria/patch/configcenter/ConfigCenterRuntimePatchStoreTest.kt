@@ -3,10 +3,8 @@ package io.github.realmlabs.asteria.patch.configcenter
 import io.github.realmlabs.asteria.config.center.InMemoryConfigStore
 import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.patch.*
-import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.time.Instant
@@ -108,16 +106,21 @@ class ConfigCenterRuntimePatchStoreTest {
         val repository = ConfigCenterRuntimePatchRepository(store, root)
         val trigger = ConfigCenterPatchReconcileTrigger(store, root)
         val environment = PatchEnvironment("game", "1.0.0")
-
-        val signal = async {
-            withTimeout(1_000.milliseconds) {
-                trigger.signals(environment).drop(1).first()
+        val signals = Channel<Unit>(Channel.BUFFERED)
+        val job = launch {
+            trigger.signals(environment).collect {
+                signals.send(Unit)
             }
         }
-        delay(50.milliseconds)
-        repository.save(runtimePatch())
 
-        signal.await()
+        try {
+            withTimeout(1_000.milliseconds) { signals.receive() }
+            repository.save(runtimePatch())
+            withTimeout(1_000.milliseconds) { signals.receive() }
+        } finally {
+            job.cancel()
+            signals.close()
+        }
     }
 
     private fun runtimePatch(): RuntimePatchDescriptor {

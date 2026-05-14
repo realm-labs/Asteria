@@ -10,28 +10,19 @@ internal class ConfigCenterPatchClient(
     private val store: ConfigStore,
 ) {
     suspend fun incrementCounter(path: ConfigPath): Long {
-        while (true) {
-            val current = store.get(path) ?: try {
-                store.put(path, "1".toByteArray(UTF_8))
-                return 1
-            } catch (_: ConfigRevisionMismatchException) {
-                continue
-            }
-            val next = current.bytes.toString(UTF_8).toLong() + 1
-            try {
-                store.put(path, next.toString().toByteArray(UTF_8), current.revision)
-                return next
-            } catch (_: ConfigRevisionMismatchException) {
-                continue
-            }
+        var next = 0L
+        store.update(path) { current ->
+            next = current?.bytes?.toString(UTF_8)?.toLong()?.plus(1) ?: 1
+            next.toString().toByteArray(UTF_8)
         }
+        return next
     }
 
     suspend fun upsert(
         path: ConfigPath,
         bytes: ByteArray,
     ) {
-        store.put(path, bytes)
+        store.upsert(path, bytes)
     }
 
     suspend fun read(path: ConfigPath): ByteArray? {

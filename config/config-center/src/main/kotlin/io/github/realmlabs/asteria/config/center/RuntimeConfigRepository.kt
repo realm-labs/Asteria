@@ -186,6 +186,53 @@ class RuntimeConfigRepository(
     }
 
     /**
+     * Encodes and writes a typed value without requiring a previous revision.
+     */
+    suspend fun <T : Any> upsert(
+        path: ConfigPath,
+        value: T,
+        type: KClass<T>,
+    ): ConfigRevision {
+        return measured("upsert") {
+            store.upsert(path, codec.encode(value, type))
+        }
+    }
+
+    suspend inline fun <reified T : Any> upsert(
+        path: ConfigPath,
+        value: T,
+    ): ConfigRevision {
+        return upsert(path, value, T::class)
+    }
+
+    /**
+     * Reads, transforms, and writes a typed value with compare-and-set retry semantics.
+     *
+     * Returning `null` from [transform] leaves the store unchanged. [transform] may be invoked more than once when
+     * concurrent writers update the same path.
+     */
+    suspend fun <T : Any> update(
+        path: ConfigPath,
+        type: KClass<T>,
+        transform: suspend (current: Versioned<T>?) -> T?,
+    ): Versioned<T>? {
+        return measured("update") {
+            val entry = store.update(path) { current ->
+                val currentVersioned = current?.toVersioned(type)
+                transform(currentVersioned)?.let { codec.encode(it, type) }
+            }
+            entry?.toVersioned(type)
+        }
+    }
+
+    suspend inline fun <reified T : Any> update(
+        path: ConfigPath,
+        noinline transform: suspend (current: Versioned<T>?) -> T?,
+    ): Versioned<T>? {
+        return update(path, T::class, transform)
+    }
+
+    /**
      * Deletes a value from the underlying store.
      */
     suspend fun delete(

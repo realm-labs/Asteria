@@ -46,6 +46,33 @@ class ConfigCenterTest {
     }
 
     @Test
+    fun `store upsert writes final value without expected revision`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val path = configPath("/settings/runtime")
+
+        val created = store.upsert(path, "one".encodeToByteArray())
+        val updated = store.upsert(path, "two".encodeToByteArray())
+
+        assertEquals("1", created.version)
+        assertEquals("2", updated.version)
+        assertEquals("two", store.get(path)?.bytes?.decodeToString())
+    }
+
+    @Test
+    fun `default store update retries revision mismatches`() = runBlocking {
+        val path = configPath("/settings/runtime")
+        val store = RetryingStore(path)
+
+        val updated = store.update(path) { current ->
+            val next = current?.bytes?.decodeToString()?.toInt()?.plus(1) ?: 1
+            next.toString().encodeToByteArray()
+        }
+
+        assertEquals("2", updated?.bytes?.decodeToString())
+        assertEquals(2, store.putAttempts)
+    }
+
+    @Test
     fun `repository decodes values and emits child snapshots`() = runBlocking {
         val store = InMemoryConfigStore()
         val repository = RuntimeConfigRepository(store, TestCodec)
@@ -63,6 +90,24 @@ class ConfigCenterTest {
         repository.put(root / "player", TestConfig("player"))
 
         assertEquals("player", snapshots.await().values.getValue("player").value.value)
+    }
+
+    @Test
+    fun `repository updates typed values with transform semantics`() = runBlocking {
+        val store = InMemoryConfigStore()
+        val repository = RuntimeConfigRepository(store, TestCodec)
+        val path = configPath("/settings/runtime")
+
+        val created = repository.update<TestConfig>(path) { current ->
+            TestConfig(current?.value?.value ?: "created")
+        }
+        val skipped = repository.update<TestConfig>(path) {
+            null
+        }
+
+        assertEquals("created", created?.value?.value)
+        assertNull(skipped)
+        assertEquals("created", repository.get<TestConfig>(path)?.value?.value)
     }
 
     @Test
@@ -150,6 +195,44 @@ class ConfigCenterTest {
         override fun <T : Any> encode(value: T, type: KClass<T>): ByteArray {
             require(type == TestConfig::class) { "unsupported type $type" }
             return (value as TestConfig).value.encodeToByteArray()
+        }
+    }
+
+    private class RetryingStore(
+        private val path: ConfigPath,
+    ) : ConfigStore {
+        var putAttempts: Int = 0
+        private var entry: ConfigEntry? = ConfigEntry(path, "1".encodeToByteArray(), ConfigRevision("1"))
+
+        override suspend fun get(path: ConfigPath): ConfigEntry? {
+            return entry?.takeIf { it.path == path }?.let { it.copy(bytes = it.bytes.copyOf()) }
+        }
+
+        override suspend fun children(path: ConfigPath): List<ConfigEntry> {
+            return emptyList()
+        }
+
+        override fun watch(path: ConfigPath, mode: ConfigWatchMode): ConfigWatch {
+            error("not supported")
+        }
+
+        override suspend fun put(
+            path: ConfigPath,
+            bytes: ByteArray,
+            expectedRevision: ConfigRevision?,
+        ): ConfigRevision {
+            putAttempts++
+            if (putAttempts == 1) {
+                entry = ConfigEntry(path, "1".encodeToByteArray(), ConfigRevision("2"))
+                throw ConfigRevisionMismatchException(path, expectedRevision, entry?.revision)
+            }
+            val revision = ConfigRevision("3")
+            entry = ConfigEntry(path, bytes.copyOf(), revision)
+            return revision
+        }
+
+        override suspend fun delete(path: ConfigPath, expectedRevision: ConfigRevision?) {
+            entry = null
         }
     }
 

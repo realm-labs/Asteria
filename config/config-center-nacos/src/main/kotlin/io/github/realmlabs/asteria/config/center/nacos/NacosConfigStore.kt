@@ -21,6 +21,8 @@ import java.util.concurrent.Executor
  * - [ConfigWatchMode.Tree] currently behaves the same as [ConfigWatchMode.Children], so deeper descendants are not
  *   discovered recursively from a single watch root.
  * - revisions come from Nacos `md5` when available, otherwise from a SHA-256 hash of the payload bytes.
+ * - transform updates use Nacos CAS for existing entries; creating from a missing entry is an unconditional publish
+ *   because the Nacos client API does not expose a create-if-absent CAS token.
  */
 class NacosConfigStore(
     private val configService: ConfigService,
@@ -56,22 +58,57 @@ class NacosConfigStore(
         bytes: ByteArray,
         expectedRevision: ConfigRevision?,
     ): ConfigRevision {
+        if (expectedRevision == null) {
+            return upsert(path, bytes)
+        }
+
         val current = getResult(path)
-        if (expectedRevision != null && expectedRevision.version != current?.revision?.version) {
+        if (expectedRevision.version != current?.revision?.version) {
             throw ConfigRevisionMismatchException(path, expectedRevision, current?.revision)
         }
 
         val content = bytes.toString(UTF_8)
-        val published = if (expectedRevision == null) {
-            configService.publishConfig(dataIdOf(path), group, content)
-        } else {
-            configService.publishConfigCas(dataIdOf(path), group, content, expectedRevision.version)
+        val published = configService.publishConfigCas(dataIdOf(path), group, content, expectedRevision.version)
+        if (!published) {
+            throw ConfigRevisionMismatchException(path, expectedRevision, getResult(path)?.revision)
         }
-        check(published) {
+        publishParentIndex(path, remove = false)
+        return getResult(path)?.revision ?: revisionOf(bytes)
+    }
+
+    override suspend fun upsert(
+        path: ConfigPath,
+        bytes: ByteArray,
+    ): ConfigRevision {
+        val content = bytes.toString(UTF_8)
+        check(configService.publishConfig(dataIdOf(path), group, content)) {
             "failed to publish nacos config at $path"
         }
         publishParentIndex(path, remove = false)
         return getResult(path)?.revision ?: revisionOf(bytes)
+    }
+
+    override suspend fun update(
+        path: ConfigPath,
+        transform: suspend (current: ConfigEntry?) -> ByteArray?,
+    ): ConfigEntry? {
+        while (true) {
+            val current = getResult(path)
+            val bytes = transform(current?.entry?.let { entry -> entry.copy(bytes = entry.bytes.copyOf()) })
+                ?: return null
+            val content = bytes.toString(UTF_8)
+            val published = if (current == null) {
+                configService.publishConfig(dataIdOf(path), group, content)
+            } else {
+                configService.publishConfigCas(dataIdOf(path), group, content, current.revision.version)
+            }
+            if (!published) {
+                continue
+            }
+            publishParentIndex(path, remove = false)
+            val revision = getResult(path)?.revision ?: revisionOf(bytes)
+            return ConfigEntry(path, bytes.copyOf(), revision)
+        }
     }
 
     override suspend fun delete(

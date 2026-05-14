@@ -1,7 +1,8 @@
 package io.github.realmlabs.asteria.config.center
 
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.CopyOnWriteArrayList
@@ -69,6 +70,22 @@ class InMemoryConfigStore(
         return event.entry.revision
     }
 
+    override suspend fun update(
+        path: ConfigPath,
+        transform: suspend (current: ConfigEntry?) -> ByteArray?,
+    ): ConfigEntry? {
+        val event = lock.withLock {
+            val current = entries[path]
+            val bytes = transform(current?.copyEntry()) ?: return null
+            val revision = nextRevision()
+            val entry = ConfigEntry(path, bytes.copyOf(), revision)
+            entries[path] = entry
+            ConfigEvent.Upserted(path, entry.copyEntry())
+        }
+        publish(event)
+        return event.entry
+    }
+
     override suspend fun delete(
         path: ConfigPath,
         expectedRevision: ConfigRevision?,
@@ -111,9 +128,9 @@ class InMemoryConfigStore(
         private val path: ConfigPath,
         private val mode: ConfigWatchMode,
     ) : ConfigWatch {
-        private val flow: MutableSharedFlow<ConfigEvent> = MutableSharedFlow(extraBufferCapacity = 64)
+        private val channel: Channel<ConfigEvent> = Channel(Channel.BUFFERED)
 
-        override val events: Flow<ConfigEvent> = flow
+        override val events: Flow<ConfigEvent> = channel.receiveAsFlow()
 
         fun matches(changedPath: ConfigPath): Boolean {
             return when (mode) {
@@ -124,11 +141,12 @@ class InMemoryConfigStore(
         }
 
         suspend fun emit(event: ConfigEvent) {
-            flow.emit(event)
+            channel.send(event)
         }
 
         override fun close() {
             watchers -= this
+            channel.close()
         }
     }
 }

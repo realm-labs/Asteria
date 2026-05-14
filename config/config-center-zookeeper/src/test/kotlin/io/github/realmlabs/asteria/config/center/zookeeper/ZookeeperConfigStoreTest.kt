@@ -39,6 +39,15 @@ class ZookeeperConfigStoreTest {
 
                 store.put(child, "two".encodeToByteArray(), revision)
                 assertEquals("two", store.get(child)?.bytes?.decodeToString())
+
+                store.upsert(child, "three".encodeToByteArray())
+                assertEquals("three", store.get(child)?.bytes?.decodeToString())
+
+                val updated = store.update(child) { current ->
+                    "${current?.bytes?.decodeToString()}-updated".encodeToByteArray()
+                }
+                assertEquals("three-updated", updated?.bytes?.decodeToString())
+                assertEquals("three-updated", store.get(child)?.bytes?.decodeToString())
             } finally {
                 watch.close()
                 store.delete(child)

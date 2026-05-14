@@ -100,48 +100,125 @@ class ZookeeperConfigStore(
         bytes: ByteArray,
         expectedRevision: ConfigRevision?,
     ): ConfigRevision {
-        val current = statOrNull(path)
-        if (expectedRevision != null && expectedRevision.version.toInt() != (current?.version ?: -1)) {
-            throw ConfigRevisionMismatchException(path, expectedRevision, current?.toRevision())
-        }
-
-        val stat = if (current == null) {
-            if (expectedRevision != null) {
-                throw ConfigRevisionMismatchException(path, expectedRevision, null)
-            }
-            client.create()
-                .withOptions(setOf(CreateOption.createParentsIfNeeded))
-                .forPath(path.value, bytes.copyOf())
-                .await()
-            client.checkExists().forPath(path.value).await()
+        return if (expectedRevision == null) {
+            upsert(path, bytes)
         } else {
-            client.setData()
-                .withVersion(expectedRevision?.version?.toInt() ?: -1)
-                .forPath(path.value, bytes.copyOf())
-                .await()
+            putExpected(path, bytes, expectedRevision)
         }
-        return stat.toRevision()
+    }
+
+    override suspend fun upsert(
+        path: ConfigPath,
+        bytes: ByteArray,
+    ): ConfigRevision {
+        while (true) {
+            try {
+                return client.setData()
+                    .forPath(path.value, bytes.copyOf())
+                    .await()
+                    .toRevision()
+            } catch (_: KeeperException.NoNodeException) {
+                try {
+                    client.create()
+                        .withOptions(setOf(CreateOption.createParentsIfNeeded))
+                        .forPath(path.value, bytes.copyOf())
+                        .await()
+                    return checkExists(path).toRevision()
+                } catch (_: KeeperException.NodeExistsException) {
+                    continue
+                } catch (_: KeeperException.NoNodeException) {
+                    continue
+                }
+            }
+        }
+    }
+
+    override suspend fun update(
+        path: ConfigPath,
+        transform: suspend (current: ConfigEntry?) -> ByteArray?,
+    ): ConfigEntry? {
+        while (true) {
+            val current = get(path)
+            val bytes = transform(current?.copy(bytes = current.bytes.copyOf())) ?: return null
+            try {
+                val revision = if (current == null) {
+                    create(path, bytes)
+                } else {
+                    setData(path, bytes, current.revision.version.toInt())
+                }
+                return ConfigEntry(path, bytes.copyOf(), revision)
+            } catch (_: KeeperException.NodeExistsException) {
+                continue
+            } catch (_: KeeperException.BadVersionException) {
+                continue
+            } catch (_: KeeperException.NoNodeException) {
+                continue
+            }
+        }
     }
 
     override suspend fun delete(
         path: ConfigPath,
         expectedRevision: ConfigRevision?,
     ) {
-        val current = statOrNull(path)
-        if (expectedRevision != null && expectedRevision.version.toInt() != (current?.version ?: -1)) {
-            throw ConfigRevisionMismatchException(path, expectedRevision, current?.toRevision())
-        }
-        if (current != null) {
+        try {
             client.delete()
                 .withVersion(expectedRevision?.version?.toInt() ?: -1)
                 .forPath(path.value)
                 .await()
+        } catch (_: KeeperException.NoNodeException) {
+            if (expectedRevision != null) {
+                throw ConfigRevisionMismatchException(path, expectedRevision, null)
+            }
+        } catch (_: KeeperException.BadVersionException) {
+            throw ConfigRevisionMismatchException(path, expectedRevision, statOrNull(path)?.toRevision())
         }
+    }
+
+    private suspend fun putExpected(
+        path: ConfigPath,
+        bytes: ByteArray,
+        expectedRevision: ConfigRevision,
+    ): ConfigRevision {
+        return try {
+            setData(path, bytes, expectedRevision.version.toInt())
+        } catch (_: KeeperException.NoNodeException) {
+            throw ConfigRevisionMismatchException(path, expectedRevision, null)
+        } catch (_: KeeperException.BadVersionException) {
+            throw ConfigRevisionMismatchException(path, expectedRevision, statOrNull(path)?.toRevision())
+        }
+    }
+
+    private suspend fun create(
+        path: ConfigPath,
+        bytes: ByteArray,
+    ): ConfigRevision {
+        client.create()
+            .withOptions(setOf(CreateOption.createParentsIfNeeded))
+            .forPath(path.value, bytes.copyOf())
+            .await()
+        return checkExists(path).toRevision()
+    }
+
+    private suspend fun setData(
+        path: ConfigPath,
+        bytes: ByteArray,
+        version: Int,
+    ): ConfigRevision {
+        return client.setData()
+            .withVersion(version)
+            .forPath(path.value, bytes.copyOf())
+            .await()
+            .toRevision()
+    }
+
+    private suspend fun checkExists(path: ConfigPath): Stat {
+        return client.checkExists().forPath(path.value).await()
     }
 
     private suspend fun statOrNull(path: ConfigPath): Stat? {
         return try {
-            client.checkExists().forPath(path.value).await()
+            checkExists(path)
         } catch (_: KeeperException.NoNodeException) {
             null
         }

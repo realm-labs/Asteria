@@ -114,7 +114,7 @@ class EtcdConfigStore(
         expectedRevision: ConfigRevision?,
     ): ConfigRevision {
         if (expectedRevision == null) {
-            client.kvClient.put(byteKey(path), ByteSequence.from(bytes.copyOf())).await()
+            return upsert(path, bytes)
         } else {
             val response = client.kvClient.txn()
                 .If(Cmp(byteKey(path), Cmp.Op.EQUAL, CmpTarget.modRevision(expectedRevision.version.toLong())))
@@ -126,6 +126,38 @@ class EtcdConfigStore(
             }
         }
         return get(path)?.revision ?: ConfigRevision("0")
+    }
+
+    override suspend fun upsert(
+        path: ConfigPath,
+        bytes: ByteArray,
+    ): ConfigRevision {
+        client.kvClient.put(byteKey(path), ByteSequence.from(bytes.copyOf())).await()
+        return get(path)?.revision ?: ConfigRevision("0")
+    }
+
+    override suspend fun update(
+        path: ConfigPath,
+        transform: suspend (current: ConfigEntry?) -> ByteArray?,
+    ): ConfigEntry? {
+        while (true) {
+            val current = get(path)
+            val bytes = transform(current?.copy(bytes = current.bytes.copyOf())) ?: return null
+            val compare = if (current == null) {
+                Cmp(byteKey(path), Cmp.Op.EQUAL, CmpTarget.version(0))
+            } else {
+                Cmp(byteKey(path), Cmp.Op.EQUAL, CmpTarget.modRevision(current.revision.version.toLong()))
+            }
+            val response = client.kvClient.txn()
+                .If(compare)
+                .Then(Op.put(byteKey(path), ByteSequence.from(bytes.copyOf()), PutOption.DEFAULT))
+                .commit()
+                .await()
+            if (response.isSucceeded) {
+                val revision = get(path)?.revision ?: ConfigRevision("0")
+                return ConfigEntry(path, bytes.copyOf(), revision)
+            }
+        }
     }
 
     override suspend fun delete(

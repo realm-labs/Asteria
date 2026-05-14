@@ -163,6 +163,47 @@ interface ConfigStore {
     ): ConfigRevision
 
     /**
+     * Writes [bytes] to [path] without requiring a previous revision.
+     *
+     * This operation means "the final value should be these bytes" whether the entry already exists or not. Backends
+     * that need separate create/update calls should hide those details here and retry backend races internally.
+     */
+    suspend fun upsert(
+        path: ConfigPath,
+        bytes: ByteArray,
+    ): ConfigRevision {
+        return put(path, bytes)
+    }
+
+    /**
+     * Reads the current entry, computes a replacement, and writes it with compare-and-set retry semantics.
+     *
+     * Returning `null` from [transform] skips the write and returns `null`. The default implementation retries when a
+     * backend reports [ConfigRevisionMismatchException], so [transform] may be invoked more than once. Backends with
+     * native create-if-absent CAS should override this method so updates that start from a missing value are protected
+     * from concurrent creates too.
+     */
+    suspend fun update(
+        path: ConfigPath,
+        transform: suspend (current: ConfigEntry?) -> ByteArray?,
+    ): ConfigEntry? {
+        while (true) {
+            val current = get(path)
+            val bytes = transform(current?.copy(bytes = current.bytes.copyOf())) ?: return null
+            try {
+                val revision = if (current == null) {
+                    upsert(path, bytes)
+                } else {
+                    put(path, bytes, current.revision)
+                }
+                return ConfigEntry(path, bytes.copyOf(), revision)
+            } catch (_: ConfigRevisionMismatchException) {
+                continue
+            }
+        }
+    }
+
+    /**
      * Deletes [path].
      *
      * When [expectedRevision] is provided, the delete succeeds only if the backend still sees the same revision. A
