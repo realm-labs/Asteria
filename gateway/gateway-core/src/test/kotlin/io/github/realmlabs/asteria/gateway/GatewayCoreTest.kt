@@ -1,6 +1,10 @@
 package io.github.realmlabs.asteria.gateway
 
 import io.github.realmlabs.asteria.message.RouteTarget
+import io.github.realmlabs.asteria.observability.Counter
+import io.github.realmlabs.asteria.observability.MetricTags
+import io.github.realmlabs.asteria.observability.Metrics
+import io.github.realmlabs.asteria.observability.Timer
 import kotlinx.coroutines.runBlocking
 import java.net.SocketAddress
 import kotlin.test.Test
@@ -40,6 +44,60 @@ class GatewayCoreTest {
 
         assertEquals(GatewayRoute(RouteTarget.GatewayLocal, "player-1"), route)
         assertEquals(route to "player-1", forwarded)
+    }
+
+    @Test
+    fun `dispatcher records gateway route metrics`(): Unit = runBlocking {
+        val metrics = RecordingMetrics()
+        val session = GatewaySession(GatewaySessionId("s1"), RecordingConnection())
+        val context = GatewaySessionContext(session)
+        val dispatcher = GatewayMessageDispatcher<String>(
+            routeResolver = { _, packet ->
+                GatewayRoute(RouteTarget.GatewayLocal, entityId = packet)
+            },
+            forwarder = { _, _, _ -> },
+            metrics = metrics,
+        )
+
+        dispatcher.dispatch(context, "player-1")
+
+        assertEquals(1, metrics.counter("asteria.gateway.dispatch.total", mapOf("transport" to "CUSTOM")))
+        assertEquals(
+            1,
+            metrics.counter(
+                "asteria.gateway.dispatch.forwarded.total",
+                mapOf("transport" to "CUSTOM", "target" to "gateway_local"),
+            ),
+        )
+        assertEquals(1, metrics.timerCount("asteria.gateway.dispatch.duration", mapOf("transport" to "CUSTOM")))
+    }
+
+    @Test
+    fun `dispatcher records failed gateway route metrics`(): Unit = runBlocking {
+        val metrics = RecordingMetrics()
+        val session = GatewaySession(GatewaySessionId("s1"), RecordingConnection())
+        val context = GatewaySessionContext(session)
+        val dispatcher = GatewayMessageDispatcher<String>(
+            routeResolver = { _, _ ->
+                GatewayRoute(RouteTarget.Entity(io.github.realmlabs.asteria.core.EntityKind("player")), entityId = "p1")
+            },
+            forwarder = { _, _, _ -> error("forward failed") },
+            metrics = metrics,
+        )
+
+        assertFailsWith<IllegalStateException> {
+            dispatcher.dispatch(context, "player-1")
+        }
+
+        assertEquals(1, metrics.counter("asteria.gateway.dispatch.total", mapOf("transport" to "CUSTOM")))
+        assertEquals(
+            1,
+            metrics.counter(
+                "asteria.gateway.dispatch.failed.total",
+                mapOf("transport" to "CUSTOM", "target" to "entity"),
+            ),
+        )
+        assertEquals(1, metrics.timerCount("asteria.gateway.dispatch.duration", mapOf("transport" to "CUSTOM")))
     }
 
     @Test
@@ -216,3 +274,46 @@ private class RecordingLifecycle : GatewaySessionLifecycle {
         events += "afterClose:${context.session.id.value}:${reason.code}"
     }
 }
+
+private class RecordingMetrics : Metrics {
+    private val counters: MutableMap<MetricKey, Long> = linkedMapOf()
+    private val timers: MutableMap<MetricKey, MutableList<Long>> = linkedMapOf()
+
+    override fun counter(name: String, tags: MetricTags): Counter {
+        val key = MetricKey(name, tags.asMap())
+        return object : Counter {
+            override fun increment(amount: Long) {
+                counters[key] = counter(name, tags.asMap()) + amount
+            }
+        }
+    }
+
+    override fun timer(name: String, tags: MetricTags): Timer {
+        val key = MetricKey(name, tags.asMap())
+        return object : Timer {
+            override suspend fun <T> record(block: suspend () -> T): T {
+                return block()
+            }
+
+            override fun record(durationMillis: Long) {
+                timers.getOrPut(key) { mutableListOf() } += durationMillis
+            }
+        }
+    }
+
+    override fun gauge(name: String, tags: MetricTags, value: () -> Double) {
+    }
+
+    fun counter(name: String, tags: Map<String, String>): Long {
+        return counters[MetricKey(name, tags)] ?: 0
+    }
+
+    fun timerCount(name: String, tags: Map<String, String>): Int {
+        return timers[MetricKey(name, tags)]?.size ?: 0
+    }
+}
+
+private data class MetricKey(
+    val name: String,
+    val tags: Map<String, String>,
+)

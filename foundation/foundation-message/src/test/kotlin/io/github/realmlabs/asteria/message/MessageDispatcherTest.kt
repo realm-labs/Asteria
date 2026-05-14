@@ -1,10 +1,15 @@
 package io.github.realmlabs.asteria.message
 
 import io.github.realmlabs.asteria.core.*
+import io.github.realmlabs.asteria.observability.Counter
+import io.github.realmlabs.asteria.observability.MetricTags
+import io.github.realmlabs.asteria.observability.Metrics
+import io.github.realmlabs.asteria.observability.Timer
 import io.github.realmlabs.asteria.patch.*
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 class MessageDispatcherTest {
@@ -75,6 +80,47 @@ class MessageDispatcherTest {
     }
 
     @Test
+    fun dispatcherRecordsMessageMetrics() {
+        val events = mutableListOf<String>()
+        val metrics = RecordingMetrics()
+        val runtime = TestRuntime.withMetrics(metrics)
+        val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
+        registry.register(LoginHandler(events, "base"))
+        val dispatcher = MessageDispatcher(registry)
+
+        dispatcher.dispatch(DefaultHandlerContext(runtime), LoginReq("p1"))
+
+        val tags = mapOf(
+            "runtime" to "test",
+            "message" to LoginReq::class.qualifiedName.orEmpty(),
+        )
+        assertEquals(1, metrics.counter("asteria.message.dispatch.total", tags))
+        assertEquals(0, metrics.counter("asteria.message.dispatch.failed.total", tags))
+        assertEquals(1, metrics.timerCount("asteria.message.dispatch.duration", tags))
+    }
+
+    @Test
+    fun dispatcherRecordsFailedMessageMetrics() {
+        val metrics = RecordingMetrics()
+        val runtime = TestRuntime.withMetrics(metrics)
+        val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
+        registry.register<LoginReq> { _, _ -> error("failed") }
+        val dispatcher = MessageDispatcher(registry)
+
+        assertFailsWith<IllegalStateException> {
+            dispatcher.dispatch(DefaultHandlerContext(runtime), LoginReq("p1"))
+        }
+
+        val tags = mapOf(
+            "runtime" to "test",
+            "message" to LoginReq::class.qualifiedName.orEmpty(),
+        )
+        assertEquals(1, metrics.counter("asteria.message.dispatch.total", tags))
+        assertEquals(1, metrics.counter("asteria.message.dispatch.failed.total", tags))
+        assertEquals(1, metrics.timerCount("asteria.message.dispatch.duration", tags))
+    }
+
+    @Test
     fun actorDispatchBuildsActorContext() {
         val events = mutableListOf<String>()
         val registry = ActorMessageHandlerRegistry<TestActor, GameMessage>()
@@ -116,6 +162,17 @@ class MessageDispatcherTest {
         override val roles: Set<RoleKey> = emptySet()
         override val state: NodeState = NodeState.Started
         override val services: ServiceRegistry = ServiceRegistry()
+
+        fun withMetrics(metrics: Metrics): NodeRuntime {
+            return object : NodeRuntime {
+                override val name: String = this@TestRuntime.name
+                override val roles: Set<RoleKey> = this@TestRuntime.roles
+                override val state: NodeState = this@TestRuntime.state
+                override val services: ServiceRegistry = ServiceRegistry().also {
+                    it.register(Metrics::class, metrics)
+                }
+            }
+        }
     }
 
     private sealed interface GameMessage
@@ -144,4 +201,47 @@ class MessageDispatcherTest {
             events += "$name:${message.playerId}"
         }
     }
+
+    private class RecordingMetrics : Metrics {
+        private val counters: MutableMap<MetricKey, Long> = linkedMapOf()
+        private val timers: MutableMap<MetricKey, MutableList<Long>> = linkedMapOf()
+
+        override fun counter(name: String, tags: MetricTags): Counter {
+            val key = MetricKey(name, tags.asMap())
+            return object : Counter {
+                override fun increment(amount: Long) {
+                    counters[key] = counter(name, tags.asMap()) + amount
+                }
+            }
+        }
+
+        override fun timer(name: String, tags: MetricTags): Timer {
+            val key = MetricKey(name, tags.asMap())
+            return object : Timer {
+                override suspend fun <T> record(block: suspend () -> T): T {
+                    return block()
+                }
+
+                override fun record(durationMillis: Long) {
+                    timers.getOrPut(key) { mutableListOf() } += durationMillis
+                }
+            }
+        }
+
+        override fun gauge(name: String, tags: MetricTags, value: () -> Double) {
+        }
+
+        fun counter(name: String, tags: Map<String, String>): Long {
+            return counters[MetricKey(name, tags)] ?: 0
+        }
+
+        fun timerCount(name: String, tags: Map<String, String>): Int {
+            return timers[MetricKey(name, tags)]?.size ?: 0
+        }
+    }
+
+    private data class MetricKey(
+        val name: String,
+        val tags: Map<String, String>,
+    )
 }
