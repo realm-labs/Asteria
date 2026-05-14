@@ -8,6 +8,7 @@ import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
 import io.github.realmlabs.asteria.config.annotations.*
+import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
 
 /**
  * KSP entry point for Asteria config table accessor and change-handler generation.
@@ -27,6 +28,7 @@ private class AsteriaConfigSymbolProcessor(
     private val logger: KSPLogger,
     private val options: Map<String, String>,
 ) : SymbolProcessor {
+    private val diagnostics = AsteriaKspDiagnostics(logger, "config-ksp")
     private var generated = false
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
@@ -58,6 +60,10 @@ private class AsteriaConfigSymbolProcessor(
         if (tableSymbols.isNotEmpty()) {
             val config = readCodegenConfig(resolver)
             val tables = tableSymbols.mapNotNull(::readTableModel)
+            if (!validateTableModels(tables)) {
+                generated = true
+                return emptyList()
+            }
             tableCodegenConfig = config
             tableModels = tables
             val sourceFiles = tableSymbols.mapNotNull { it.containingFile }.toTypedArray()
@@ -90,6 +96,9 @@ private class AsteriaConfigSymbolProcessor(
                 declaration = handler,
                 receiverType = processorConfig.receiverType,
             )
+        }
+        if (!validateConfigChangeHandlerModels(handlers, handlerSymbols.firstOrNull())) {
+            return null
         }
         val sourceFiles = (handlerSymbols.mapNotNull { it.containingFile } + processorConfig.sourceFiles)
             .distinctBy { it.filePath }
@@ -187,7 +196,13 @@ private class AsteriaConfigSymbolProcessor(
             .filterIsInstance<KSClassDeclaration>()
             .toList()
         if (catalogs.size > 1) {
-            logger.error("only one @AsteriaConfigCatalog is allowed", catalogs.drop(1).first())
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-001",
+                message = "Only one @AsteriaConfigCatalog is allowed.",
+                symbol = catalogs.drop(1).first(),
+                reason = "The config table catalog controls the generated package, table object, and accessor class for this module.",
+                fix = "Keep one catalog declaration and remove or merge the others.",
+            )
         }
         val catalog = catalogs.firstOrNull()?.findAnnotation(AsteriaConfigCatalog::class.qualifiedName!!)
         return ConfigCodegenConfig(
@@ -206,7 +221,13 @@ private class AsteriaConfigSymbolProcessor(
     private fun readConfigChangeCodegenConfig(resolver: Resolver): ConfigChangeProcessorConfig? {
         val catalogs = configChangeCatalogs(resolver)
         if (catalogs.size > 1) {
-            logger.error("only one @AsteriaConfigChangeCatalog is allowed", catalogs.drop(1).first())
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-002",
+                message = "Only one @AsteriaConfigChangeCatalog is allowed.",
+                symbol = catalogs.drop(1).first(),
+                reason = "The change catalog controls the generated handler list and receiver type for this module.",
+                fix = "Keep one change catalog declaration and remove or merge the others.",
+            )
         }
         val catalog = catalogs.firstOrNull()?.findAnnotation(AsteriaConfigChangeCatalog::class.qualifiedName!!)
         val receiverType = catalog?.typeKSTypeArg("receiverType")?.takeUnless { it.isNothingType() }
@@ -216,14 +237,21 @@ private class AsteriaConfigSymbolProcessor(
                     resolver.getClassDeclarationByName(resolver.getKSNameFromString(receiverTypeName))
                         ?.asStarProjectedType()
                         ?: run {
-                            logger.error("cannot resolve config change receiver type $receiverTypeName")
+                            diagnostics.error(
+                                code = "ASTERIA-CONFIG-003",
+                                message = "Cannot resolve config change receiver type.",
+                                reason = "KSP option asteria.config.change.receiverType points to $receiverTypeName, but that class is not visible to KSP.",
+                                fix = "Use the fully-qualified receiver class name and ensure the dependency is on the compile classpath.",
+                            )
                             null
                         }
                 }
         if (receiverType == null) {
-            logger.error(
-                "config change handler generation requires @AsteriaConfigChangeCatalog(receiverType = ...) " +
-                        "or KSP option asteria.config.change.receiverType",
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-004",
+                message = "Config change handler generation requires a receiver type.",
+                reason = "@AsteriaConfigChangeHandler is generic over the receiver that will receive snapshots.",
+                fix = "Add @AsteriaConfigChangeCatalog(receiverType = YourReceiver::class), or configure ksp option asteria.config.change.receiverType.",
             )
             return null
         }
@@ -249,40 +277,78 @@ private class AsteriaConfigSymbolProcessor(
         receiverType: KSType,
     ): ConfigChangeHandlerModel? {
         if (declaration.classKind != ClassKind.CLASS) {
-            logger.error("@AsteriaConfigChangeHandler only supports classes", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-005",
+                message = "@AsteriaConfigChangeHandler only supports classes.",
+                symbol = declaration,
+                reason = "Generated change handler lists instantiate handler classes with a constructor call.",
+                fix = "Move the annotation to a public concrete class.",
+            )
             return null
         }
         if (Modifier.ABSTRACT in declaration.modifiers) {
-            logger.error("config change handler must be concrete", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-006",
+                message = "Config change handler must be concrete.",
+                symbol = declaration,
+                reason = "Abstract handlers cannot be instantiated in the generated handler list.",
+                fix = "Annotate a concrete implementation class.",
+            )
             return null
         }
         if (declaration.getVisibility().name != "PUBLIC") {
-            logger.error("config change handler must be public", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-007",
+                message = "Config change handler must be public.",
+                symbol = declaration,
+                reason = "The generated handler list may be used from another package.",
+                fix = "Make the handler class public.",
+            )
             return null
         }
         val zeroArgConstructor = declaration.primaryConstructor?.parameters?.isEmpty() ?: true
         if (!zeroArgConstructor) {
-            logger.error("config change handler must have a zero-argument primary constructor", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-008",
+                message = "Config change handler must have a zero-argument primary constructor.",
+                symbol = declaration,
+                reason = "The generated list creates handler instances directly.",
+                fix = "Add a zero-argument primary constructor, or move dependencies behind a service looked up by the receiver.",
+            )
             return null
         }
         val handlerInterface = resolver.getClassDeclarationByName(
             resolver.getKSNameFromString("io.github.realmlabs.asteria.config.ConfigChangeHandler"),
         ) ?: run {
-            logger.error("cannot resolve ConfigChangeHandler")
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-009",
+                message = "Cannot resolve ConfigChangeHandler.",
+                reason = "The config runtime dependency is missing from the KSP compile classpath.",
+                fix = "Ensure the module depends on config-core when using @AsteriaConfigChangeHandler.",
+            )
             return null
         }
         val implemented = declaration.superTypes
             .map { it.resolve() }
             .firstOrNull { it.declaration.qualifiedName?.asString() == handlerInterface.qualifiedName?.asString() }
         if (implemented == null) {
-            logger.error("@AsteriaConfigChangeHandler class must implement ConfigChangeHandler", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-010",
+                message = "@AsteriaConfigChangeHandler class must implement ConfigChangeHandler.",
+                symbol = declaration,
+                reason = "The generated handler list is typed as ConfigChangeHandler<Receiver>.",
+                fix = "Implement ConfigChangeHandler<YourReceiver> on this class.",
+            )
             return null
         }
         val typeArg = implemented.arguments.singleOrNull()?.type?.resolve()
         if (typeArg?.declaration?.qualifiedName?.asString() != receiverType.declaration.qualifiedName?.asString()) {
-            logger.error(
-                "config change handler must implement ConfigChangeHandler<${receiverType.declaration.qualifiedName?.asString()}>",
-                declaration,
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-011",
+                message = "Config change handler receiver type does not match the generated catalog.",
+                symbol = declaration,
+                reason = "This handler implements ConfigChangeHandler<${typeArg?.declaration?.qualifiedName?.asString()}>, but the catalog receiver is ${receiverType.declaration.qualifiedName?.asString()}.",
+                fix = "Change the handler generic type or the @AsteriaConfigChangeCatalog receiverType so they match.",
             )
             return null
         }
@@ -298,7 +364,13 @@ private class AsteriaConfigSymbolProcessor(
             ?.toTypeName()
             .also { keyType ->
                 if (shape == AsteriaConfigTableShape.KEYED && keyType == null) {
-                    logger.error("keyed config table $tableName requires keyType", symbol)
+                    diagnostics.error(
+                        code = "ASTERIA-CONFIG-012",
+                        message = "Keyed config table requires keyType.",
+                        symbol = symbol,
+                        reason = "@AsteriaConfigTable(name = \"$tableName\", shape = KEYED) generates KeyedConfigTableRef<K, R>.",
+                        fix = "Set keyType to the row key type, or change shape to LIST or SINGLETON.",
+                    )
                 }
             }
         val explicitRowType = annotation.typeKSTypeArg("rowType")
@@ -332,7 +404,13 @@ private class AsteriaConfigSymbolProcessor(
         tableType: KSType,
     ): ConfigAccessorTableType? {
         val declaration = tableType.declaration as? KSClassDeclaration ?: run {
-            logger.error("config table $tableName tableType must be a class", symbol)
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-013",
+                message = "Config table tableType must resolve to a class.",
+                symbol = symbol,
+                reason = "The generated accessor stores the concrete table wrapper type.",
+                fix = "Use a concrete ConfigTable implementation class in tableType.",
+            )
             return null
         }
         val expectedSuperType = when (shape) {
@@ -341,7 +419,13 @@ private class AsteriaConfigSymbolProcessor(
             AsteriaConfigTableShape.SINGLETON -> "io.github.realmlabs.asteria.config.SingleConfigTable"
         }
         if (!declaration.hasSuperType(expectedSuperType)) {
-            logger.error("config table $tableName tableType must extend $expectedSuperType", symbol)
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-014",
+                message = "Config table tableType does not match table shape.",
+                symbol = symbol,
+                reason = "Table $tableName has shape=$shape, so tableType must extend $expectedSuperType.",
+                fix = "Use a tableType matching the shape, or change the table shape.",
+            )
             return null
         }
         val typeArgumentCount = declaration.typeParameters.size
@@ -352,13 +436,71 @@ private class AsteriaConfigSymbolProcessor(
                 -> 1
         }
         if (typeArgumentCount != 0 && typeArgumentCount != expectedTypeArgumentCount) {
-            logger.error(
-                "config table $tableName tableType must declare either 0 or $expectedTypeArgumentCount type parameters",
-                symbol,
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-015",
+                message = "Config table tableType has an unsupported type parameter count.",
+                symbol = symbol,
+                reason = "Table $tableName has shape=$shape, so tableType must declare either 0 or $expectedTypeArgumentCount type parameters.",
+                fix = "Use a non-generic concrete table class, or declare the expected generic parameters.",
             )
             return null
         }
         return ConfigAccessorTableType(declaration.toClassName(), typeArgumentCount)
+    }
+
+    private fun validateTableModels(tables: List<ConfigTableModel>): Boolean {
+        val duplicateTable = tables.groupBy { it.tableName }.filterValues { it.size > 1 }.keys.firstOrNull()
+        if (duplicateTable != null) {
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-016",
+                message = "Duplicate config table name.",
+                reason = "Config table names are runtime lookup keys and must be unique in one generated catalog.",
+                fix = "Change one @AsteriaConfigTable(name = \"$duplicateTable\") to a unique table name.",
+            )
+            return false
+        }
+        val duplicateRef = tables.groupBy { it.refName }.filterValues { it.size > 1 }.keys.firstOrNull()
+        if (duplicateRef != null) {
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-017",
+                message = "Duplicate generated config table ref name.",
+                reason = "Generated table refs become properties on the same object.",
+                fix = "Set a unique refName on one table that currently generates $duplicateRef.",
+            )
+            return false
+        }
+        val duplicateProperty = tables.groupBy { it.propertyName }.filterValues { it.size > 1 }.keys.firstOrNull()
+        if (duplicateProperty != null) {
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-018",
+                message = "Duplicate generated config accessor property name.",
+                reason = "Generated accessor properties share one class/snapshot extension namespace.",
+                fix = "Set a unique propertyName on one table that currently generates $duplicateProperty.",
+            )
+            return false
+        }
+        return true
+    }
+
+    private fun validateConfigChangeHandlerModels(
+        handlers: List<ConfigChangeHandlerModel>,
+        symbol: KSClassDeclaration?,
+    ): Boolean {
+        val duplicate = handlers.groupBy { it.handlerType.canonicalName }
+            .filterValues { it.size > 1 }
+            .keys
+            .firstOrNull()
+        if (duplicate != null) {
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-019",
+                message = "Duplicate config change handler.",
+                symbol = symbol,
+                reason = "The generated handler list would instantiate $duplicate more than once.",
+                fix = "Remove one duplicate annotation or split duplicated generated catalogs.",
+            )
+            return false
+        }
+        return true
     }
 
     private fun hasConfigChangeCatalog(resolver: Resolver): Boolean {
@@ -430,7 +572,6 @@ private class AsteriaConfigSymbolProcessor(
             .any { it.hasSuperType(qualifiedName) }
     }
 }
-
 private data class ConfigChangeProcessorConfig(
     val codegen: ConfigChangeCodegenConfig,
     val receiverType: KSType,

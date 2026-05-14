@@ -7,6 +7,7 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
+import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
 import io.github.realmlabs.asteria.persistence.mongodb.annotations.*
 import org.bson.codecs.pojo.annotations.BsonId
 
@@ -24,6 +25,7 @@ private class AsteriaMongoEntitySymbolProcessor(
     private val logger: KSPLogger,
     options: Map<String, String>,
 ) : SymbolProcessor {
+    private val diagnostics = AsteriaKspDiagnostics(logger, "persistence-mongodb-ksp")
     private var generated = false
     private val valueTypes: Set<String> = options["asteria.mongodb.valueTypes"]
         ?.split(',')
@@ -146,7 +148,13 @@ private class AsteriaMongoEntitySymbolProcessor(
         val annotation = symbol.findAnnotation(AsteriaMongoEntity::class.qualifiedName!!) ?: return null
         val collectionName = annotation.stringArg("collection")
         if (collectionName.isBlank()) {
-            logger.error("@AsteriaMongoEntity collection must not be blank", symbol)
+            diagnostics.error(
+                code = "ASTERIA-MONGO-001",
+                message = "@AsteriaMongoEntity collection must not be blank.",
+                symbol = symbol,
+                reason = "The generated repository helper needs a concrete MongoDB collection name.",
+                fix = "Set collection to the MongoDB collection that stores this entity.",
+            )
             return null
         }
         val packageName = symbol.packageName.asString()
@@ -173,20 +181,35 @@ private class AsteriaMongoEntitySymbolProcessor(
         val id = when {
             annotatedIds.size == 1 -> annotatedIds.single()
             annotatedIds.size > 1 -> {
-                logger.error("Only one @AsteriaMongoId or @BsonId property is allowed", symbol)
+                diagnostics.error(
+                    code = "ASTERIA-MONGO-002",
+                    message = "Only one @AsteriaMongoId or @BsonId property is allowed.",
+                    symbol = symbol,
+                    reason = "MongoDB has one _id field per document, and the generated wrapper maps exactly one property to it.",
+                    fix = "Keep one id annotation, or remove annotations and use a single property named id.",
+                )
                 return null
             }
 
             else -> properties.singleOrNull { it.name == "id" } ?: run {
-                logger.error(
-                    "Mongo entity ${symbol.qualifiedName?.asString()} requires an id property, @AsteriaMongoId, or @BsonId",
-                    symbol
+                diagnostics.error(
+                    code = "ASTERIA-MONGO-003",
+                    message = "Mongo entity requires an id property.",
+                    symbol = symbol,
+                    reason = "The generated repository and tracked wrapper need a stable entity id mapped to Mongo _id.",
+                    fix = "Add a property named id, or mark exactly one property with @AsteriaMongoId or @BsonId.",
                 )
                 return null
             }
         }
         if (id.type.isNullable) {
-            logger.error("Mongo entity id must not be nullable", symbol)
+            diagnostics.error(
+                code = "ASTERIA-MONGO-004",
+                message = "Mongo entity id must not be nullable.",
+                symbol = symbol,
+                reason = "The entity id is used as a repository key and Mongo _id value.",
+                fix = "Change the id property type to a non-null type.",
+            )
             return null
         }
         val duplicateField = properties
@@ -195,11 +218,23 @@ private class AsteriaMongoEntitySymbolProcessor(
             .keys
             .firstOrNull()
         if (duplicateField != null) {
-            logger.error("duplicate generated Mongo field name $duplicateField", symbol)
+            diagnostics.error(
+                code = "ASTERIA-MONGO-005",
+                message = "Duplicate generated Mongo field name.",
+                symbol = symbol,
+                reason = "Two properties map to Mongo field $duplicateField.",
+                fix = "Rename one property or use @AsteriaMongoField(name = ...) with a unique field name.",
+            )
             return null
         }
         if (properties.any { it.name != id.name && it.fieldName == "_id" }) {
-            logger.error("Mongo field _id is reserved for the entity id", symbol)
+            diagnostics.error(
+                code = "ASTERIA-MONGO-006",
+                message = "Mongo field _id is reserved for the entity id.",
+                symbol = symbol,
+                reason = "The generated wrapper maps the selected id property to _id automatically.",
+                fix = "Do not set @AsteriaMongoField(name = \"_id\") on non-id properties.",
+            )
             return null
         }
         if (!validateProperties(symbol, properties)) {
@@ -306,7 +341,13 @@ private class AsteriaMongoEntitySymbolProcessor(
         )
         if (qualifiedName in nestedObjects) return nestedObjects.getValue(qualifiedName).wrapperType
         if (!visiting.add(qualifiedName)) {
-            logger.error("recursive Mongo data class $qualifiedName is not supported by generated wrappers")
+            diagnostics.error(
+                code = "ASTERIA-MONGO-007",
+                message = "Recursive Mongo data class is not supported by generated tracked wrappers.",
+                symbol = declaration,
+                reason = "Generated nested wrappers expand the object graph statically and cannot represent recursive wrapper types.",
+                fix = "Annotate the recursive type with @AsteriaMongoValue if a custom codec handles it, or break the recursive property graph.",
+            )
             return wrapperType
         }
         val properties = declaration.getAllProperties()
@@ -341,19 +382,24 @@ private class AsteriaMongoEntitySymbolProcessor(
     ): Boolean {
         return properties.all { property ->
             if (property.scanWholeField && property.kind != MongoEntityPropertyKind.Map) {
-                logger.error(
-                    "@AsteriaMongoScanWholeField can only be used on Map properties: " +
-                            "${owner.simpleName.asString()}.${property.name}",
+                diagnostics.error(
+                    code = "ASTERIA-MONGO-008",
+                    message = "@AsteriaMongoScanWholeField can only be used on Map properties.",
+                    symbol = owner.property(property.name),
+                    reason = "${owner.simpleName.asString()}.${property.name} is ${property.kind}, but whole-field scan is only meaningful for map path tracking.",
+                    fix = "Remove @AsteriaMongoScanWholeField or change the property to a Map.",
                 )
                 return@all false
             }
             val declaration = owner.property(property.name)
             val type = declaration?.type?.resolve() ?: return@all true
             if (type.isNullableMongoCollectionType()) {
-                logger.error(
-                    "Nullable Mongo collection properties are not supported: " +
-                            "${owner.simpleName.asString()}.${property.name}. " +
-                            "Use an empty collection, a nullable wrapper object, or a whole-value @AsteriaMongoValue type.",
+                diagnostics.error(
+                    code = "ASTERIA-MONGO-009",
+                    message = "Nullable Mongo collection properties are not supported.",
+                    symbol = declaration,
+                    reason = "Tracked collection wrappers need a non-null collection instance to record dirty paths.",
+                    fix = "Use an empty collection, a nullable wrapper object, or a whole-value @AsteriaMongoValue type.",
                 )
                 return@all false
             }
@@ -367,9 +413,11 @@ private class AsteriaMongoEntitySymbolProcessor(
         visiting: MutableSet<String>,
     ): Boolean {
         if (type.isNullableMongoCollectionType()) {
-            logger.error(
-                "$label is a nullable Mongo collection. Use an empty collection, a nullable wrapper object, " +
-                        "or a whole-value @AsteriaMongoValue type.",
+            diagnostics.error(
+                code = "ASTERIA-MONGO-010",
+                message = "Nullable Mongo collection type is not supported.",
+                reason = "$label is nullable, but tracked collection wrappers require non-null instances.",
+                fix = "Use an empty collection, a nullable wrapper object, or a whole-value @AsteriaMongoValue type.",
             )
             return false
         }
@@ -393,7 +441,12 @@ private class AsteriaMongoEntitySymbolProcessor(
             val keyType = type.arguments.getOrNull(0)?.type?.resolve()
             val valueType = type.arguments.getOrNull(1)?.type?.resolve()
             if (keyType == null || valueType == null) {
-                logger.error("$label uses a Mongo map with unresolved key/value types")
+                diagnostics.error(
+                    code = "ASTERIA-MONGO-011",
+                    message = "Mongo map has unresolved key/value types.",
+                    reason = "$label uses a map type whose key or value type cannot be resolved by KSP.",
+                    fix = "Use a concrete Map<K, V> or MutableMap<K, V> type.",
+                )
                 return false
             }
             val keyOk = validateMongoMapKeyType(keyType, "$label map key")
@@ -403,7 +456,12 @@ private class AsteriaMongoEntitySymbolProcessor(
         if (qualifiedName in LIST_OR_SET_TYPES) {
             val elementType = type.arguments.getOrNull(0)?.type?.resolve()
             if (elementType == null) {
-                logger.error("$label uses a Mongo collection with unresolved element type")
+                diagnostics.error(
+                    code = "ASTERIA-MONGO-012",
+                    message = "Mongo collection has an unresolved element type.",
+                    reason = "$label uses a collection type whose element type cannot be resolved by KSP.",
+                    fix = "Use a concrete List<T>, MutableList<T>, Set<T>, or MutableSet<T> type.",
+                )
                 return false
             }
             if (qualifiedName in SET_TYPES) {
@@ -414,7 +472,12 @@ private class AsteriaMongoEntitySymbolProcessor(
         if (declaration is KSClassDeclaration && shouldGenerateNestedWrapper(declaration)) {
             val key = qualifiedName ?: declaration.simpleName.asString()
             if (!visiting.add(key)) {
-                logger.error("$label references recursive data class $key; register it with @AsteriaMongoValue if a custom codec handles it")
+                diagnostics.error(
+                    code = "ASTERIA-MONGO-013",
+                    message = "Mongo tracked property references a recursive data class.",
+                    reason = "$label references recursive data class $key.",
+                    fix = "Annotate $key with @AsteriaMongoValue if a custom codec handles it, or break the recursive property graph.",
+                )
                 return false
             }
             val result = declaration.getAllProperties()
@@ -426,10 +489,11 @@ private class AsteriaMongoEntitySymbolProcessor(
             return result
         }
 
-        logger.error(
-            "$label has unsupported Mongo value type ${qualifiedName ?: declaration.simpleName.asString()}. " +
-                    "Use a supported scalar/collection/data class, annotate the type with @AsteriaMongoValue, or add it to " +
-                    "the KSP option asteria.mongodb.valueTypes.",
+        diagnostics.error(
+            code = "ASTERIA-MONGO-014",
+            message = "Unsupported Mongo value type.",
+            reason = "$label has unsupported type ${qualifiedName ?: declaration.simpleName.asString()}.",
+            fix = "Use a supported scalar, collection, enum, data class, @AsteriaMongoValue type, or add the type to KSP option asteria.mongodb.valueTypes.",
         )
         return false
     }
@@ -442,10 +506,11 @@ private class AsteriaMongoEntitySymbolProcessor(
         val declaration = type.declaration
         val qualifiedName = declaration.qualifiedName?.asString()
         if (qualifiedName in MAP_TYPES || qualifiedName in LIST_OR_SET_TYPES || qualifiedName in BUILTIN_MONGO_ARRAY_TYPES) {
-            logger.error(
-                "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not supported in Mongo Set. " +
-                        "Set elements must be stable whole values because Set depends on element hashCode/equals. " +
-                        "Use List or Map when the element contains nested collection data.",
+            diagnostics.error(
+                code = "ASTERIA-MONGO-016",
+                message = "Mongo Set element type is not supported.",
+                reason = "$label type ${qualifiedName ?: declaration.simpleName.asString()} contains nested collection data. Set elements must be stable whole values because Set depends on element hashCode/equals.",
+                fix = "Use List or Map for nested collection data, or replace the Set element with a stable scalar/value type.",
             )
             return false
         }
@@ -465,18 +530,21 @@ private class AsteriaMongoEntitySymbolProcessor(
             if (Modifier.DATA in declaration.modifiers) {
                 val result = isImmutableMongoValueClass(declaration, visiting)
                 if (!result) {
-                    logger.error(
-                        "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not safe in Mongo Set. " +
-                                "Set data-class elements must be immutable whole values. Use List/Map for tracked nested values " +
-                                "or make the Set element a val-only Mongo value type.",
+                    diagnostics.error(
+                        code = "ASTERIA-MONGO-017",
+                        message = "Mongo Set data-class element is mutable or contains tracked nested values.",
+                        reason = "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not safe in Mongo Set. Set data-class elements must be immutable whole values.",
+                        fix = "Use List/Map for tracked nested values, or make the Set element a val-only Mongo value type.",
                     )
                 }
                 return result
             }
         }
-        logger.error(
-            "$label type ${qualifiedName ?: declaration.simpleName.asString()} is not safe in Mongo Set. " +
-                    "Use a stable scalar, enum, immutable data class, @AsteriaMongoValue type, or asteria.mongodb.valueTypes.",
+        diagnostics.error(
+            code = "ASTERIA-MONGO-018",
+            message = "Mongo Set element type is not stable.",
+            reason = "$label type ${qualifiedName ?: declaration.simpleName.asString()} cannot be tracked safely as a Set element.",
+            fix = "Use a stable scalar, enum, immutable data class, @AsteriaMongoValue type, or add the type to KSP option asteria.mongodb.valueTypes.",
         )
         return false
     }
@@ -540,7 +608,12 @@ private class AsteriaMongoEntitySymbolProcessor(
         if (declaration is KSClassDeclaration && declaration.classKind == ClassKind.ENUM_CLASS) {
             return true
         }
-        logger.error("$label type ${qualifiedName ?: declaration.simpleName.asString()} is not safe as a Mongo path key")
+        diagnostics.error(
+            code = "ASTERIA-MONGO-015",
+            message = "Mongo map key type is not safe as a path key.",
+            reason = "$label type ${qualifiedName ?: declaration.simpleName.asString()} cannot be converted to stable Mongo update paths.",
+            fix = "Use String, numeric scalar, Boolean, Char, enum, BigInteger, or BigDecimal as the map key type.",
+        )
         return false
     }
 
@@ -694,7 +767,6 @@ private class AsteriaMongoEntitySymbolProcessor(
         )
     }
 }
-
 private fun String.toUpperCamelIdentifier(): String {
     return split(Regex("[^A-Za-z0-9]+"))
         .filter { it.isNotBlank() }

@@ -9,6 +9,7 @@ import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.writeTo
+import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
 import java.util.*
 
 class AsteriaContributionSymbolProcessorProvider : SymbolProcessorProvider {
@@ -21,6 +22,7 @@ private class AsteriaContributionSymbolProcessor(
     private val codeGenerator: CodeGenerator,
     private val logger: KSPLogger,
 ) : SymbolProcessor {
+    private val diagnostics = AsteriaKspDiagnostics(logger, "contribution-ksp")
     private val contributionAnnotationName = "io.github.realmlabs.asteria.contribution.AsteriaContribution"
     private val catalogAnnotationName = "io.github.realmlabs.asteria.contribution.AsteriaContributionCatalog"
 
@@ -38,9 +40,12 @@ private class AsteriaContributionSymbolProcessor(
             .groupBy { it.contract.qualifiedName }
 
         catalogs.filterValues { it.size > 1 }.forEach { (contractName, duplicateCatalogs) ->
-            logger.error(
-                "only one @AsteriaContributionCatalog is allowed for contract $contractName",
-                duplicateCatalogs.drop(1).first().declaration,
+            diagnostics.error(
+                code = "ASTERIA-CONTRIBUTION-001",
+                message = "Only one @AsteriaContributionCatalog is allowed for a contract.",
+                symbol = duplicateCatalogs.drop(1).first().declaration,
+                reason = "A catalog controls the generated object name, package, and chunk size for one contract; multiple catalogs would generate conflicting outputs.",
+                fix = "Keep one catalog for $contractName and remove or merge the others.",
             )
         }
 
@@ -72,7 +77,13 @@ private class AsteriaContributionSymbolProcessor(
     private fun readContributionModel(declaration: KSClassDeclaration): ContributionBinding? {
         val annotation = declaration.findAnnotation(contributionAnnotationName) ?: return null
         val contract = annotation.classArg("contract") ?: run {
-            logger.error("@AsteriaContribution contract must be a class", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONTRIBUTION-002",
+                message = "@AsteriaContribution contract must be a class.",
+                symbol = declaration,
+                reason = "The generated contribution list is grouped by the contract KClass.",
+                fix = "Set contract to the interface or base class implemented by this contribution.",
+            )
             return null
         }
         if (!validateContributionDeclaration(declaration, contract)) {
@@ -94,31 +105,64 @@ private class AsteriaContributionSymbolProcessor(
         contract: KSClassDeclaration,
     ): Boolean {
         if (declaration.classKind != ClassKind.CLASS && declaration.classKind != ClassKind.OBJECT) {
-            logger.error("@AsteriaContribution only supports classes and objects", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONTRIBUTION-003",
+                message = "@AsteriaContribution only supports classes and objects.",
+                symbol = declaration,
+                reason = "Generated lists contain either an object reference or a constructor call.",
+                fix = "Move the annotation to a concrete class or object.",
+            )
             return false
         }
         if (Modifier.ABSTRACT in declaration.modifiers) {
-            logger.error("contribution must be concrete", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONTRIBUTION-004",
+                message = "Contribution must be concrete.",
+                symbol = declaration,
+                reason = "Abstract classes cannot be placed into the generated runtime list.",
+                fix = "Annotate a concrete implementation instead of the abstract base type.",
+            )
             return false
         }
         if (declaration.getVisibility() != Visibility.PUBLIC) {
-            logger.error("contribution must be public", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONTRIBUTION-005",
+                message = "Contribution must be public.",
+                symbol = declaration,
+                reason = "The generated contribution catalog may be used from another package or module.",
+                fix = "Make the contribution class/object public.",
+            )
             return false
         }
         if (declaration.typeParameters.isNotEmpty()) {
-            logger.error("contribution must not declare type parameters", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONTRIBUTION-006",
+                message = "Contribution must not declare type parameters.",
+                symbol = declaration,
+                reason = "The generated catalog stores concrete implementation types and does not know which type arguments to use.",
+                fix = "Create a non-generic implementation class for the desired contract.",
+            )
             return false
         }
         if (declaration.classKind == ClassKind.CLASS) {
             if (declaration.getConstructors().none { it.parameters.isEmpty() }) {
-                logger.error("contribution class must have a zero-argument constructor", declaration)
+                diagnostics.error(
+                    code = "ASTERIA-CONTRIBUTION-007",
+                    message = "Contribution class must have a zero-argument constructor.",
+                    symbol = declaration,
+                    reason = "Contribution KSP only generates static lists; business code decides later how to index or wrap those instances.",
+                    fix = "Add a public zero-argument constructor, or use an object contribution.",
+                )
                 return false
             }
         }
         if (!declaration.isSubtypeOf(contract.qualifiedName?.asString().orEmpty())) {
-            logger.error(
-                "@AsteriaContribution declaration must implement ${contract.qualifiedName?.asString()}",
-                declaration,
+            diagnostics.error(
+                code = "ASTERIA-CONTRIBUTION-008",
+                message = "@AsteriaContribution declaration must implement its contract.",
+                symbol = declaration,
+                reason = "${declaration.qualifiedName?.asString()} is not a subtype of ${contract.qualifiedName?.asString()}.",
+                fix = "Implement the contract, or change the annotation contract to the intended interface/base class.",
             )
             return false
         }
@@ -128,7 +172,13 @@ private class AsteriaContributionSymbolProcessor(
     private fun readCatalogModel(declaration: KSClassDeclaration): ContributionCatalogModel? {
         val annotation = declaration.findAnnotation(catalogAnnotationName) ?: return null
         val contract = annotation.classArg("contract") ?: run {
-            logger.error("@AsteriaContributionCatalog contract must be a class", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONTRIBUTION-009",
+                message = "@AsteriaContributionCatalog contract must be a class.",
+                symbol = declaration,
+                reason = "The catalog customizes generated output for one contribution contract.",
+                fix = "Set contract to the interface or base class whose contribution list should be generated.",
+            )
             return null
         }
         val contractModel = contract.toContractModel()
@@ -138,7 +188,13 @@ private class AsteriaContributionSymbolProcessor(
             .ifBlank { "Generated${contract.simpleName.asString().toContributionTypeNamePart()}Contributions" }
         val chunkSize = annotation.intArg("chunkSize", default = DEFAULT_CHUNK_SIZE)
         if (chunkSize <= 0) {
-            logger.error("contribution catalog chunkSize must be greater than zero", declaration)
+            diagnostics.error(
+                code = "ASTERIA-CONTRIBUTION-010",
+                message = "Contribution catalog chunkSize must be greater than zero.",
+                symbol = declaration,
+                reason = "KSP splits large generated lists into positive-size chunks to avoid oversized generated methods.",
+                fix = "Remove chunkSize to use the default, or set it to a positive integer.",
+            )
             return null
         }
         return ContributionCatalogModel(
@@ -211,7 +267,6 @@ private class AsteriaContributionSymbolProcessor(
     }
 
 }
-
 internal fun String.toContributionTypeNamePart(): String {
     val tokens = split(Regex("[^A-Za-z0-9]+")).filter { it.isNotBlank() }.ifEmpty { listOf("Default") }
     return tokens.joinToString("") { token ->

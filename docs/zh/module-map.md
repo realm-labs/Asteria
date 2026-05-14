@@ -6,6 +6,7 @@
 |----------------------------------------------------------------------------|-----------------------------------------------------|-----------------------------------------|
 | `foundation-core`                                                          | 应用生命周期、模块系统、角色、实体和单例声明、服务注册表                        | 所有 Asteria 应用都需要                        |
 | `foundation-actor`                                                         | Pekko actor 基类、actor dispatcher 上的协程 scope、timer 辅助 | 业务 actor 需要协程或生命周期 gate 时               |
+| `foundation-ksp-support`                                                   | KSP 诊断格式和生成器通用辅助                                   | 框架 KSP 模块内部依赖，业务侧通常不直接使用                |
 | `foundation-contribution` / `foundation-contribution-ksp`                  | 通用贡献点注解和 KSP 聚合清单生成                                 | 业务扩展点需要生成列表后自行建索引或 patchable registry 时 |
 | `foundation-event`                                                         | 进程内事实事件、topic 树、父节点 fan-out、事件 handler              | 业务模块需要解耦领域通知时                           |
 | `foundation-event-ksp`                                                     | 扫描事件 handler 注解并生成 event dispatcher                 | event handler 多、希望避免手写注册时               |

@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":foundation:foundation-ksp-support"))
     implementation(project(":foundation:foundation-event"))
     implementation(libs.kotlinpoet)
     implementation(libs.kotlinpoet.ksp)

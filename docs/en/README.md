@@ -56,6 +56,20 @@ are intended for optional project-side verification, not runtime configuration.
 A project can sync these snapshots into version control and compare them after regeneration in CI or release builds to
 catch unexpected handler, topic, config table, or Mongo wrapper model changes.
 
+## KSP Diagnostics
+
+Asteria KSP reports user input errors with a stable structure:
+
+```text
+[Asteria KSP][<processor>][<code>] <message>
+Symbol: <source symbol>
+Reason: <why codegen cannot continue>
+Fix: <how to change the source>
+```
+
+`Symbol` points at the class, property, or parameter whenever KSP can attach the diagnostic to one. Fix errors prefixed
+with `Asteria KSP` first; later Kotlin compiler errors are often follow-up failures from the same generation issue.
+
 ## Documentation Conventions
 
 Examples show the intended framework integration style, not a complete game implementation. When business code must

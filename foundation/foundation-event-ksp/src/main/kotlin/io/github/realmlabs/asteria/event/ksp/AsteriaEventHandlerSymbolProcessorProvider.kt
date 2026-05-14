@@ -1,10 +1,11 @@
 package io.github.realmlabs.asteria.event.ksp
 
 import com.google.devtools.ksp.getAllSuperTypes
-import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
+import io.github.realmlabs.asteria.ksp.AsteriaKspConstructors
+import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
@@ -42,6 +43,12 @@ private class AsteriaEventHandlerSymbolProcessor(
     private val codeGenerator: CodeGenerator,
     private val logger: KSPLogger,
 ) : SymbolProcessor {
+    private val diagnostics = AsteriaKspDiagnostics(logger, "event-ksp")
+    private val eventHandlerConstructors = AsteriaKspConstructors(
+        diagnostics = diagnostics,
+        codePrefix = "ASTERIA-EVENT",
+        annotationName = "@AsteriaEventHandler",
+    )
     private var generated = false
     private val eventHandlerAnnotationName = "io.github.realmlabs.asteria.event.AsteriaEventHandler"
     private val eventTopicRootAnnotationName = "io.github.realmlabs.asteria.event.AsteriaEventTopicRoot"
@@ -105,20 +112,38 @@ private class AsteriaEventHandlerSymbolProcessor(
         val qualifiedName = qualifiedName?.asString() ?: return null
         cache[qualifiedName]?.let { return it }
         if (classKind != ClassKind.OBJECT) {
-            logger.error("event topic declaration must be an object", this)
+            diagnostics.error(
+                code = "ASTERIA-EVENT-001",
+                message = "Event topic declaration must be an object.",
+                symbol = this,
+                reason = "Topic references are resolved from stable singleton declarations during KSP processing.",
+                fix = "Move @AsteriaEventTopicRoot or @AsteriaEventTopic to an object declaration.",
+            )
             return null
         }
         val rootAnnotation = findAnnotation(eventTopicRootAnnotationName)
         val topicAnnotation = findAnnotation(eventTopicAnnotationName)
         if (rootAnnotation != null && topicAnnotation != null) {
-            logger.error("event topic declaration cannot use both root and child topic annotations", this)
+            diagnostics.error(
+                code = "ASTERIA-EVENT-002",
+                message = "Event topic declaration cannot use both root and child topic annotations.",
+                symbol = this,
+                reason = "@AsteriaEventTopicRoot starts a topic tree; @AsteriaEventTopic declares a child under another topic.",
+                fix = "Keep only one of @AsteriaEventTopicRoot or @AsteriaEventTopic on this object.",
+            )
             return null
         }
         val segment = (rootAnnotation ?: topicAnnotation)?.stringArg("value")
             ?.ifBlank { simpleName.asString().toTopicSegment() }
             ?: return null
         if (!segment.isValidEventTopicSegment()) {
-            logger.error("event topic segment must be non-blank and contain only letters, digits, '-' or '_'", this)
+            diagnostics.error(
+                code = "ASTERIA-EVENT-003",
+                message = "Event topic segment is invalid.",
+                symbol = this,
+                reason = "Topic segments must be non-blank and contain only letters, digits, '-' or '_'.",
+                fix = "Change the annotation value or object name to a valid topic segment.",
+            )
             return null
         }
         val parentDeclaration = parentDeclaration as? KSClassDeclaration
@@ -126,7 +151,13 @@ private class AsteriaEventHandlerSymbolProcessor(
             val parentName = parentDeclaration?.qualifiedName?.asString()
             val parent = parentName?.let(declarations::get)
             if (parent == null) {
-                logger.error("event topic child must be nested under another event topic declaration", this)
+                diagnostics.error(
+                    code = "ASTERIA-EVENT-004",
+                    message = "Event topic child must be nested under another event topic declaration.",
+                    symbol = this,
+                    reason = "KSP builds child topic paths from the parent annotated topic object.",
+                    fix = "Nest this object inside an @AsteriaEventTopicRoot or @AsteriaEventTopic object.",
+                )
                 return null
             }
             parent.toTopicBinding(declarations, cache) ?: return null
@@ -150,50 +181,99 @@ private class AsteriaEventHandlerSymbolProcessor(
         topicPathsByClass: Map<String, String>,
     ): EventHandlerBinding? {
         if (classKind != ClassKind.CLASS || Modifier.ABSTRACT in modifiers) {
+            diagnostics.error(
+                code = "ASTERIA-EVENT-005",
+                message = "@AsteriaEventHandler must target a concrete class.",
+                symbol = this,
+                reason = "The generated event registry instantiates handler classes when it builds handles.",
+                fix = "Move the annotation to a public concrete class.",
+            )
             return null
         }
         val handleFunction = getDeclaredFunctions().singleOrNull {
             it.simpleName.asString() == "handle" && it.parameters.size == 3
         } ?: run {
-            logger.error("event handler must define one handle(context, event, publisher) function", this)
+            diagnostics.error(
+                code = "ASTERIA-EVENT-006",
+                message = "@AsteriaEventHandler must define exactly one handle(context, event, publisher) function.",
+                symbol = this,
+                reason = "The generated dispatcher infers context and event types from this function signature.",
+                fix = "Add one function shaped like fun handle(context: C, event: E, publisher: EventPublisher<C>).",
+            )
             return null
         }
         val contextType = handleFunction.parameters[0].type.toTypeName()
         val eventDeclaration = handleFunction.parameters[1].type.resolve().targetClassDeclaration()
             ?: run {
-                logger.error("event handler event parameter must be a class type", this)
+                diagnostics.error(
+                    code = "ASTERIA-EVENT-007",
+                    message = "Event handler event parameter must resolve to a class type.",
+                    symbol = handleFunction.parameters[1],
+                    reason = "The generated registry stores event KClass references.",
+                    fix = "Use a concrete GameEvent class as the second handle parameter.",
+                )
                 return null
             }
         if (!eventDeclaration.isSubtypeOf(gameEventName)) {
-            logger.error("event handler event parameter must implement GameEvent", this)
+            diagnostics.error(
+                code = "ASTERIA-EVENT-008",
+                message = "Event handler event parameter must implement GameEvent.",
+                symbol = handleFunction.parameters[1],
+                reason = "Asteria event dispatch only routes types that implement GameEvent.",
+                fix = "Make the event type implement GameEvent, or use GameEvent for topic subscriptions.",
+            )
             return null
         }
         val publisherDeclaration = handleFunction.parameters[2].type.resolve().declaration as? KSClassDeclaration
         if (publisherDeclaration?.qualifiedName?.asString() != eventPublisherName) {
-            logger.error("event handler publisher parameter must be EventPublisher<C>", this)
+            diagnostics.error(
+                code = "ASTERIA-EVENT-009",
+                message = "Event handler publisher parameter must be EventPublisher<C>.",
+                symbol = handleFunction.parameters[2],
+                reason = "Generated event handles pass the dispatcher publisher through the third handle parameter.",
+                fix = "Use EventPublisher with the same context type as the first handle parameter.",
+            )
             return null
         }
         val annotation = findAnnotation(eventHandlerAnnotationName) ?: return null
         val topicRefPaths = annotation.classListArg("topicRefs").mapNotNull { topicRef ->
             val topicPath = topicPathsByClass[topicRef.qualifiedName?.asString()]
             if (topicPath == null) {
-                logger.error(
-                    "event handler topicRefs must reference @AsteriaEventTopicRoot or @AsteriaEventTopic objects",
-                    this,
+                diagnostics.error(
+                    code = "ASTERIA-EVENT-010",
+                    message = "Event handler topicRefs must reference annotated topic objects.",
+                    symbol = this,
+                    reason = "KSP can only convert topicRefs to paths when the referenced object has @AsteriaEventTopicRoot or @AsteriaEventTopic.",
+                    fix = "Annotate the referenced topic object, or use the topics string list for manually maintained paths.",
                 )
             }
             topicPath
         }
         val topics = (annotation.stringListArg("topics") + topicRefPaths).distinct()
         if (topics.any { !it.isValidEventTopicPath() }) {
-            logger.error("event handler topics must be non-blank dot-separated topic paths", this)
+            diagnostics.error(
+                code = "ASTERIA-EVENT-011",
+                message = "Event handler topics must be non-blank dot-separated topic paths.",
+                symbol = this,
+                reason = "Topic paths are split into non-empty segments and matched at runtime.",
+                fix = "Use topicRefs when possible, or use strings such as player.login or world_tick.",
+            )
             return null
         }
         if (topics.isNotEmpty() && eventDeclaration.qualifiedName?.asString() != gameEventName) {
-            logger.error("topic event handlers must accept GameEvent as the event parameter", this)
+            diagnostics.error(
+                code = "ASTERIA-EVENT-012",
+                message = "Topic event handlers must accept GameEvent as the event parameter.",
+                symbol = handleFunction.parameters[1],
+                reason = "A topic subscription can receive different GameEvent implementations on the same topic.",
+                fix = "Change the second handle parameter to GameEvent, or remove topics/topicRefs and subscribe by event type.",
+            )
             return null
         }
         val packageName = packageName.asString()
+        if (!eventHandlerConstructors.validateConstructible(this)) {
+            return null
+        }
         return EventHandlerBinding(
             rootPackage = packageName.substringBefore(".handler.", packageName),
             contextTypeName = contextType,
@@ -413,7 +493,13 @@ private class AsteriaEventHandlerSymbolProcessor(
     ): TypeName? {
         val contextType = bindings.first().contextTypeName
         if (bindings.any { it.contextTypeName != contextType }) {
-            logger.error("all event handlers under $rootPackage dispatcher=$dispatcherKey must share the same context")
+            diagnostics.error(
+                code = "ASTERIA-EVENT-013",
+                message = "All event handlers in one generated dispatcher must share the same context type.",
+                symbol = bindings.first().handler,
+                reason = "One generated EventDispatcher is parameterized by a single context type.",
+                fix = "Use the same first handle parameter type under rootPackage=$rootPackage dispatcher=$dispatcherKey, or split handlers into separate generated modules.",
+            )
             return null
         }
         return contextType
@@ -480,7 +566,7 @@ private class AsteriaEventHandlerSymbolProcessor(
             binding.order,
             EVENT_HANDLE_KEY,
             binding.handler.toClassName(),
-            instantiateExpression(binding.handler),
+            eventHandlerConstructors.instantiateExpression(binding.handler),
         )
     }
 
@@ -494,30 +580,8 @@ private class AsteriaEventHandlerSymbolProcessor(
             EVENT_HANDLE_KEY,
             binding.handler.toClassName(),
             topic,
-            instantiateExpression(binding.handler),
+            eventHandlerConstructors.instantiateExpression(binding.handler),
         )
-    }
-
-    private fun instantiateExpression(type: KSClassDeclaration): CodeBlock {
-        val constructor = type.primaryConstructor
-            ?: type.getConstructors().singleOrNull()
-            ?: type.getConstructors().firstOrNull { it.parameters.isEmpty() }
-            ?: error("no constructible constructor found for ${type.qualifiedName?.asString()}")
-        if (constructor.parameters.isEmpty()) {
-            return CodeBlock.of("%T()", type.toClassName())
-        }
-        val builder = CodeBlock.builder()
-        builder.add("%T(", type.toClassName())
-        constructor.parameters.forEachIndexed { index, parameter ->
-            val dependency = parameter.type.resolve().declaration as? KSClassDeclaration
-                ?: error("unsupported dependency type for ${type.qualifiedName?.asString()}")
-            builder.add("%L", instantiateExpression(dependency))
-            if (index != constructor.parameters.lastIndex) {
-                builder.add(", ")
-            }
-        }
-        builder.add(")")
-        return builder.build()
     }
 
     private fun KSClassDeclaration.findAnnotation(qualifiedName: String): KSAnnotation? {

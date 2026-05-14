@@ -1,10 +1,11 @@
 package io.github.realmlabs.asteria.message.ksp
 
 import com.google.devtools.ksp.getAllSuperTypes
-import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
+import io.github.realmlabs.asteria.ksp.AsteriaKspConstructors
+import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
@@ -46,6 +47,17 @@ private class AsteriaMessageHandlerSymbolProcessor(
     private val logger: KSPLogger,
     private val options: Map<String, String>,
 ) : SymbolProcessor {
+    private val diagnostics = AsteriaKspDiagnostics(logger, "message-ksp")
+    private val messageHandlerConstructors = AsteriaKspConstructors(
+        diagnostics = diagnostics,
+        codePrefix = "ASTERIA-MESSAGE",
+        annotationName = "@AsteriaMessageHandler",
+    )
+    private val gatewayRouteConstructors = AsteriaKspConstructors(
+        diagnostics = diagnostics,
+        codePrefix = "ASTERIA-MESSAGE",
+        annotationName = "@AsteriaGatewayRoute",
+    )
     private var generated = false
     private val messageHandlerAnnotationName = "io.github.realmlabs.asteria.message.AsteriaMessageHandler"
     private val gatewayRouteAnnotationName = "io.github.realmlabs.asteria.message.AsteriaGatewayRoute"
@@ -97,28 +109,43 @@ private class AsteriaMessageHandlerSymbolProcessor(
 
     private fun KSClassDeclaration.toHandlerBinding(sourceFile: KSFile): HandlerBinding? {
         if (classKind != ClassKind.CLASS || Modifier.ABSTRACT in modifiers) {
-            logger.error("@AsteriaMessageHandler must target a non-abstract class: ${qualifiedName?.asString()}", this)
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-001",
+                message = "@AsteriaMessageHandler must target a concrete class.",
+                symbol = this,
+                reason = "Objects, interfaces, annotations, enums, and abstract classes cannot be instantiated as message handlers.",
+                fix = "Move the annotation to a public concrete class that implements one handle(context, message) function.",
+            )
             return null
         }
         val handleFunction = getDeclaredFunctions().firstOrNull {
             it.simpleName.asString() == "handle" && it.parameters.size == 2
         } ?: run {
-            logger.error(
-                "@AsteriaMessageHandler class must define handle(context, message): ${qualifiedName?.asString()}",
-                this
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-002",
+                message = "@AsteriaMessageHandler class must define handle(context, message).",
+                symbol = this,
+                reason = "The generated dispatcher needs exactly one two-argument handle function to infer the context and message types.",
+                fix = "Add a function shaped like fun handle(context: HandlerContextType, message: MessageType).",
             )
             return null
         }
         val contextType = handleFunction.parameters[0].type.toTypeName()
         val messageDeclaration = handleFunction.parameters[1].type.resolve().targetClassDeclaration()
             ?: run {
-                logger.error(
-                    "@AsteriaMessageHandler message parameter must be a class type: ${qualifiedName?.asString()}",
-                    this
+                diagnostics.error(
+                    code = "ASTERIA-MESSAGE-003",
+                    message = "@AsteriaMessageHandler message parameter must resolve to a class type.",
+                    symbol = handleFunction.parameters[1],
+                    reason = "The generated handle registry stores the message KClass. Type parameters and unresolved aliases cannot be registered.",
+                    fix = "Use a concrete message class as the second handle parameter.",
                 )
                 return null
             }
         val annotation = findAnnotation(messageHandlerAnnotationName) ?: return null
+        if (!messageHandlerConstructors.validateConstructible(this)) {
+            return null
+        }
         return HandlerBinding(
             contextTypeName = contextType,
             handler = this,
@@ -132,30 +159,51 @@ private class AsteriaMessageHandlerSymbolProcessor(
 
     private fun KSClassDeclaration.toGatewayRouteBinding(sourceFile: KSFile): GatewayRouteBinding? {
         if (classKind != ClassKind.CLASS || Modifier.ABSTRACT in modifiers) {
-            logger.error("@AsteriaGatewayRoute must target a non-abstract class: ${qualifiedName?.asString()}", this)
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-004",
+                message = "@AsteriaGatewayRoute must target a concrete class.",
+                symbol = this,
+                reason = "The generated gateway route metadata points at a handler class that must be constructible.",
+                fix = "Move the annotation to a public concrete handler class.",
+            )
             return null
         }
         val handleFunction = getDeclaredFunctions().firstOrNull {
             it.simpleName.asString() == "handle" && it.parameters.size == 2
         } ?: run {
-            logger.error(
-                "@AsteriaGatewayRoute class must define handle(context, message): ${qualifiedName?.asString()}",
-                this
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-005",
+                message = "@AsteriaGatewayRoute class must define handle(context, message).",
+                symbol = this,
+                reason = "Gateway route codegen infers the routed message type from the second handle parameter.",
+                fix = "Add a function shaped like fun handle(context: HandlerContextType, message: MessageType).",
             )
             return null
         }
         val messageDeclaration = handleFunction.parameters[1].type.resolve().targetClassDeclaration()
             ?: run {
-                logger.error(
-                    "@AsteriaGatewayRoute message parameter must be a class type: ${qualifiedName?.asString()}",
-                    this
+                diagnostics.error(
+                    code = "ASTERIA-MESSAGE-006",
+                    message = "@AsteriaGatewayRoute message parameter must resolve to a class type.",
+                    symbol = handleFunction.parameters[1],
+                    reason = "Gateway route metadata stores a concrete message class name.",
+                    fix = "Use a concrete message class as the second handle parameter.",
                 )
                 return null
             }
         val annotation = findAnnotation(gatewayRouteAnnotationName) ?: return null
         val route = annotation.stringArg("route")
         if (route.isBlank()) {
-            logger.error("@AsteriaGatewayRoute route must not be blank: ${qualifiedName?.asString()}", this)
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-007",
+                message = "@AsteriaGatewayRoute route must not be blank.",
+                symbol = this,
+                reason = "The gateway route hint is consumed by tooling and cannot be inferred from an empty string.",
+                fix = "Set route to the public gateway route path used by this message.",
+            )
+            return null
+        }
+        if (!gatewayRouteConstructors.validateConstructible(this)) {
             return null
         }
         return GatewayRouteBinding(
@@ -171,11 +219,21 @@ private class AsteriaMessageHandlerSymbolProcessor(
         val moduleId = options[MODULE_ID_OPTION]?.trim().orEmpty()
         var valid = true
         if (generatedPackage.isBlank()) {
-            logger.error("KSP option $GENERATED_PACKAGE_OPTION must be configured when using Asteria message codegen")
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-008",
+                message = "KSP option $GENERATED_PACKAGE_OPTION must be configured.",
+                reason = "Message codegen needs a package for generated dispatchers, registries, catalogs, and snapshots.",
+                fix = "Configure ksp { arg(\"$GENERATED_PACKAGE_OPTION\", \"your.generated.package\") } or use the Asteria message Gradle plugin.",
+            )
             valid = false
         }
         if (moduleId.isBlank()) {
-            logger.error("KSP option $MODULE_ID_OPTION must be configured when using Asteria message codegen")
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-009",
+                message = "KSP option $MODULE_ID_OPTION must be configured.",
+                reason = "The module id is used to name generated types and codegen snapshots.",
+                fix = "Configure ksp { arg(\"$MODULE_ID_OPTION\", \"your-module\") } or use the Asteria message Gradle plugin.",
+            )
             valid = false
         }
         return if (valid) {
@@ -195,7 +253,12 @@ private class AsteriaMessageHandlerSymbolProcessor(
             "true" -> true
             "false" -> false
             else -> {
-                logger.error("KSP option $MESSAGE_CATALOG_ENABLED_OPTION must be true or false")
+                diagnostics.error(
+                    code = "ASTERIA-MESSAGE-010",
+                    message = "KSP option $MESSAGE_CATALOG_ENABLED_OPTION must be true or false.",
+                    reason = "The message catalog switch is parsed as a boolean string.",
+                    fix = "Set $MESSAGE_CATALOG_ENABLED_OPTION to either true or false.",
+                )
                 true
             }
         }
@@ -230,7 +293,13 @@ private class AsteriaMessageHandlerSymbolProcessor(
         val typeNamePart = target.generatedTypeNamePart
         val contextType = bindings.first().contextTypeName
         if (bindings.any { it.contextTypeName != contextType }) {
-            logger.error("all @AsteriaMessageHandler bindings in module ${target.moduleId} must share the same handler context")
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-011",
+                message = "All @AsteriaMessageHandler bindings in one generated module must share the same handler context.",
+                symbol = bindings.first().handler,
+                reason = "One generated MessageDispatcher is parameterized by a single context type.",
+                fix = "Use the same first handle parameter type for handlers in module ${target.moduleId}, or split them into separate KSP modules.",
+            )
             return
         }
         val dispatcherType = ClassName("io.github.realmlabs.asteria.message", "MessageDispatcher")
@@ -448,8 +517,12 @@ private class AsteriaMessageHandlerSymbolProcessor(
             val qualifiedName = configuredType.trim()
             val valid = bindings.all { it.messageDeclaration.isSubtypeOf(qualifiedName) }
             if (!valid) {
-                logger.error(
-                    "dispatcher $dispatcherKey configured superType=$qualifiedName but some messages are not subtypes of it",
+                diagnostics.error(
+                    code = "ASTERIA-MESSAGE-012",
+                    message = "Configured dispatcher message super type does not match all messages.",
+                    symbol = bindings.first().handler,
+                    reason = "dispatcher=$dispatcherKey uses superType=$qualifiedName, but at least one handler message is not a subtype.",
+                    fix = "Change a handler message type, change the configured super type, or split this dispatcher.",
                 )
             }
             return ClassName.bestGuess(qualifiedName)
@@ -496,7 +569,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
                 "  %T.of(%T::class, %L)",
                 messageHandleType,
                 binding.messageClassName,
-                instantiateExpression(binding.handler),
+                messageHandlerConstructors.instantiateExpression(binding.handler),
             )
             if (index != bindings.lastIndex) {
                 builder.add(",\n")
@@ -505,28 +578,6 @@ private class AsteriaMessageHandlerSymbolProcessor(
             }
         }
         builder.add(")\n")
-        return builder.build()
-    }
-
-    private fun instantiateExpression(type: KSClassDeclaration): CodeBlock {
-        val constructor = type.primaryConstructor
-            ?: type.getConstructors().singleOrNull()
-            ?: type.getConstructors().firstOrNull { it.parameters.isEmpty() }
-            ?: error("no constructible constructor found for ${type.qualifiedName?.asString()}")
-        if (constructor.parameters.isEmpty()) {
-            return CodeBlock.of("%T()", type.toClassName())
-        }
-        val builder = CodeBlock.builder()
-        builder.add("%T(", type.toClassName())
-        constructor.parameters.forEachIndexed { index, parameter ->
-            val dependency = parameter.type.resolve().declaration as? KSClassDeclaration
-                ?: error("unsupported dependency type for ${type.qualifiedName?.asString()}")
-            builder.add("%L", instantiateExpression(dependency))
-            if (index != constructor.parameters.lastIndex) {
-                builder.add(", ")
-            }
-        }
-        builder.add(")")
         return builder.build()
     }
 

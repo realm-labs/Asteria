@@ -45,6 +45,19 @@
 业务项目可以把这些快照同步到版本管理中，在 CI 或发布构建前重新生成并比较 diff，用来发现 handler、topic、配置表或 Mongo
 wrapper 模型的意外变化。
 
+## KSP 诊断
+
+Asteria KSP 的用户输入错误会用统一格式输出：
+
+```text
+[Asteria KSP][<processor>][<code>] <message>
+Symbol: <source symbol>
+Reason: <why codegen cannot continue>
+Fix: <how to change the source>
+```
+
+`Symbol` 会尽量指向出错的类、属性或参数。优先修复带 `Asteria KSP` 前缀的错误；后面的 Kotlin 编译错误通常是同一次生成失败的连带结果。
+
 ## 文档约定
 
 文档里的示例优先展示框架期望的集成方式，不覆盖业务侧完整实现。需要业务实现的地方会明确标出，比如认证、玩家绑定、脚本审批、配置事件投递、Mongo
