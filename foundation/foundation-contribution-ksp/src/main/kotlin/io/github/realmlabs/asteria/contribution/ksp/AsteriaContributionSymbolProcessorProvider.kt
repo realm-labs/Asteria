@@ -5,7 +5,6 @@ import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.getVisibility
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
-import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.writeTo
@@ -25,18 +24,30 @@ private class AsteriaContributionSymbolProcessor(
     private val diagnostics = AsteriaKspDiagnostics(logger, "contribution-ksp")
     private val contributionAnnotationName = "io.github.realmlabs.asteria.contribution.AsteriaContribution"
     private val catalogAnnotationName = "io.github.realmlabs.asteria.contribution.AsteriaContributionCatalog"
+    private var pendingDeferred: List<DeferredSymbol> = emptyList()
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         val contributionSymbols = resolver.getSymbolsWithAnnotation(contributionAnnotationName).toList()
         val catalogSymbols = resolver.getSymbolsWithAnnotation(catalogAnnotationName).toList()
-        val deferred = (contributionSymbols + catalogSymbols).filterNot { it.validate() }
-        if (deferred.isNotEmpty()) {
-            return deferred
-        }
 
-        val catalogs = catalogSymbols
-            .filterIsInstance<KSClassDeclaration>()
-            .mapNotNull { readCatalogModel(it) }
+        val contributionReads = contributionSymbols.map { symbol ->
+            val declaration = symbol as? KSClassDeclaration ?: return@map ReadResult.Invalid
+            readContributionModel(declaration)
+        }
+        val catalogReads = catalogSymbols.map { symbol ->
+            val declaration = symbol as? KSClassDeclaration ?: return@map ReadResult.Invalid
+            readCatalogModel(declaration)
+        }
+        val deferred = (contributionReads + catalogReads).filterIsInstance<ReadResult.Deferred>()
+            .map { it.deferred }
+        if (deferred.isNotEmpty()) {
+            pendingDeferred = deferred
+            return deferred.map { it.symbol }
+        }
+        pendingDeferred = emptyList()
+
+        val catalogs = catalogReads
+            .mapNotNull { (it as? ReadResult.Success)?.value }
             .groupBy { it.contract.qualifiedName }
 
         catalogs.filterValues { it.size > 1 }.forEach { (contractName, duplicateCatalogs) ->
@@ -49,9 +60,8 @@ private class AsteriaContributionSymbolProcessor(
             )
         }
 
-        val contributions = contributionSymbols
-            .filterIsInstance<KSClassDeclaration>()
-            .mapNotNull { readContributionModel(it) }
+        val contributions = contributionReads
+            .mapNotNull { (it as? ReadResult.Success)?.value }
             .groupBy { it.contract.qualifiedName }
 
         (contributions.keys + catalogs.keys).forEach { contractName ->
@@ -74,28 +84,48 @@ private class AsteriaContributionSymbolProcessor(
         return emptyList()
     }
 
-    private fun readContributionModel(declaration: KSClassDeclaration): ContributionBinding? {
-        val annotation = declaration.findAnnotation(contributionAnnotationName) ?: return null
-        val contract = annotation.classArg("contract") ?: run {
+    override fun finish() {
+        pendingDeferred.forEach { deferred ->
             diagnostics.error(
-                code = "ASTERIA-CONTRIBUTION-002",
-                message = "@AsteriaContribution contract must be a class.",
-                symbol = declaration,
-                reason = "The generated contribution list is grouped by the contract KClass.",
-                fix = "Set contract to the interface or base class implemented by this contribution.",
+                code = "ASTERIA-CONTRIBUTION-011",
+                message = "@AsteriaContribution symbol could not be processed after KSP rounds completed.",
+                symbol = deferred.symbol,
+                reason = deferred.reason,
+                fix = "Check that the annotated class, its contribution contract, and its direct supertypes are resolvable in this module.",
             )
-            return null
         }
-        if (!validateContributionDeclaration(declaration, contract)) {
-            return null
+    }
+
+    private fun readContributionModel(declaration: KSClassDeclaration): ReadResult<ContributionBinding> {
+        val annotation = declaration.findAnnotation(contributionAnnotationName) ?: return ReadResult.Invalid
+        val contract = when (val contractArg = annotation.classArg("contract", declaration)) {
+            is ClassArgResult.Success -> contractArg.declaration
+            is ClassArgResult.Deferred -> return ReadResult.Deferred(contractArg.deferred)
+            ClassArgResult.Invalid -> {
+                diagnostics.error(
+                    code = "ASTERIA-CONTRIBUTION-002",
+                    message = "@AsteriaContribution contract must be a class.",
+                    symbol = declaration,
+                    reason = "The generated contribution list is grouped by the contract KClass.",
+                    fix = "Set contract to the interface or base class implemented by this contribution.",
+                )
+                return ReadResult.Invalid
+            }
         }
-        return ContributionBinding(
-            declaration = declaration,
-            contract = contract.toContractModel(),
-            contribution = ContributionModel(
-                implementationType = declaration.toClassName(),
-                objectDeclaration = declaration.classKind == ClassKind.OBJECT,
-                order = annotation.intArg("order"),
+        when (val validation = validateContributionDeclaration(declaration, contract)) {
+            ContributionValidationResult.Valid -> Unit
+            is ContributionValidationResult.Deferred -> return ReadResult.Deferred(validation.deferred)
+            ContributionValidationResult.Invalid -> return ReadResult.Invalid
+        }
+        return ReadResult.Success(
+            ContributionBinding(
+                declaration = declaration,
+                contract = contract.toContractModel(),
+                contribution = ContributionModel(
+                    implementationType = declaration.toClassName(),
+                    objectDeclaration = declaration.classKind == ClassKind.OBJECT,
+                    order = annotation.intArg("order"),
+                ),
             ),
         )
     }
@@ -103,7 +133,7 @@ private class AsteriaContributionSymbolProcessor(
     private fun validateContributionDeclaration(
         declaration: KSClassDeclaration,
         contract: KSClassDeclaration,
-    ): Boolean {
+    ): ContributionValidationResult {
         if (declaration.classKind != ClassKind.CLASS && declaration.classKind != ClassKind.OBJECT) {
             diagnostics.error(
                 code = "ASTERIA-CONTRIBUTION-003",
@@ -112,7 +142,7 @@ private class AsteriaContributionSymbolProcessor(
                 reason = "Generated lists contain either an object reference or a constructor call.",
                 fix = "Move the annotation to a concrete class or object.",
             )
-            return false
+            return ContributionValidationResult.Invalid
         }
         if (Modifier.ABSTRACT in declaration.modifiers) {
             diagnostics.error(
@@ -122,7 +152,7 @@ private class AsteriaContributionSymbolProcessor(
                 reason = "Abstract classes cannot be placed into the generated runtime list.",
                 fix = "Annotate a concrete implementation instead of the abstract base type.",
             )
-            return false
+            return ContributionValidationResult.Invalid
         }
         if (declaration.getVisibility() != Visibility.PUBLIC) {
             diagnostics.error(
@@ -132,7 +162,7 @@ private class AsteriaContributionSymbolProcessor(
                 reason = "The generated contribution catalog may be used from another package or module.",
                 fix = "Make the contribution class/object public.",
             )
-            return false
+            return ContributionValidationResult.Invalid
         }
         if (declaration.typeParameters.isNotEmpty()) {
             diagnostics.error(
@@ -142,44 +172,59 @@ private class AsteriaContributionSymbolProcessor(
                 reason = "The generated catalog stores concrete implementation types and does not know which type arguments to use.",
                 fix = "Create a non-generic implementation class for the desired contract.",
             )
-            return false
+            return ContributionValidationResult.Invalid
         }
         if (declaration.classKind == ClassKind.CLASS) {
-            if (declaration.getConstructors().none { it.parameters.isEmpty() }) {
+            if (!declaration.hasPublicZeroArgumentConstructor()) {
                 diagnostics.error(
                     code = "ASTERIA-CONTRIBUTION-007",
-                    message = "Contribution class must have a zero-argument constructor.",
+                    message = "Contribution class must have a public zero-argument constructor.",
                     symbol = declaration,
                     reason = "Contribution KSP only generates static lists; business code decides later how to index or wrap those instances.",
                     fix = "Add a public zero-argument constructor, or use an object contribution.",
                 )
-                return false
+                return ContributionValidationResult.Invalid
             }
         }
-        if (!declaration.isSubtypeOf(contract.qualifiedName?.asString().orEmpty())) {
-            diagnostics.error(
-                code = "ASTERIA-CONTRIBUTION-008",
-                message = "@AsteriaContribution declaration must implement its contract.",
-                symbol = declaration,
-                reason = "${declaration.qualifiedName?.asString()} is not a subtype of ${contract.qualifiedName?.asString()}.",
-                fix = "Implement the contract, or change the annotation contract to the intended interface/base class.",
-            )
-            return false
+        when (declaration.subtypeCheck(contract.qualifiedName?.asString().orEmpty())) {
+            SubtypeCheckResult.Matches -> Unit
+            SubtypeCheckResult.Deferred -> {
+                return ContributionValidationResult.Deferred(
+                    DeferredSymbol(
+                        symbol = declaration,
+                        reason = "Contribution supertypes could not be resolved: ${declaration.qualifiedName?.asString()} -> ${contract.qualifiedName?.asString()}.",
+                    ),
+                )
+            }
+            SubtypeCheckResult.DoesNotMatch -> {
+                diagnostics.error(
+                    code = "ASTERIA-CONTRIBUTION-008",
+                    message = "@AsteriaContribution declaration must implement its contract.",
+                    symbol = declaration,
+                    reason = "${declaration.qualifiedName?.asString()} is not a subtype of ${contract.qualifiedName?.asString()}.",
+                    fix = "Implement the contract, or change the annotation contract to the intended interface/base class.",
+                )
+                return ContributionValidationResult.Invalid
+            }
         }
-        return true
+        return ContributionValidationResult.Valid
     }
 
-    private fun readCatalogModel(declaration: KSClassDeclaration): ContributionCatalogModel? {
-        val annotation = declaration.findAnnotation(catalogAnnotationName) ?: return null
-        val contract = annotation.classArg("contract") ?: run {
-            diagnostics.error(
-                code = "ASTERIA-CONTRIBUTION-009",
-                message = "@AsteriaContributionCatalog contract must be a class.",
-                symbol = declaration,
-                reason = "The catalog customizes generated output for one contribution contract.",
-                fix = "Set contract to the interface or base class whose contribution list should be generated.",
-            )
-            return null
+    private fun readCatalogModel(declaration: KSClassDeclaration): ReadResult<ContributionCatalogModel> {
+        val annotation = declaration.findAnnotation(catalogAnnotationName) ?: return ReadResult.Invalid
+        val contract = when (val contractArg = annotation.classArg("contract", declaration)) {
+            is ClassArgResult.Success -> contractArg.declaration
+            is ClassArgResult.Deferred -> return ReadResult.Deferred(contractArg.deferred)
+            ClassArgResult.Invalid -> {
+                diagnostics.error(
+                    code = "ASTERIA-CONTRIBUTION-009",
+                    message = "@AsteriaContributionCatalog contract must be a class.",
+                    symbol = declaration,
+                    reason = "The catalog customizes generated output for one contribution contract.",
+                    fix = "Set contract to the interface or base class whose contribution list should be generated.",
+                )
+                return ReadResult.Invalid
+            }
         }
         val contractModel = contract.toContractModel()
         val packageName = annotation.stringArg("packageName")
@@ -195,14 +240,16 @@ private class AsteriaContributionSymbolProcessor(
                 reason = "KSP splits large generated lists into positive-size chunks to avoid oversized generated methods.",
                 fix = "Remove chunkSize to use the default, or set it to a positive integer.",
             )
-            return null
+            return ReadResult.Invalid
         }
-        return ContributionCatalogModel(
-            declaration = declaration,
-            contract = contractModel,
-            packageName = packageName,
-            className = className,
-            chunkSize = chunkSize,
+        return ReadResult.Success(
+            ContributionCatalogModel(
+                declaration = declaration,
+                contract = contractModel,
+                packageName = packageName,
+                className = className,
+                chunkSize = chunkSize,
+            ),
         )
     }
 
@@ -236,23 +283,53 @@ private class AsteriaContributionSymbolProcessor(
     }
 
     private fun KSClassDeclaration.findAnnotation(qualifiedName: String): KSAnnotation? {
+        val simpleName = qualifiedName.substringAfterLast('.')
         return annotations.firstOrNull { annotation ->
-            annotation.annotationType.resolve().declaration.qualifiedName?.asString() == qualifiedName
+            annotation.shortName.asString() == simpleName &&
+                    annotation.annotationType.resolve().declaration.qualifiedName?.asString() == qualifiedName
         }
     }
 
-    private fun KSClassDeclaration.isSubtypeOf(qualifiedName: String): Boolean {
+    private fun KSClassDeclaration.subtypeCheck(qualifiedName: String): SubtypeCheckResult {
         if (this.qualifiedName?.asString() == qualifiedName) {
-            return true
+            return SubtypeCheckResult.Matches
         }
-        return getAllSuperTypes().any { type ->
-            (type.declaration as? KSClassDeclaration)?.qualifiedName?.asString() == qualifiedName
+        val matches = try {
+            getAllSuperTypes().any { type ->
+                (type.declaration as? KSClassDeclaration)?.qualifiedName?.asString() == qualifiedName
+            }
+        } catch (_: Throwable) {
+            return SubtypeCheckResult.Deferred
+        }
+        return if (matches) SubtypeCheckResult.Matches else SubtypeCheckResult.DoesNotMatch
+    }
+
+    private fun KSClassDeclaration.hasPublicZeroArgumentConstructor(): Boolean {
+        return getConstructors().any { constructor ->
+            constructor.parameters.isEmpty() && constructor.getVisibility() == Visibility.PUBLIC
         }
     }
 
-    private fun KSAnnotation.classArg(name: String): KSClassDeclaration? {
+    private fun KSAnnotation.classArg(
+        name: String,
+        symbol: KSAnnotated,
+    ): ClassArgResult {
         val type = arguments.firstOrNull { it.name?.asString() == name }?.value as? KSType
-        return type?.declaration as? KSClassDeclaration
+            ?: return ClassArgResult.Invalid
+        val declaration = try {
+            type.declaration
+        } catch (error: Throwable) {
+            return ClassArgResult.Deferred(
+                DeferredSymbol(
+                    symbol = symbol,
+                    reason = "Annotation argument $name could not be resolved: ${error.message ?: error::class.simpleName}",
+                ),
+            )
+        }
+        return when (declaration) {
+            is KSClassDeclaration -> ClassArgResult.Success(declaration)
+            else -> ClassArgResult.Invalid
+        }
     }
 
     private fun KSAnnotation.stringArg(name: String): String {
@@ -267,6 +344,36 @@ private class AsteriaContributionSymbolProcessor(
     }
 
 }
+
+private sealed interface ReadResult<out T> {
+    data class Success<T>(val value: T) : ReadResult<T>
+    data class Deferred(val deferred: DeferredSymbol) : ReadResult<Nothing>
+    data object Invalid : ReadResult<Nothing>
+}
+
+private sealed interface ClassArgResult {
+    data class Success(val declaration: KSClassDeclaration) : ClassArgResult
+    data class Deferred(val deferred: DeferredSymbol) : ClassArgResult
+    data object Invalid : ClassArgResult
+}
+
+private sealed interface ContributionValidationResult {
+    data object Valid : ContributionValidationResult
+    data class Deferred(val deferred: DeferredSymbol) : ContributionValidationResult
+    data object Invalid : ContributionValidationResult
+}
+
+private enum class SubtypeCheckResult {
+    Matches,
+    DoesNotMatch,
+    Deferred,
+}
+
+private data class DeferredSymbol(
+    val symbol: KSAnnotated,
+    val reason: String,
+)
+
 internal fun String.toContributionTypeNamePart(): String {
     val tokens = split(Regex("[^A-Za-z0-9]+")).filter { it.isNotBlank() }.ifEmpty { listOf("Default") }
     return tokens.joinToString("") { token ->

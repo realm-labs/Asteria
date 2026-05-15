@@ -8,4 +8,5 @@ dependencies {
     implementation(libs.kotlinpoet)
     implementation(libs.kotlinpoet.ksp)
     implementation(libs.ksp.symbol.processing.api)
+    testImplementation(gradleTestKit())
 }
