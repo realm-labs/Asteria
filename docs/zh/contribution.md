@@ -71,7 +71,7 @@ object ActivityServiceCatalog
 
 ```kotlin
 object GeneratedActivityServices {
-    val CONTRIBUTIONS: List<AsteriaContributionDescriptor<ActivityService>>
+    val CONTRIBUTIONS: List<AsteriaContributionDescriptor<ActivityService, out ActivityService>>
 
     fun createAll(): List<ActivityService>
 
@@ -82,11 +82,13 @@ object GeneratedActivityServices {
 `CONTRIBUTIONS` 是最底层的描述列表。每个元素包含实现类型、order 和一个零参 `create` 工厂：
 
 ```kotlin
-data class AsteriaContributionDescriptor<T : Any>(
-    val implementationType: KClass<out T>,
+data class AsteriaContributionDescriptor<T : Any, I : T>(
+    val implementationType: KClass<I>,
     val order: Int = 0,
-    val create: () -> T,
-)
+    val create: () -> I,
+) {
+    fun <R> createWithType(block: (KClass<I>, I) -> R): R
+}
 ```
 
 `createAll()` 每次调用都会通过 descriptor 重新创建一份列表。对于 object 来说仍然是同一个 object；对于 class 来说会重新调用构造函数。
@@ -98,7 +100,7 @@ data class AsteriaContributionDescriptor<T : Any>(
 
 ```kotlin
 internal object GeneratedActivityServicesChunk0 {
-    val CONTRIBUTIONS: List<AsteriaContributionDescriptor<ActivityService>>
+    val CONTRIBUTIONS: List<AsteriaContributionDescriptor<ActivityService, out ActivityService>>
 }
 ```
 
@@ -148,6 +150,22 @@ context.replaceActivityService(activities.registry, ActivityKey("seven_day"), Pa
 
 这样基础清单来自编译期生成，运行期读的是 `PatchableRegistry` 的当前视图。是否允许新增 key、是否只允许替换已有
 key、是否需要多索引同步，都由业务 registry 定义。
+
+如果一组 contribution 本身就是 patchable service，也可以直接把 descriptor 注册到 `PatchableServiceRegistry`。注册 key 会使用
+descriptor 中记录的真实实现类型，而不是 contract 类型：
+
+```kotlin
+val patchableServices = PatchableServiceRegistry()
+GeneratedActivityServices.CONTRIBUTIONS.forEach { contribution ->
+    contribution.createWithType { type, service ->
+        patchableServices.register(type, service)
+    }
+}
+
+val sevenDay = patchableServices.require<SevenDayActivityService>()
+```
+
+业务侧不需要写 `service::class as KClass<...>` 这类 unchecked cast。
 
 ## 常见误用
 

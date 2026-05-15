@@ -21,7 +21,11 @@ class AsteriaContributionCodeGeneratorTest {
         ).single().file.toString()
 
         assertContains(file, "object GeneratedActivityServices")
-        assertContains(file, "val CONTRIBUTIONS: List<AsteriaContributionDescriptor<ActivityService>> = listOf(")
+        assertContains(
+            file,
+            "List<AsteriaContributionDescriptor<ActivityService, out ActivityService>>",
+        )
+        assertContains(file, "listOf(")
         assertContains(file, "implementationType = RechargeActivityService::class, order = 10")
         assertContains(file, "create = { RechargeActivityService() }")
         assertContains(file, "implementationType = SevenDayActivityService::class, order = 20")

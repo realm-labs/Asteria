@@ -34,11 +34,18 @@ annotation class AsteriaContributionCatalog(
 /**
  * One generated contribution entry.
  *
- * [implementationType] is exposed so business code can build its own instantiation and indexing rules when needed.
- * [create] is a generated zero-argument factory for the common object/no-arg-class case.
+ * [T] is the shared contribution contract. [I] is the concrete implementation type for this entry. Keeping both type
+ * parameters preserves the relationship between [implementationType] and the instance returned by [create].
  */
-data class AsteriaContributionDescriptor<T : Any>(
-    val implementationType: KClass<out T>,
+data class AsteriaContributionDescriptor<T : Any, I : T>(
+    val implementationType: KClass<I>,
     val order: Int = 0,
-    val create: () -> T,
-)
+    val create: () -> I,
+) {
+    /**
+     * Creates the contribution and passes it together with its concrete type.
+     */
+    fun <R> createWithType(block: (KClass<I>, I) -> R): R {
+        return block(implementationType, create())
+    }
+}

@@ -138,7 +138,7 @@ object AsteriaContributionCodeGenerator {
     }
 
     private fun descriptorListType(contractType: ClassName) =
-        listType(CONTRIBUTION_DESCRIPTOR.parameterizedBy(contractType))
+        listType(CONTRIBUTION_DESCRIPTOR.parameterizedBy(contractType, WildcardTypeName.producerOf(contractType)))
 
     private fun listType(elementType: com.squareup.kotlinpoet.TypeName) = LIST.parameterizedBy(elementType)
 

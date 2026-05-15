@@ -64,6 +64,17 @@ class PatchableServiceRegistryTest {
     }
 
     @Test
+    fun serviceRegistryCanRegisterConcreteImplementationTypes() {
+        val services = PatchableServiceRegistry()
+
+        services.register(LoginService::class, LoginService("login"))
+        services.register(SettingService::class, SettingService)
+
+        assertEquals("login", services.require<LoginService>().name)
+        assertEquals("setting", services.require<SettingService>().name)
+    }
+
+    @Test
     fun pluginCanRecordInstallPlanWithoutCommittingReplacement(): Unit = runBlocking {
         val services = PatchableServiceRegistry()
         services.register(GreetingService::class, GreetingService("base"))
@@ -100,6 +111,18 @@ class PatchableServiceRegistryTest {
     private data class GreetingService(
         val value: String,
     )
+
+    private interface GameService {
+        val name: String
+    }
+
+    private data class LoginService(
+        override val name: String,
+    ) : GameService
+
+    private data object SettingService : GameService {
+        override val name: String = "setting"
+    }
 
     private object TestRuntime : NodeRuntime {
         override val name: String = "test"

@@ -74,7 +74,7 @@ For `ActivityService`, KSP generates:
 
 ```kotlin
 object GeneratedActivityServices {
-    val CONTRIBUTIONS: List<AsteriaContributionDescriptor<ActivityService>>
+  val CONTRIBUTIONS: List<AsteriaContributionDescriptor<ActivityService, out ActivityService>>
 
     fun createAll(): List<ActivityService>
 
@@ -86,11 +86,13 @@ object GeneratedActivityServices {
 zero-argument factory:
 
 ```kotlin
-data class AsteriaContributionDescriptor<T : Any>(
-    val implementationType: KClass<out T>,
+data class AsteriaContributionDescriptor<T : Any, I : T>(
+    val implementationType: KClass<I>,
     val order: Int = 0,
-    val create: () -> T,
-)
+    val create: () -> I,
+) {
+    fun <R> createWithType(block: (KClass<I>, I) -> R): R
+}
 ```
 
 `createAll()` creates a new list every time it is called. Objects still return the same object instance; classes call
@@ -104,7 +106,7 @@ When the contribution count exceeds `chunkSize`, the generator emits internal ch
 
 ```kotlin
 internal object GeneratedActivityServicesChunk0 {
-    val CONTRIBUTIONS: List<AsteriaContributionDescriptor<ActivityService>>
+    val CONTRIBUTIONS: List<AsteriaContributionDescriptor<ActivityService, out ActivityService>>
 }
 ```
 
@@ -156,6 +158,23 @@ context.replaceActivityService(activities.registry, ActivityKey("seven_day"), Pa
 The base list comes from compile-time generation, while runtime reads go through the `PatchableRegistry` active view.
 Whether a patch can add new keys, replace only existing keys, or update multiple indexes is a business-registry
 decision.
+
+When the contributions themselves are patchable services, register the generated descriptors directly with
+`PatchableServiceRegistry`. The registry key comes from the descriptor's concrete implementation type, not the broader
+contract type:
+
+```kotlin
+val patchableServices = PatchableServiceRegistry()
+GeneratedActivityServices.CONTRIBUTIONS.forEach { contribution ->
+  contribution.createWithType { type, service ->
+    patchableServices.register(type, service)
+  }
+}
+
+val sevenDay = patchableServices.require<SevenDayActivityService>()
+```
+
+Business code does not need an unchecked `service::class as KClass<...>` cast.
 
 ## Common Mistakes
 

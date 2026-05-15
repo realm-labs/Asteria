@@ -81,7 +81,7 @@ class AsteriaContributionKspSmokeTest {
 
         GradleRunner.create()
             .withProjectDir(projectDir.toFile())
-            .withArguments("kspKotlin", "--stacktrace")
+            .withArguments("compileKotlin", "--stacktrace")
             .forwardOutput()
             .build()
 
