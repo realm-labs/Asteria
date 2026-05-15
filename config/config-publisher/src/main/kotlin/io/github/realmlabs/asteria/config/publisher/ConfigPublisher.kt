@@ -117,13 +117,6 @@ class ConfigPublisher(
                     checksum = sha256(artifact.bytes),
                 )
             },
-            components = componentBuilders.map { builder ->
-                ConfigPublicationComponentManifest(
-                    name = builder.name,
-                    type = builder.type.qualifiedName ?: builder.type.simpleName ?: builder.name,
-                    dependencies = builder.dependencies.map { it.asManifestName() }.sorted(),
-                )
-            },
         )
     }
 

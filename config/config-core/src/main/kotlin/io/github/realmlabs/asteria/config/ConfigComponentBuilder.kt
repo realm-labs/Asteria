@@ -20,14 +20,6 @@ interface ConfigComponentBuilder<T : Any> {
     val type: KClass<T>
 
     /**
-     * Tables used by this builder.
-     *
-     * Dependencies are part of the component contract: they document which tables feed the component and give reload
-     * tooling enough information to explain why a component exists and which table changes affect it.
-     */
-    val dependencies: Set<ConfigTableName>
-
-    /**
      * Builds the component from the raw snapshot loaded by [ConfigLoader].
      */
     suspend fun build(snapshot: ConfigSnapshot): T
@@ -41,17 +33,15 @@ interface ConfigComponentBuilder<T : Any> {
  */
 inline fun <reified T : Any> configComponentBuilder(
     name: String,
-    dependencies: Set<ConfigTableName> = emptySet(),
     noinline build: suspend (ConfigSnapshot) -> T,
 ): ConfigComponentBuilder<T> {
-    return FunctionConfigComponentBuilder(name, T::class, dependencies, build)
+    return FunctionConfigComponentBuilder(name, T::class, build)
 }
 
 @PublishedApi
 internal class FunctionConfigComponentBuilder<T : Any>(
     override val name: String,
     override val type: KClass<T>,
-    override val dependencies: Set<ConfigTableName>,
     private val build: suspend (ConfigSnapshot) -> T,
 ) : ConfigComponentBuilder<T> {
     init {

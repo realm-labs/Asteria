@@ -32,25 +32,23 @@ class ConfigServiceTest {
     }
 
     @Test
-    fun `reload rejects component dependency on missing table`() = runBlocking {
+    fun `reload rejects component build when required table is missing`() = runBlocking {
         val service = ConfigService(
             loader = { DefaultConfigSnapshot(ConfigRevision("v1")) },
             componentBuilders = listOf(
-                configComponentBuilder(
-                    name = "missing-table-component",
-                    dependencies = setOf(ConfigTableName("missing")),
-                ) {
+                configComponentBuilder<GeneratedTables>("missing-table-component") { snapshot ->
+                    snapshot.requireTable(TestConfigTables.Items)
                     GeneratedTables("unused")
                 },
             ),
         )
 
-        val error = assertFailsWith<IllegalArgumentException> {
+        val error = assertFailsWith<IllegalStateException> {
             service.reload()
         }
 
         assertEquals(
-            "config component missing-table-component depends on missing tables: missing",
+            "config table items not found in revision v1",
             error.message,
         )
     }
@@ -516,10 +514,7 @@ class ConfigServiceTest {
     }
 
     private fun generatedTablesBuilder(): ConfigComponentBuilder<GeneratedTables> {
-        return configComponentBuilder(
-            name = "generated-tables",
-            dependencies = setOf(ConfigTableName("items")),
-        ) {
+        return configComponentBuilder("generated-tables") {
             GeneratedTables("project-configs")
         }
     }

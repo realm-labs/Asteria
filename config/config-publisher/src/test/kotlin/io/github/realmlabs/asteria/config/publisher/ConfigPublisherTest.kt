@@ -51,10 +51,7 @@ class ConfigPublisherTest {
                 },
             ),
             componentBuilders = listOf(
-                configComponentBuilder(
-                    name = "item-index",
-                    dependencies = setOf(ConfigTableName("items")),
-                ) { snapshot ->
+                configComponentBuilder("item-index") { snapshot ->
                     snapshot.tables().associate { it.name.value to it.size }
                 },
             ),
@@ -72,8 +69,6 @@ class ConfigPublisherTest {
         assertEquals(revision, manifest.revision)
         assertEquals(listOf("items"), manifest.tables)
         assertEquals(listOf("activity/tasks.bytes", "items.bytes"), manifest.artifacts.map { it.path })
-        assertEquals(listOf("item-index"), manifest.components.map { it.name })
-        assertEquals(listOf("items"), manifest.components.single().dependencies)
         assertEquals(revision, current?.revision)
         assertEquals(layout.manifestPath(revision).value, current?.manifestPath)
         assertNotNull(record)
@@ -287,47 +282,6 @@ class ConfigPublisherTest {
         assertFailsWith<ConfigPublicationValidationException> {
             ConfigPublicationConsumer(store, layout).loadCurrent()
         }
-    }
-
-    @Test
-    fun `consumer rejects component dependency missing from manifest tables`(): Unit = runBlocking {
-        val store = InMemoryConfigStore()
-        val layout = ConfigPublicationLayout(configPath("/game/config"))
-        val revision = ConfigRevision("2026.05.02", "checksum-1")
-        val repository = RuntimeConfigRepository(store, JacksonConfigCodec())
-        repository.put(
-            layout.manifestPath(revision),
-            ConfigPublicationManifest(
-                revision = revision,
-                generatedAt = Instant.parse("2026-05-02T00:00:00Z"),
-                tables = listOf("items"),
-                artifacts = emptyList(),
-                components = listOf(
-                    ConfigPublicationComponentManifest(
-                        name = "activity-index",
-                        type = "com.example.ActivityIndex",
-                        dependencies = listOf("activities"),
-                    ),
-                ),
-            ),
-        )
-        repository.put(
-            layout.currentPath,
-            CurrentConfigPublication(
-                revision = revision,
-                manifestPath = layout.manifestPath(revision).value,
-                publishedAt = Instant.parse("2026-05-02T00:00:00Z"),
-            ),
-        )
-
-        val error = assertFailsWith<ConfigPublicationValidationException> {
-            ConfigPublicationConsumer(store, layout).loadCurrent()
-        }
-
-        assertEquals(
-            "config component activity-index depends on missing tables: activities",
-            error.message,
-        )
     }
 
     @Test

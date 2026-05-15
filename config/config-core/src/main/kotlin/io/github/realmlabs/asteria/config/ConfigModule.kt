@@ -151,10 +151,9 @@ class ConfigModuleBuilder {
      */
     inline fun <reified T : Any> component(
         name: String,
-        dependencies: Set<ConfigTableName> = emptySet(),
         noinline build: suspend (ConfigSnapshot) -> T,
     ) {
-        component(configComponentBuilder(name, dependencies, build))
+        component(configComponentBuilder(name, build))
     }
 
     /**

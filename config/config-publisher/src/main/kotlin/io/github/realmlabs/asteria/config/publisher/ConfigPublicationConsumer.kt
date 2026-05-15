@@ -59,7 +59,6 @@ class ConfigPublicationConsumer(
                 "config revision $revision points to manifest ${manifestPath.value} with revision ${manifest.revision}",
             )
         }
-        validateComponents(manifest)
 
         val artifacts = linkedMapOf<String, ByteArray>()
         for (artifact in manifest.artifacts) {
@@ -86,18 +85,6 @@ class ConfigPublicationConsumer(
             manifest = manifest,
             artifacts = artifacts,
         )
-    }
-
-    private fun validateComponents(manifest: ConfigPublicationManifest) {
-        val tables = manifest.tables.toSet()
-        for (component in manifest.components) {
-            val missing = component.dependencies.filter { it !in tables }
-            if (missing.isNotEmpty()) {
-                throw ConfigPublicationValidationException(
-                    "config component ${component.name} depends on missing tables: ${missing.joinToString()}",
-                )
-            }
-        }
     }
 }
 

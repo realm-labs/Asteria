@@ -8,14 +8,13 @@ import java.time.Instant
  * Manifest written to the config center for one published config revision.
  *
  * The manifest is the stable audit record for a successful publication. It describes the validated snapshot revision,
- * the raw artifact files uploaded with it, and the runtime component builders that were executed during validation.
+ * the raw artifact files uploaded with it.
  */
 data class ConfigPublicationManifest(
     val revision: ConfigRevision,
     val generatedAt: Instant,
     val tables: List<String>,
     val artifacts: List<ConfigPublicationArtifactManifest>,
-    val components: List<ConfigPublicationComponentManifest> = emptyList(),
 )
 
 /**
@@ -29,30 +28,6 @@ data class ConfigPublicationArtifactManifest(
     val size: Long,
     val checksum: String,
 )
-
-/**
- * Runtime component metadata captured during publication validation.
- *
- * Dependencies use manifest table names. Consumers validate that every dependency is present in
- * [ConfigPublicationManifest.tables] before accepting the manifest, which catches stale or malformed publication
- * records before runtime loading begins.
- */
-data class ConfigPublicationComponentManifest(
-    val name: String,
-    val type: String,
-    val dependencies: List<String>,
-) {
-    init {
-        require(name.isNotBlank()) { "config publication component name must not be blank" }
-        require(type.isNotBlank()) { "config publication component type must not be blank" }
-        require(dependencies.all { it.isNotBlank() }) {
-            "config publication component dependency must not be blank"
-        }
-        require(dependencies.distinct().size == dependencies.size) {
-            "config publication component dependencies must not contain duplicates"
-        }
-    }
-}
 
 /**
  * Pointer stored at the layout's current path after all artifacts and the manifest have been uploaded.
