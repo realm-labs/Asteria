@@ -8,7 +8,7 @@ import com.google.devtools.ksp.symbol.*
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.writeTo
-import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
+import io.github.realmlabs.asteria.ksp.*
 import java.util.*
 
 class AsteriaContributionSymbolProcessorProvider : SymbolProcessorProvider {
@@ -24,30 +24,44 @@ private class AsteriaContributionSymbolProcessor(
     private val diagnostics = AsteriaKspDiagnostics(logger, "contribution-ksp")
     private val contributionAnnotationName = "io.github.realmlabs.asteria.contribution.AsteriaContribution"
     private val catalogAnnotationName = "io.github.realmlabs.asteria.contribution.AsteriaContributionCatalog"
-    private var pendingDeferred: List<DeferredSymbol> = emptyList()
+    private var pendingDeferred: List<AsteriaKspDeferredSymbol> = emptyList()
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         val contributionSymbols = resolver.getSymbolsWithAnnotation(contributionAnnotationName).toList()
         val catalogSymbols = resolver.getSymbolsWithAnnotation(catalogAnnotationName).toList()
 
         val contributionReads = contributionSymbols.map { symbol ->
-            val declaration = symbol as? KSClassDeclaration ?: return@map ReadResult.Invalid
+            val declaration = when (val target = symbol.asAnnotatedClassOrInvalid(
+                diagnostics = diagnostics,
+                code = "ASTERIA-CONTRIBUTION-012",
+                annotationName = "@AsteriaContribution",
+            )) {
+                is AsteriaKspSymbolRead.Success -> target.value
+                is AsteriaKspSymbolRead.Deferred -> return@map target
+                AsteriaKspSymbolRead.Invalid -> return@map AsteriaKspSymbolRead.Invalid
+            }
             readContributionModel(declaration)
         }
         val catalogReads = catalogSymbols.map { symbol ->
-            val declaration = symbol as? KSClassDeclaration ?: return@map ReadResult.Invalid
+            val declaration = when (val target = symbol.asAnnotatedClassOrInvalid(
+                diagnostics = diagnostics,
+                code = "ASTERIA-CONTRIBUTION-013",
+                annotationName = "@AsteriaContributionCatalog",
+            )) {
+                is AsteriaKspSymbolRead.Success -> target.value
+                is AsteriaKspSymbolRead.Deferred -> return@map target
+                AsteriaKspSymbolRead.Invalid -> return@map AsteriaKspSymbolRead.Invalid
+            }
             readCatalogModel(declaration)
         }
-        val deferred = (contributionReads + catalogReads).filterIsInstance<ReadResult.Deferred>()
-            .map { it.deferred }
+        val deferred = (contributionReads + catalogReads).deferredSymbols()
         if (deferred.isNotEmpty()) {
             pendingDeferred = deferred
             return deferred.map { it.symbol }
         }
         pendingDeferred = emptyList()
 
-        val catalogs = catalogReads
-            .mapNotNull { (it as? ReadResult.Success)?.value }
+        val catalogs = catalogReads.successfulValues()
             .groupBy { it.contract.qualifiedName }
 
         catalogs.filterValues { it.size > 1 }.forEach { (contractName, duplicateCatalogs) ->
@@ -60,8 +74,7 @@ private class AsteriaContributionSymbolProcessor(
             )
         }
 
-        val contributions = contributionReads
-            .mapNotNull { (it as? ReadResult.Success)?.value }
+        val contributions = contributionReads.successfulValues()
             .groupBy { it.contract.qualifiedName }
 
         (contributions.keys + catalogs.keys).forEach { contractName ->
@@ -69,8 +82,9 @@ private class AsteriaContributionSymbolProcessor(
             val catalog = catalogs[contractName].orEmpty().firstOrNull()
             val contract = catalog?.contract ?: contributionGroup.firstOrNull()?.contract ?: return@forEach
             val config = catalog?.toConfig() ?: defaultConfig(contract)
-            val sourceFiles = (contributionGroup.mapNotNull { it.declaration.containingFile } +
-                    listOfNotNull(catalog?.declaration?.containingFile))
+            val sourceFiles =
+                (contributionGroup.mapNotNull { it.declaration.requiredContainingFile("@AsteriaContribution") } +
+                        listOfNotNull(catalog?.declaration?.requiredContainingFile("@AsteriaContributionCatalog")))
                 .distinctBy { it.filePath }
                 .toTypedArray()
             AsteriaContributionCodeGenerator.buildFiles(
@@ -85,22 +99,19 @@ private class AsteriaContributionSymbolProcessor(
     }
 
     override fun finish() {
-        pendingDeferred.forEach { deferred ->
-            diagnostics.error(
-                code = "ASTERIA-CONTRIBUTION-011",
-                message = "@AsteriaContribution symbol could not be processed after KSP rounds completed.",
-                symbol = deferred.symbol,
-                reason = deferred.reason,
-                fix = "Check that the annotated class, its contribution contract, and its direct supertypes are resolvable in this module.",
-            )
-        }
+        diagnostics.reportUnprocessedDeferredSymbols(
+            code = "ASTERIA-CONTRIBUTION-011",
+            message = "Contribution symbol could not be processed after KSP rounds completed.",
+            deferred = pendingDeferred,
+            fix = "Check that the annotated class, its contribution contract, and its direct supertypes are resolvable in this module.",
+        )
     }
 
-    private fun readContributionModel(declaration: KSClassDeclaration): ReadResult<ContributionBinding> {
-        val annotation = declaration.findAnnotation(contributionAnnotationName) ?: return ReadResult.Invalid
+    private fun readContributionModel(declaration: KSClassDeclaration): AsteriaKspSymbolRead<ContributionBinding> {
+        val annotation = declaration.findAnnotation(contributionAnnotationName) ?: return AsteriaKspSymbolRead.Invalid
         val contract = when (val contractArg = annotation.classArg("contract", declaration)) {
             is ClassArgResult.Success -> contractArg.declaration
-            is ClassArgResult.Deferred -> return ReadResult.Deferred(contractArg.deferred)
+            is ClassArgResult.Deferred -> return AsteriaKspSymbolRead.Deferred(contractArg.deferred)
             ClassArgResult.Invalid -> {
                 diagnostics.error(
                     code = "ASTERIA-CONTRIBUTION-002",
@@ -109,15 +120,15 @@ private class AsteriaContributionSymbolProcessor(
                     reason = "The generated contribution list is grouped by the contract KClass.",
                     fix = "Set contract to the interface or base class implemented by this contribution.",
                 )
-                return ReadResult.Invalid
+                return AsteriaKspSymbolRead.Invalid
             }
         }
         when (val validation = validateContributionDeclaration(declaration, contract)) {
             ContributionValidationResult.Valid -> Unit
-            is ContributionValidationResult.Deferred -> return ReadResult.Deferred(validation.deferred)
-            ContributionValidationResult.Invalid -> return ReadResult.Invalid
+            is ContributionValidationResult.Deferred -> return AsteriaKspSymbolRead.Deferred(validation.deferred)
+            ContributionValidationResult.Invalid -> return AsteriaKspSymbolRead.Invalid
         }
-        return ReadResult.Success(
+        return AsteriaKspSymbolRead.Success(
             ContributionBinding(
                 declaration = declaration,
                 contract = contract.toContractModel(),
@@ -190,7 +201,7 @@ private class AsteriaContributionSymbolProcessor(
             SubtypeCheckResult.Matches -> Unit
             SubtypeCheckResult.Deferred -> {
                 return ContributionValidationResult.Deferred(
-                    DeferredSymbol(
+                    AsteriaKspDeferredSymbol(
                         symbol = declaration,
                         reason = "Contribution supertypes could not be resolved: ${declaration.qualifiedName?.asString()} -> ${contract.qualifiedName?.asString()}.",
                     ),
@@ -210,11 +221,11 @@ private class AsteriaContributionSymbolProcessor(
         return ContributionValidationResult.Valid
     }
 
-    private fun readCatalogModel(declaration: KSClassDeclaration): ReadResult<ContributionCatalogModel> {
-        val annotation = declaration.findAnnotation(catalogAnnotationName) ?: return ReadResult.Invalid
+    private fun readCatalogModel(declaration: KSClassDeclaration): AsteriaKspSymbolRead<ContributionCatalogModel> {
+        val annotation = declaration.findAnnotation(catalogAnnotationName) ?: return AsteriaKspSymbolRead.Invalid
         val contract = when (val contractArg = annotation.classArg("contract", declaration)) {
             is ClassArgResult.Success -> contractArg.declaration
-            is ClassArgResult.Deferred -> return ReadResult.Deferred(contractArg.deferred)
+            is ClassArgResult.Deferred -> return AsteriaKspSymbolRead.Deferred(contractArg.deferred)
             ClassArgResult.Invalid -> {
                 diagnostics.error(
                     code = "ASTERIA-CONTRIBUTION-009",
@@ -223,7 +234,7 @@ private class AsteriaContributionSymbolProcessor(
                     reason = "The catalog customizes generated output for one contribution contract.",
                     fix = "Set contract to the interface or base class whose contribution list should be generated.",
                 )
-                return ReadResult.Invalid
+                return AsteriaKspSymbolRead.Invalid
             }
         }
         val contractModel = contract.toContractModel()
@@ -240,9 +251,9 @@ private class AsteriaContributionSymbolProcessor(
                 reason = "KSP splits large generated lists into positive-size chunks to avoid oversized generated methods.",
                 fix = "Remove chunkSize to use the default, or set it to a positive integer.",
             )
-            return ReadResult.Invalid
+            return AsteriaKspSymbolRead.Invalid
         }
-        return ReadResult.Success(
+        return AsteriaKspSymbolRead.Success(
             ContributionCatalogModel(
                 declaration = declaration,
                 contract = contractModel,
@@ -290,6 +301,21 @@ private class AsteriaContributionSymbolProcessor(
         }
     }
 
+    private fun KSClassDeclaration.requiredContainingFile(annotationName: String): KSFile? {
+        val file = containingFile
+        if (file != null) {
+            return file
+        }
+        diagnostics.error(
+            code = "ASTERIA-CONTRIBUTION-014",
+            message = "$annotationName declaration must come from a source file.",
+            symbol = this,
+            reason = "Generated output needs source-file dependencies so KSP incremental builds cannot silently miss annotated declarations.",
+            fix = "Move the annotation to a source declaration in this module.",
+        )
+        return null
+    }
+
     private fun KSClassDeclaration.subtypeCheck(qualifiedName: String): SubtypeCheckResult {
         if (this.qualifiedName?.asString() == qualifiedName) {
             return SubtypeCheckResult.Matches
@@ -320,7 +346,7 @@ private class AsteriaContributionSymbolProcessor(
             type.declaration
         } catch (error: Throwable) {
             return ClassArgResult.Deferred(
-                DeferredSymbol(
+                AsteriaKspDeferredSymbol(
                     symbol = symbol,
                     reason = "Annotation argument $name could not be resolved: ${error.message ?: error::class.simpleName}",
                 ),
@@ -345,21 +371,15 @@ private class AsteriaContributionSymbolProcessor(
 
 }
 
-private sealed interface ReadResult<out T> {
-    data class Success<T>(val value: T) : ReadResult<T>
-    data class Deferred(val deferred: DeferredSymbol) : ReadResult<Nothing>
-    data object Invalid : ReadResult<Nothing>
-}
-
 private sealed interface ClassArgResult {
     data class Success(val declaration: KSClassDeclaration) : ClassArgResult
-    data class Deferred(val deferred: DeferredSymbol) : ClassArgResult
+    data class Deferred(val deferred: AsteriaKspDeferredSymbol) : ClassArgResult
     data object Invalid : ClassArgResult
 }
 
 private sealed interface ContributionValidationResult {
     data object Valid : ContributionValidationResult
-    data class Deferred(val deferred: DeferredSymbol) : ContributionValidationResult
+    data class Deferred(val deferred: AsteriaKspDeferredSymbol) : ContributionValidationResult
     data object Invalid : ContributionValidationResult
 }
 
@@ -368,11 +388,6 @@ private enum class SubtypeCheckResult {
     DoesNotMatch,
     Deferred,
 }
-
-private data class DeferredSymbol(
-    val symbol: KSAnnotated,
-    val reason: String,
-)
 
 internal fun String.toContributionTypeNamePart(): String {
     val tokens = split(Regex("[^A-Za-z0-9]+")).filter { it.isNotBlank() }.ifEmpty { listOf("Default") }

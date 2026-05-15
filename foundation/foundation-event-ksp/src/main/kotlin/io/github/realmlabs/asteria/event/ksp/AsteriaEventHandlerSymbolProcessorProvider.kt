@@ -4,13 +4,12 @@ import com.google.devtools.ksp.getAllSuperTypes
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
-import io.github.realmlabs.asteria.ksp.AsteriaKspConstructors
-import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
+import io.github.realmlabs.asteria.ksp.*
 import java.util.*
 
 class AsteriaEventHandlerSymbolProcessorProvider : SymbolProcessorProvider {
@@ -50,6 +49,7 @@ private class AsteriaEventHandlerSymbolProcessor(
         annotationName = "@AsteriaEventHandler",
     )
     private var generated = false
+    private var pendingDeferred: List<AsteriaKspDeferredSymbol> = emptyList()
     private val eventHandlerAnnotationName = "io.github.realmlabs.asteria.event.AsteriaEventHandler"
     private val eventTopicRootAnnotationName = "io.github.realmlabs.asteria.event.AsteriaEventTopicRoot"
     private val eventTopicAnnotationName = "io.github.realmlabs.asteria.event.AsteriaEventTopic"
@@ -60,7 +60,15 @@ private class AsteriaEventHandlerSymbolProcessor(
         if (generated) {
             return emptyList()
         }
-        val topicBindings = collectTopicBindings(resolver)
+        val topicBindings = when (val result = collectTopicBindings(resolver)) {
+            is AsteriaKspSymbolRead.Success -> result.value
+            is AsteriaKspSymbolRead.Deferred -> {
+                pendingDeferred = listOf(result.symbol)
+                return listOf(result.symbol.symbol)
+            }
+
+            AsteriaKspSymbolRead.Invalid -> emptyList()
+        }
         topicBindings.groupBy(EventTopicBinding::rootPackage).forEach { (rootPackage, rootTopics) ->
             generateTopicPaths(rootPackage, rootTopics)
         }
@@ -68,15 +76,34 @@ private class AsteriaEventHandlerSymbolProcessor(
             { requireNotNull(it.declaration.qualifiedName).asString() },
             EventTopicBinding::path,
         )
-        val bindings = resolver.getSymbolsWithAnnotation(eventHandlerAnnotationName)
-            .filterIsInstance<KSClassDeclaration>()
-            .mapNotNull { declaration ->
-                declaration.toEventHandlerBinding(
-                    declaration.containingFile ?: return@mapNotNull null,
-                    topicPathsByClass,
+        val handlerDeclarationReads = resolver.getSymbolsWithAnnotation(eventHandlerAnnotationName)
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-EVENT-014",
+                    annotationName = "@AsteriaEventHandler",
                 )
             }
             .toList()
+        val declarationDeferred = handlerDeclarationReads.deferredSymbols()
+        if (declarationDeferred.isNotEmpty()) {
+            pendingDeferred = declarationDeferred
+            return declarationDeferred.map { it.symbol }
+        }
+        val handlerReads = handlerDeclarationReads.successfulValues().map { declaration ->
+            readOrDefer(declaration, "event handler ${declaration.qualifiedName?.asString()}") {
+                declaration.toEventHandlerBinding(
+                    declaration.requiredContainingFile("@AsteriaEventHandler") ?: return@readOrDefer null,
+                    topicPathsByClass,
+                )
+            }
+        }
+        val handlerDeferred = handlerReads.deferredSymbols()
+        if (handlerDeferred.isNotEmpty()) {
+            pendingDeferred = handlerDeferred
+            return handlerDeferred.map { it.symbol }
+        }
+        val bindings = handlerReads.successfulValues()
         bindings.groupBy(EventHandlerBinding::rootPackage).forEach { (rootPackage, rootBindings) ->
             generateDispatchers(rootPackage, rootBindings)
         }
@@ -90,26 +117,90 @@ private class AsteriaEventHandlerSymbolProcessor(
             )
         }
         generated = true
+        pendingDeferred = emptyList()
         return emptyList()
     }
 
-    private fun collectTopicBindings(resolver: Resolver): List<EventTopicBinding> {
-        val declarations = (resolver.getSymbolsWithAnnotation(eventTopicRootAnnotationName) +
-                resolver.getSymbolsWithAnnotation(eventTopicAnnotationName))
-            .filterIsInstance<KSClassDeclaration>()
+    override fun finish() {
+        diagnostics.reportUnprocessedDeferredSymbols(
+            code = "ASTERIA-EVENT-015",
+            message = "Event KSP symbol could not be processed after KSP rounds completed.",
+            deferred = pendingDeferred,
+            fix = "Check that annotated event topics, handlers, and handle parameter types are resolvable in this module.",
+        )
+    }
+
+    private fun <T : Any> readOrDefer(
+        symbol: KSAnnotated,
+        label: String,
+        read: () -> T?,
+    ): AsteriaKspSymbolRead<T> {
+        return try {
+            read()?.let { AsteriaKspSymbolRead.Success(it) } ?: AsteriaKspSymbolRead.Invalid
+        } catch (error: Throwable) {
+            AsteriaKspSymbolRead.Deferred(
+                AsteriaKspDeferredSymbol(
+                    symbol = symbol,
+                    reason = "$label could not be resolved in this KSP round: ${error.message ?: error::class.simpleName}",
+                ),
+            )
+        }
+    }
+
+    private fun collectTopicBindings(resolver: Resolver): AsteriaKspSymbolRead<List<EventTopicBinding>> {
+        val rootReads = resolver.getSymbolsWithAnnotation(eventTopicRootAnnotationName)
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-EVENT-016",
+                    annotationName = "@AsteriaEventTopicRoot",
+                    expectedTarget = "object",
+                )
+            }
+            .toList()
+        val topicReads = resolver.getSymbolsWithAnnotation(eventTopicAnnotationName)
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-EVENT-017",
+                    annotationName = "@AsteriaEventTopic",
+                    expectedTarget = "object",
+                )
+            }
+            .toList()
+        val deferred = (rootReads + topicReads).deferredSymbols()
+        if (deferred.isNotEmpty()) {
+            return AsteriaKspSymbolRead.Deferred(deferred.first())
+        }
+        val declarations = (rootReads.successfulValues() + topicReads.successfulValues())
             .associateBy { it.qualifiedName?.asString().orEmpty() }
         val cache = linkedMapOf<String, EventTopicBinding>()
         declarations.values.forEach { declaration ->
-            declaration.toTopicBinding(declarations, cache)
+            when (val read = readOrDefer(declaration, "event topic ${declaration.qualifiedName?.asString()}") {
+                declaration.toTopicBinding(declarations, cache)
+            }) {
+                is AsteriaKspSymbolRead.Success -> Unit
+                is AsteriaKspSymbolRead.Deferred -> return read
+                AsteriaKspSymbolRead.Invalid -> Unit
+            }
         }
-        return cache.values.toList()
+        return AsteriaKspSymbolRead.Success(cache.values.toList())
     }
 
     private fun KSClassDeclaration.toTopicBinding(
         declarations: Map<String, KSClassDeclaration>,
         cache: MutableMap<String, EventTopicBinding>,
     ): EventTopicBinding? {
-        val qualifiedName = qualifiedName?.asString() ?: return null
+        val qualifiedName = qualifiedName?.asString() ?: run {
+            diagnostics.error(
+                code = "ASTERIA-EVENT-021",
+                message = "Event topic declaration must have a qualified name.",
+                symbol = this,
+                reason = "Generated topic paths and snapshots need stable qualified object names.",
+                fix = "Move the annotated topic object to a named package-level or nested object declaration.",
+            )
+            return null
+        }
         cache[qualifiedName]?.let { return it }
         if (classKind != ClassKind.OBJECT) {
             diagnostics.error(
@@ -123,6 +214,16 @@ private class AsteriaEventHandlerSymbolProcessor(
         }
         val rootAnnotation = findAnnotation(eventTopicRootAnnotationName)
         val topicAnnotation = findAnnotation(eventTopicAnnotationName)
+        if (rootAnnotation == null && topicAnnotation == null) {
+            diagnostics.error(
+                code = "ASTERIA-EVENT-020",
+                message = "Event topic annotation could not be resolved.",
+                symbol = this,
+                reason = "KSP returned the symbol for a topic annotation, but the processor could not read the annotation instance.",
+                fix = "Check that the event annotation classes are available on the KSP classpath.",
+            )
+            return null
+        }
         if (rootAnnotation != null && topicAnnotation != null) {
             diagnostics.error(
                 code = "ASTERIA-EVENT-002",
@@ -170,7 +271,7 @@ private class AsteriaEventHandlerSymbolProcessor(
             declaration = this,
             path = path,
             parent = parentDeclaration,
-            sourceFile = containingFile ?: return null,
+            sourceFile = requiredContainingFile("@AsteriaEventTopic") ?: return null,
         )
         cache[qualifiedName] = binding
         return binding
@@ -235,7 +336,16 @@ private class AsteriaEventHandlerSymbolProcessor(
             )
             return null
         }
-        val annotation = findAnnotation(eventHandlerAnnotationName) ?: return null
+        val annotation = findAnnotation(eventHandlerAnnotationName) ?: run {
+            diagnostics.error(
+                code = "ASTERIA-EVENT-018",
+                message = "@AsteriaEventHandler annotation could not be resolved.",
+                symbol = this,
+                reason = "KSP returned the symbol for the annotation, but the processor could not read the annotation instance.",
+                fix = "Check that the annotation class is available on the KSP classpath.",
+            )
+            return null
+        }
         val topicRefPaths = annotation.classListArg("topicRefs").mapNotNull { topicRef ->
             val topicPath = topicPathsByClass[topicRef.qualifiedName?.asString()]
             if (topicPath == null) {
@@ -285,6 +395,21 @@ private class AsteriaEventHandlerSymbolProcessor(
             order = annotation.intArg("order"),
             sourceFile = sourceFile,
         )
+    }
+
+    private fun KSClassDeclaration.requiredContainingFile(annotationName: String): KSFile? {
+        val file = containingFile
+        if (file != null) {
+            return file
+        }
+        diagnostics.error(
+            code = "ASTERIA-EVENT-019",
+            message = "$annotationName declaration must come from a source file.",
+            symbol = this,
+            reason = "Generated output needs source-file dependencies so KSP incremental builds cannot silently miss annotated declarations.",
+            fix = "Move the annotation to a source declaration in this module.",
+        )
+        return null
     }
 
     private fun generateTopicPaths(rootPackage: String, bindings: List<EventTopicBinding>) {

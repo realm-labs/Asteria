@@ -2,12 +2,11 @@ package io.github.realmlabs.asteria.persistence.mongodb.ksp
 
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
-import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
-import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
+import io.github.realmlabs.asteria.ksp.*
 import io.github.realmlabs.asteria.persistence.mongodb.annotations.*
 import org.bson.codecs.pojo.annotations.BsonId
 
@@ -27,6 +26,7 @@ private class AsteriaMongoEntitySymbolProcessor(
 ) : SymbolProcessor {
     private val diagnostics = AsteriaKspDiagnostics(logger, "persistence-mongodb-ksp")
     private var generated = false
+    private var pendingDeferred: List<AsteriaKspDeferredSymbol> = emptyList()
     private val valueTypes: Set<String> = options["asteria.mongodb.valueTypes"]
         ?.split(',')
         ?.map { it.trim() }
@@ -36,20 +36,38 @@ private class AsteriaMongoEntitySymbolProcessor(
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         if (generated) return emptyList()
-        val symbols = resolver.getSymbolsWithAnnotation(AsteriaMongoEntity::class.qualifiedName!!)
-            .filterIsInstance<KSClassDeclaration>()
+        val classReads = resolver.getSymbolsWithAnnotation(AsteriaMongoEntity::class.qualifiedName!!)
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-MONGO-019",
+                    annotationName = "@AsteriaMongoEntity",
+                )
+            }
             .toList()
-        val invalid = symbols.filterNot { it.validate() }
-        if (invalid.isNotEmpty()) {
-            return invalid
+        val classDeferred = classReads.deferredSymbols()
+        if (classDeferred.isNotEmpty()) {
+            pendingDeferred = classDeferred
+            return classDeferred.map { it.symbol }
         }
+        val symbols = classReads.successfulValues()
         val models = mutableListOf<MongoEntityCodegenModel>()
         val sourceFiles = mutableListOf<KSFile>()
         symbols.forEach { symbol ->
-            val model = readModel(symbol) ?: return@forEach
+            val model = when (val read = readOrDefer(symbol, "mongo entity ${symbol.qualifiedName?.asString()}") {
+                readModel(symbol)
+            }) {
+                is AsteriaKspSymbolRead.Success -> read.value
+                is AsteriaKspSymbolRead.Deferred -> {
+                    pendingDeferred = listOf(read.symbol)
+                    return listOf(read.symbol.symbol)
+                }
+
+                AsteriaKspSymbolRead.Invalid -> return@forEach
+            }
             models += model
             val file = AsteriaMongoEntityCodeGenerator.buildFile(model)
-            val sourceFile = symbol.containingFile
+            val sourceFile = symbol.requiredContainingFile("@AsteriaMongoEntity")
             sourceFile?.let { sourceFiles += it }
             file.writeTo(codeGenerator, Dependencies(aggregating = false, *listOfNotNull(sourceFile).toTypedArray()))
         }
@@ -57,7 +75,34 @@ private class AsteriaMongoEntitySymbolProcessor(
             generateCodegenSnapshot(models, sourceFiles)
         }
         generated = true
+        pendingDeferred = emptyList()
         return emptyList()
+    }
+
+    override fun finish() {
+        diagnostics.reportUnprocessedDeferredSymbols(
+            code = "ASTERIA-MONGO-020",
+            message = "Mongo KSP symbol could not be processed after KSP rounds completed.",
+            deferred = pendingDeferred,
+            fix = "Check that the annotated entity and all generated tracked property types are resolvable in this module.",
+        )
+    }
+
+    private fun <T : Any> readOrDefer(
+        symbol: KSAnnotated,
+        label: String,
+        read: () -> T?,
+    ): AsteriaKspSymbolRead<T> {
+        return try {
+            read()?.let { AsteriaKspSymbolRead.Success(it) } ?: AsteriaKspSymbolRead.Invalid
+        } catch (error: Throwable) {
+            AsteriaKspSymbolRead.Deferred(
+                AsteriaKspDeferredSymbol(
+                    symbol = symbol,
+                    reason = "$label could not be resolved in this KSP round: ${error.message ?: error::class.simpleName}",
+                ),
+            )
+        }
     }
 
     private fun generateCodegenSnapshot(
@@ -145,7 +190,16 @@ private class AsteriaMongoEntitySymbolProcessor(
     }
 
     private fun readModel(symbol: KSClassDeclaration): MongoEntityCodegenModel? {
-        val annotation = symbol.findAnnotation(AsteriaMongoEntity::class.qualifiedName!!) ?: return null
+        val annotation = symbol.findAnnotation(AsteriaMongoEntity::class.qualifiedName!!) ?: run {
+            diagnostics.error(
+                code = "ASTERIA-MONGO-021",
+                message = "@AsteriaMongoEntity annotation could not be resolved.",
+                symbol = symbol,
+                reason = "KSP returned the symbol for the annotation, but the processor could not read the annotation instance.",
+                fix = "Check that the Mongo annotation class is available on the KSP classpath.",
+            )
+            return null
+        }
         val collectionName = annotation.stringArg("collection")
         if (collectionName.isBlank()) {
             diagnostics.error(
@@ -662,6 +716,21 @@ private class AsteriaMongoEntitySymbolProcessor(
         return annotations.firstOrNull { annotation ->
             annotation.annotationType.resolve().declaration.qualifiedName?.asString() == qualifiedName
         }
+    }
+
+    private fun KSClassDeclaration.requiredContainingFile(annotationName: String): KSFile? {
+        val file = containingFile
+        if (file != null) {
+            return file
+        }
+        diagnostics.error(
+            code = "ASTERIA-MONGO-022",
+            message = "$annotationName declaration must come from a source file.",
+            symbol = this,
+            reason = "Generated output needs source-file dependencies so KSP incremental builds cannot silently miss annotated declarations.",
+            fix = "Move the annotation to a source declaration in this module.",
+        )
+        return null
     }
 
     private fun KSAnnotation.stringArg(name: String): String {

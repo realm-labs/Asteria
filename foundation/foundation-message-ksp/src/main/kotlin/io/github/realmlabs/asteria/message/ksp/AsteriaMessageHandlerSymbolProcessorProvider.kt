@@ -4,13 +4,12 @@ import com.google.devtools.ksp.getAllSuperTypes
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
-import io.github.realmlabs.asteria.ksp.AsteriaKspConstructors
-import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
+import io.github.realmlabs.asteria.ksp.*
 import java.util.*
 
 class AsteriaMessageHandlerSymbolProcessorProvider : SymbolProcessorProvider {
@@ -59,6 +58,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
         annotationName = "@AsteriaGatewayRoute",
     )
     private var generated = false
+    private var pendingDeferred: List<AsteriaKspDeferredSymbol> = emptyList()
     private val messageHandlerAnnotationName = "io.github.realmlabs.asteria.message.AsteriaMessageHandler"
     private val gatewayRouteAnnotationName = "io.github.realmlabs.asteria.message.AsteriaGatewayRoute"
 
@@ -67,10 +67,31 @@ private class AsteriaMessageHandlerSymbolProcessor(
             return emptyList()
         }
 
-        val handlerDeclarations = resolver.getSymbolsWithAnnotation(messageHandlerAnnotationName)
-            .filterIsInstance<KSClassDeclaration>().toList()
-        val gatewayRouteDeclarations = resolver.getSymbolsWithAnnotation(gatewayRouteAnnotationName)
-            .filterIsInstance<KSClassDeclaration>().toList()
+        val handlerDeclarationReads = resolver.getSymbolsWithAnnotation(messageHandlerAnnotationName)
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-MESSAGE-013",
+                    annotationName = "@AsteriaMessageHandler",
+                )
+            }
+            .toList()
+        val gatewayRouteDeclarationReads = resolver.getSymbolsWithAnnotation(gatewayRouteAnnotationName)
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-MESSAGE-014",
+                    annotationName = "@AsteriaGatewayRoute",
+                )
+            }
+            .toList()
+        val declarationDeferred = (handlerDeclarationReads + gatewayRouteDeclarationReads).deferredSymbols()
+        if (declarationDeferred.isNotEmpty()) {
+            pendingDeferred = declarationDeferred
+            return declarationDeferred.map { it.symbol }
+        }
+        val handlerDeclarations = handlerDeclarationReads.successfulValues()
+        val gatewayRouteDeclarations = gatewayRouteDeclarationReads.successfulValues()
 
         val target = if (handlerDeclarations.isNotEmpty() || gatewayRouteDeclarations.isNotEmpty()) {
             codegenTarget() ?: run {
@@ -81,10 +102,19 @@ private class AsteriaMessageHandlerSymbolProcessor(
             null
         }
 
-        val handlerBindings = handlerDeclarations
-            .mapNotNull { declaration ->
-                declaration.toHandlerBinding(declaration.containingFile ?: return@mapNotNull null)
+        val handlerReads = handlerDeclarations.map { declaration ->
+            readOrDefer(declaration, "message handler ${declaration.qualifiedName?.asString()}") {
+                declaration.toHandlerBinding(
+                    declaration.requiredContainingFile("@AsteriaMessageHandler") ?: return@readOrDefer null
+                )
             }
+        }
+        val handlerDeferred = handlerReads.deferredSymbols()
+        if (handlerDeferred.isNotEmpty()) {
+            pendingDeferred = handlerDeferred
+            return handlerDeferred.map { it.symbol }
+        }
+        val handlerBindings = handlerReads.successfulValues()
         if (handlerBindings.isNotEmpty()) {
             checkNotNull(target)
             if (messageCatalogEnabled()) {
@@ -93,10 +123,19 @@ private class AsteriaMessageHandlerSymbolProcessor(
             generateDispatchers(target, handlerBindings)
         }
 
-        val gatewayRouteBindings = gatewayRouteDeclarations
-            .mapNotNull { declaration ->
-                declaration.toGatewayRouteBinding(declaration.containingFile ?: return@mapNotNull null)
+        val gatewayRouteReads = gatewayRouteDeclarations.map { declaration ->
+            readOrDefer(declaration, "gateway route ${declaration.qualifiedName?.asString()}") {
+                declaration.toGatewayRouteBinding(
+                    declaration.requiredContainingFile("@AsteriaGatewayRoute") ?: return@readOrDefer null
+                )
             }
+        }
+        val gatewayRouteDeferred = gatewayRouteReads.deferredSymbols()
+        if (gatewayRouteDeferred.isNotEmpty()) {
+            pendingDeferred = gatewayRouteDeferred
+            return gatewayRouteDeferred.map { it.symbol }
+        }
+        val gatewayRouteBindings = gatewayRouteReads.successfulValues()
         if (gatewayRouteBindings.isNotEmpty()) {
             checkNotNull(target)
             generateGatewayRouteMetadata(target, gatewayRouteBindings)
@@ -104,7 +143,34 @@ private class AsteriaMessageHandlerSymbolProcessor(
         target?.let { generateCodegenSnapshot(it, handlerBindings, gatewayRouteBindings) }
 
         generated = true
+        pendingDeferred = emptyList()
         return emptyList()
+    }
+
+    override fun finish() {
+        diagnostics.reportUnprocessedDeferredSymbols(
+            code = "ASTERIA-MESSAGE-015",
+            message = "Message KSP symbol could not be processed after KSP rounds completed.",
+            deferred = pendingDeferred,
+            fix = "Check that the annotated handler and its handle parameter types are resolvable in this module.",
+        )
+    }
+
+    private fun <T : Any> readOrDefer(
+        symbol: KSAnnotated,
+        label: String,
+        read: () -> T?,
+    ): AsteriaKspSymbolRead<T> {
+        return try {
+            read()?.let { AsteriaKspSymbolRead.Success(it) } ?: AsteriaKspSymbolRead.Invalid
+        } catch (error: Throwable) {
+            AsteriaKspSymbolRead.Deferred(
+                AsteriaKspDeferredSymbol(
+                    symbol = symbol,
+                    reason = "$label could not be resolved in this KSP round: ${error.message ?: error::class.simpleName}",
+                ),
+            )
+        }
     }
 
     private fun KSClassDeclaration.toHandlerBinding(sourceFile: KSFile): HandlerBinding? {
@@ -142,7 +208,16 @@ private class AsteriaMessageHandlerSymbolProcessor(
                 )
                 return null
             }
-        val annotation = findAnnotation(messageHandlerAnnotationName) ?: return null
+        val annotation = findAnnotation(messageHandlerAnnotationName) ?: run {
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-017",
+                message = "@AsteriaMessageHandler annotation could not be resolved.",
+                symbol = this,
+                reason = "KSP returned the symbol for the annotation, but the processor could not read the annotation instance.",
+                fix = "Check that the annotation class is available on the KSP classpath.",
+            )
+            return null
+        }
         if (!messageHandlerConstructors.validateConstructible(this)) {
             return null
         }
@@ -155,6 +230,21 @@ private class AsteriaMessageHandlerSymbolProcessor(
             dispatcher = annotation.stringArg("dispatcher"),
             sourceFile = sourceFile,
         )
+    }
+
+    private fun KSClassDeclaration.requiredContainingFile(annotationName: String): KSFile? {
+        val file = containingFile
+        if (file != null) {
+            return file
+        }
+        diagnostics.error(
+            code = "ASTERIA-MESSAGE-016",
+            message = "$annotationName declaration must come from a source file.",
+            symbol = this,
+            reason = "Generated output needs source-file dependencies so KSP incremental builds cannot silently miss annotated handlers.",
+            fix = "Move the annotation to a source declaration in this module.",
+        )
+        return null
     }
 
     private fun KSClassDeclaration.toGatewayRouteBinding(sourceFile: KSFile): GatewayRouteBinding? {
@@ -191,7 +281,16 @@ private class AsteriaMessageHandlerSymbolProcessor(
                 )
                 return null
             }
-        val annotation = findAnnotation(gatewayRouteAnnotationName) ?: return null
+        val annotation = findAnnotation(gatewayRouteAnnotationName) ?: run {
+            diagnostics.error(
+                code = "ASTERIA-MESSAGE-018",
+                message = "@AsteriaGatewayRoute annotation could not be resolved.",
+                symbol = this,
+                reason = "KSP returned the symbol for the annotation, but the processor could not read the annotation instance.",
+                fix = "Check that the annotation class is available on the KSP classpath.",
+            )
+            return null
+        }
         val route = annotation.stringArg("route")
         if (route.isBlank()) {
             diagnostics.error(

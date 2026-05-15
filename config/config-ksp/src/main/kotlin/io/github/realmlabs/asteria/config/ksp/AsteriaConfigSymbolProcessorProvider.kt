@@ -3,12 +3,11 @@ package io.github.realmlabs.asteria.config.ksp
 import com.google.devtools.ksp.getVisibility
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
-import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
 import io.github.realmlabs.asteria.config.annotations.*
-import io.github.realmlabs.asteria.ksp.AsteriaKspDiagnostics
+import io.github.realmlabs.asteria.ksp.*
 
 /**
  * KSP entry point for Asteria config table accessor and change-handler generation.
@@ -30,21 +29,37 @@ private class AsteriaConfigSymbolProcessor(
 ) : SymbolProcessor {
     private val diagnostics = AsteriaKspDiagnostics(logger, "config-ksp")
     private var generated = false
+    private var pendingDeferred: List<AsteriaKspDeferredSymbol> = emptyList()
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         if (generated) {
             return emptyList()
         }
-        val tableSymbols = resolver.getSymbolsWithAnnotation(AsteriaConfigTable::class.qualifiedName!!)
-            .filterIsInstance<KSClassDeclaration>()
+        val tableClassReads = resolver.getSymbolsWithAnnotation(AsteriaConfigTable::class.qualifiedName!!)
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-CONFIG-020",
+                    annotationName = "@AsteriaConfigTable",
+                )
+            }
             .toList()
-        val handlerSymbols = resolver.getSymbolsWithAnnotation(AsteriaConfigChangeHandler::class.qualifiedName!!)
-            .filterIsInstance<KSClassDeclaration>()
+        val handlerClassReads = resolver.getSymbolsWithAnnotation(AsteriaConfigChangeHandler::class.qualifiedName!!)
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-CONFIG-021",
+                    annotationName = "@AsteriaConfigChangeHandler",
+                )
+            }
             .toList()
-        val invalid = (tableSymbols + handlerSymbols).filterNot { it.validate() }
-        if (invalid.isNotEmpty()) {
-            return invalid
+        val classDeferred = (tableClassReads + handlerClassReads).deferredSymbols()
+        if (classDeferred.isNotEmpty()) {
+            pendingDeferred = classDeferred
+            return classDeferred.map { it.symbol }
         }
+        val tableSymbols = tableClassReads.successfulValues()
+        val handlerSymbols = handlerClassReads.successfulValues()
         if (
             tableSymbols.isEmpty() &&
             handlerSymbols.isEmpty() &&
@@ -56,17 +71,28 @@ private class AsteriaConfigSymbolProcessor(
 
         var tableCodegenConfig: ConfigCodegenConfig? = null
         var tableModels = emptyList<ConfigTableModel>()
-        val tableSourceFiles = tableSymbols.mapNotNull { it.containingFile }
+        val tableSourceFiles = tableSymbols.mapNotNull { it.requiredContainingFile("@AsteriaConfigTable") }
         if (tableSymbols.isNotEmpty()) {
             val config = readCodegenConfig(resolver)
-            val tables = tableSymbols.mapNotNull(::readTableModel)
+            val tableReads = tableSymbols.map { symbol ->
+                readOrDefer(symbol, "config table ${symbol.qualifiedName?.asString()}") {
+                    readTableModel(symbol)
+                }
+            }
+            val tableDeferred = tableReads.deferredSymbols()
+            if (tableDeferred.isNotEmpty()) {
+                pendingDeferred = tableDeferred
+                return tableDeferred.map { it.symbol }
+            }
+            val tables = tableReads.successfulValues()
             if (!validateTableModels(tables)) {
                 generated = true
                 return emptyList()
             }
             tableCodegenConfig = config
             tableModels = tables
-            val sourceFiles = tableSymbols.mapNotNull { it.containingFile }.toTypedArray()
+            val sourceFiles =
+                tableSymbols.mapNotNull { it.requiredContainingFile("@AsteriaConfigTable") }.toTypedArray()
             AsteriaConfigCodeGenerator.buildFiles(config, tables).forEach { generated ->
                 generated.file.writeTo(codeGenerator, Dependencies(aggregating = true, *sourceFiles))
             }
@@ -74,6 +100,10 @@ private class AsteriaConfigSymbolProcessor(
         var changeSnapshot: ConfigChangeCodegenSnapshot? = null
         if (handlerSymbols.isNotEmpty() || hasConfigChangeCatalog(resolver)) {
             changeSnapshot = generateConfigChangeHandlers(resolver, handlerSymbols)
+            val deferred = pendingDeferred
+            if (deferred.isNotEmpty()) {
+                return deferred.map { it.symbol }
+            }
         }
         generateCodegenSnapshot(
             tableCodegenConfig = tableCodegenConfig,
@@ -82,7 +112,34 @@ private class AsteriaConfigSymbolProcessor(
             changeSnapshot = changeSnapshot,
         )
         generated = true
+        pendingDeferred = emptyList()
         return emptyList()
+    }
+
+    override fun finish() {
+        diagnostics.reportUnprocessedDeferredSymbols(
+            code = "ASTERIA-CONFIG-022",
+            message = "Config KSP symbol could not be processed after KSP rounds completed.",
+            deferred = pendingDeferred,
+            fix = "Check that the annotated class, catalog, receiver type, and referenced table types are resolvable in this module.",
+        )
+    }
+
+    private fun <T : Any> readOrDefer(
+        symbol: KSAnnotated,
+        label: String,
+        read: () -> T?,
+    ): AsteriaKspSymbolRead<T> {
+        return try {
+            read()?.let { AsteriaKspSymbolRead.Success(it) } ?: AsteriaKspSymbolRead.Invalid
+        } catch (error: Throwable) {
+            AsteriaKspSymbolRead.Deferred(
+                AsteriaKspDeferredSymbol(
+                    symbol = symbol,
+                    reason = "$label could not be resolved in this KSP round: ${error.message ?: error::class.simpleName}",
+                ),
+            )
+        }
     }
 
     private fun generateConfigChangeHandlers(
@@ -90,17 +147,28 @@ private class AsteriaConfigSymbolProcessor(
         handlerSymbols: List<KSClassDeclaration>,
     ): ConfigChangeCodegenSnapshot? {
         val processorConfig = readConfigChangeCodegenConfig(resolver) ?: return null
-        val handlers = handlerSymbols.mapNotNull { handler ->
-            readConfigChangeHandlerModel(
-                resolver = resolver,
-                declaration = handler,
-                receiverType = processorConfig.receiverType,
-            )
+        val handlerReads = handlerSymbols.map { handler ->
+            readOrDefer(handler, "config change handler ${handler.qualifiedName?.asString()}") {
+                readConfigChangeHandlerModel(
+                    resolver = resolver,
+                    declaration = handler,
+                    receiverType = processorConfig.receiverType,
+                )
+            }
         }
+        val deferred = handlerReads.deferredSymbols()
+        if (deferred.isNotEmpty()) {
+            pendingDeferred = deferred
+            return null
+        }
+        val handlers = handlerReads.successfulValues()
         if (!validateConfigChangeHandlerModels(handlers, handlerSymbols.firstOrNull())) {
             return null
         }
-        val sourceFiles = (handlerSymbols.mapNotNull { it.containingFile } + processorConfig.sourceFiles)
+        val sourceFiles = (
+                handlerSymbols.mapNotNull { it.requiredContainingFile("@AsteriaConfigChangeHandler") } +
+                        processorConfig.sourceFiles
+                )
             .distinctBy { it.filePath }
             .toTypedArray()
         AsteriaConfigChangeCodeGenerator.buildFiles(processorConfig.codegen, handlers).forEach { generated ->
@@ -193,8 +261,15 @@ private class AsteriaConfigSymbolProcessor(
 
     private fun readCodegenConfig(resolver: Resolver): ConfigCodegenConfig {
         val catalogs = resolver.getSymbolsWithAnnotation(AsteriaConfigCatalog::class.qualifiedName!!)
-            .filterIsInstance<KSClassDeclaration>()
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-CONFIG-025",
+                    annotationName = "@AsteriaConfigCatalog",
+                )
+            }
             .toList()
+            .successfulValues()
         if (catalogs.size > 1) {
             diagnostics.error(
                 code = "ASTERIA-CONFIG-001",
@@ -267,7 +342,7 @@ private class AsteriaConfigSymbolProcessor(
                 receiverType = receiverType.toTypeName(),
             ),
             receiverType = receiverType,
-            sourceFiles = catalogs.mapNotNull { it.containingFile },
+            sourceFiles = catalogs.mapNotNull { it.requiredContainingFile("@AsteriaConfigChangeCatalog") },
         )
     }
 
@@ -356,7 +431,16 @@ private class AsteriaConfigSymbolProcessor(
     }
 
     private fun readTableModel(symbol: KSClassDeclaration): ConfigTableModel? {
-        val annotation = symbol.findAnnotation(AsteriaConfigTable::class.qualifiedName!!) ?: return null
+        val annotation = symbol.findAnnotation(AsteriaConfigTable::class.qualifiedName!!) ?: run {
+            diagnostics.error(
+                code = "ASTERIA-CONFIG-023",
+                message = "@AsteriaConfigTable annotation could not be resolved.",
+                symbol = symbol,
+                reason = "KSP returned the symbol for the annotation, but the processor could not read the annotation instance.",
+                fix = "Check that the config annotation class is available on the KSP classpath.",
+            )
+            return null
+        }
         val tableName = annotation.stringArg("name")
         val shape = AsteriaConfigTableShape.valueOf(annotation.enumArg("shape", AsteriaConfigTableShape.KEYED.name))
         val keyType = annotation.typeKSTypeArg("keyType")
@@ -509,14 +593,36 @@ private class AsteriaConfigSymbolProcessor(
 
     private fun configChangeCatalogs(resolver: Resolver): List<KSClassDeclaration> {
         return resolver.getSymbolsWithAnnotation(AsteriaConfigChangeCatalog::class.qualifiedName!!)
-            .filterIsInstance<KSClassDeclaration>()
+            .map { symbol ->
+                symbol.asAnnotatedClassOrInvalid(
+                    diagnostics = diagnostics,
+                    code = "ASTERIA-CONFIG-026",
+                    annotationName = "@AsteriaConfigChangeCatalog",
+                )
+            }
             .toList()
+            .successfulValues()
     }
 
     private fun KSClassDeclaration.findAnnotation(qualifiedName: String): KSAnnotation? {
         return annotations.firstOrNull { annotation ->
             annotation.annotationType.resolve().declaration.qualifiedName?.asString() == qualifiedName
         }
+    }
+
+    private fun KSClassDeclaration.requiredContainingFile(annotationName: String): KSFile? {
+        val file = containingFile
+        if (file != null) {
+            return file
+        }
+        diagnostics.error(
+            code = "ASTERIA-CONFIG-024",
+            message = "$annotationName declaration must come from a source file.",
+            symbol = this,
+            reason = "Generated output needs source-file dependencies so KSP incremental builds cannot silently miss annotated declarations.",
+            fix = "Move the annotation to a source declaration in this module.",
+        )
+        return null
     }
 
     private fun KSAnnotation.stringArg(name: String): String {
