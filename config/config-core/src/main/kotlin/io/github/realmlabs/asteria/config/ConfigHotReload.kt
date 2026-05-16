@@ -173,7 +173,14 @@ class ConfigHotReloadService(
             event.error,
         )
         for (listener in options.failureListeners) {
-            listener.failed(event)
+            try {
+                listener.failed(event)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                metrics.counter("asteria.config.hot_reload.failure_listener.failed.total").increment()
+                logger.error("config hot reload failure listener failed", error)
+            }
         }
     }
 }

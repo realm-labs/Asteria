@@ -378,6 +378,47 @@ class ConfigServiceTest {
     }
 
     @Test
+    fun `hot reload failure listener errors do not block later listeners`() = runBlocking {
+        val signals = MutableSharedFlow<ConfigReloadSignal>(replay = 1)
+        var attempts = 0
+        val service = ConfigService(
+            loader = {
+                attempts += 1
+                if (attempts > 1) {
+                    error("broken config")
+                }
+                snapshot("v1")
+            },
+        )
+        service.load()
+        val failed = CompletableDeferred<ConfigReloadFailed>()
+        val hotReload = ConfigHotReloadService(
+            service,
+            ConfigHotReloadOptions(
+                trigger = { signals },
+                debounce = Duration.ZERO,
+                retryDelay = Duration.ZERO,
+                failureListeners = listOf(
+                    ConfigReloadFailureListener { error("listener failed") },
+                    ConfigReloadFailureListener { failed.complete(it) },
+                ),
+            ),
+        )
+
+        try {
+            hotReload.start()
+            signals.emit(ConfigReloadSignal("test"))
+
+            val failure = withTimeout(1_000.milliseconds) { failed.await() }
+
+            assertEquals("test", failure.signal?.reason)
+            assertEquals("broken config", failure.error.message)
+        } finally {
+            hotReload.stop()
+        }
+    }
+
+    @Test
     fun `snapshot diff reports added removed and changed tables`() {
         val previous = DefaultConfigSnapshot(
             revision = ConfigRevision("v1"),
