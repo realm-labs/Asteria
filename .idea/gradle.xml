@@ -42,6 +42,8 @@
             <option value="$PROJECT_DIR$/config/config-publisher" />
             <option value="$PROJECT_DIR$/event-stream" />
             <option value="$PROJECT_DIR$/event-stream/event-stream-core" />
+            <option value="$PROJECT_DIR$/event-stream/event-stream-nats-jetstream" />
+            <option value="$PROJECT_DIR$/event-stream/event-stream-protobuf" />
             <option value="$PROJECT_DIR$/foundation" />
             <option value="$PROJECT_DIR$/foundation/foundation-actor" />
             <option value="$PROJECT_DIR$/foundation/foundation-contribution" />

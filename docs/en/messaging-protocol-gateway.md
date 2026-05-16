@@ -216,6 +216,10 @@ diagnostics.
 
 `event-stream-protobuf` provides protobuf codecs backed by `ProtobufMessageRegistry<String>`. `encodeDurableEvent`
 encodes a generated message into a `DurableEventEnvelope` and uses the registry key as the event type. `publishProto`
-and `subscribeProto` provide publisher and consumer helpers. The protobuf codec is a separate module;
-`event-stream-core`
+and `subscribeProto` provide publisher and consumer helpers. The protobuf codec is a separate module; `event-stream-core`
 does not depend on protobuf.
+
+`event-stream-nats-jetstream` is the NATS JetStream backend. It maps `EventStreamName` to a NATS subject and JetStream
+stream name and uses explicit acknowledgments. A message is acked after the handler returns successfully; failures apply
+`DurableEventFailurePolicy` as nak, term, or publication to a dead-letter stream. The module registers
+`NatsJetStreamEventBus` as `DurableEventBus`, `DurableEventPublisher`, and `DurableEventConsumer`.

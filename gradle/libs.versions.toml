@@ -3,6 +3,7 @@ coroutines = "1.11.0"
 curator = "5.9.0"
 jetcd = "0.8.6"
 nacos = "3.2.1-2026.04.03"
+nats = "2.25.1"
 netty = "4.2.12.Final"
 pekko = "1.2.1"
 pekko-management = "1.2.1"
@@ -33,6 +34,7 @@ curator-x-async = { module = "org.apache.curator:curator-x-async", version.ref =
 curator-test = { module = "org.apache.curator:curator-test", version.ref = "curator" }
 jetcd-core = { module = "io.etcd:jetcd-core", version.ref = "jetcd" }
 nacos-client = { module = "com.alibaba.nacos:nacos-client", version.ref = "nacos" }
+nats-client = { module = "io.nats:jnats", version.ref = "nats" }
 netty-all = { module = "io.netty:netty-all", version.ref = "netty" }
 pekko-actor = { module = "org.apache.pekko:pekko-actor_2.13", version.ref = "pekko" }
 pekko-testkit = { module = "org.apache.pekko:pekko-testkit_2.13", version.ref = "pekko" }

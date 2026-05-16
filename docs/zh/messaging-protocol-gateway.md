@@ -196,3 +196,8 @@ offset、attempt、receivedAt 和 redelivered 等投递元数据，业务 handle
 `event-stream-protobuf` 提供基于 `ProtobufMessageRegistry<String>` 的 protobuf codec。`encodeDurableEvent` 把
 generated message 编码成 `DurableEventEnvelope`，事件类型使用 registry key；`publishProto` 和 `subscribeProto`
 提供 publisher/consumer helper。protobuf codec 是独立模块，`event-stream-core` 不依赖 protobuf。
+
+`event-stream-nats-jetstream` 是 NATS JetStream backend。它把 `EventStreamName` 映射为 NATS subject 和
+JetStream stream name，使用 explicit ack；handler 成功返回后 ack，失败时根据 `DurableEventFailurePolicy`
+执行 nak、term 或发布到 dead-letter stream。模块会把 `NatsJetStreamEventBus` 注册为 `DurableEventBus`、
+`DurableEventPublisher` 和 `DurableEventConsumer`。

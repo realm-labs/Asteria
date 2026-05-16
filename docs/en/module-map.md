@@ -29,6 +29,7 @@
 | `gateway-pekko`                                                                           | Adapter from gateway routes to Pekko runtime                    | Gateway packets must be forwarded to actors                  |
 | `ephemeral-broadcast-core` / `ephemeral-broadcast-protobuf` / `ephemeral-broadcast-pekko` | Local or Pekko at-most-once broadcast plus protobuf payloads    | The service needs online, non-durable notifications          |
 | `event-stream-core` / `event-stream-protobuf`                                             | Broker-neutral event contracts and protobuf event codecs        | Events need persistence, replay, or cross-system integration |
+| `event-stream-nats-jetstream`                                                             | NATS JetStream durable event backend                           | JetStream carries internal business events                   |
 
 ## Protocol and RPC
 
