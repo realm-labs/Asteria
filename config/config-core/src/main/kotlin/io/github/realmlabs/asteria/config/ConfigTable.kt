@@ -166,16 +166,12 @@ open class OrderedMapConfigTable<K : Any, R : Any>(
  *
  * Positional access is part of the public API because this class also implements [List].
  */
-open class ListConfigTable<R : Any> private constructor(
+open class ListConfigTable<R : Any>(
     override val name: ConfigTableName,
     override val rowType: KClass<R>,
-    private val rows: List<R>,
+    rows: Iterable<R>,
 ) : AbstractList<R>(), ConfigTable<R> {
-    constructor(
-        name: ConfigTableName,
-        rowType: KClass<R>,
-        rows: Iterable<R>,
-    ) : this(name, rowType, rows.toList())
+    private val rows: List<R> = rows.toList()
 
     override val size: Int get() = rows.size
 
