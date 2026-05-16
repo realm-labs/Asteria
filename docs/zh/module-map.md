@@ -19,15 +19,16 @@
 
 ## 运行时和通信
 
-| 模块                                                          | 职责                                                  | 何时使用                           |
-|-------------------------------------------------------------|-----------------------------------------------------|--------------------------------|
-| `cluster-pekko`                                             | Pekko actor system、cluster sharding、singleton、实体预唤醒 | 服务器使用 Pekko 集群时                |
-| `cluster-pekko-management` / `cluster-pekko-kubernetes`     | Pekko Management 或 Kubernetes 启动发现                  | 不同部署环境的集群发现                    |
-| `cluster-config`                                            | 从配置中心读取节点拓扑                                         | 节点 host/port/role/seed 来自配置中心时 |
-| `gateway-core`                                              | 网关 transport/session/dispatch 抽象                    | 需要客户端连接层时                      |
-| `gateway-netty`                                             | WebSocket/binary Netty transport                    | 直接暴露 Netty 网关时                 |
-| `gateway-pekko`                                             | 网关到 Pekko runtime 的转发适配                             | 网关包要转发到 actor 时                |
-| `broadcast-core` / `broadcast-protobuf` / `broadcast-pekko` | 本地或 Pekko 广播、protobuf 广播消息                          | 需要节点内或集群内广播时                   |
+| 模块                                                                                        | 职责                                                  | 何时使用                           |
+|-------------------------------------------------------------------------------------------|-----------------------------------------------------|--------------------------------|
+| `cluster-pekko`                                                                           | Pekko actor system、cluster sharding、singleton、实体预唤醒 | 服务器使用 Pekko 集群时                |
+| `cluster-pekko-management` / `cluster-pekko-kubernetes`                                   | Pekko Management 或 Kubernetes 启动发现                  | 不同部署环境的集群发现                    |
+| `cluster-config`                                                                          | 从配置中心读取节点拓扑                                         | 节点 host/port/role/seed 来自配置中心时 |
+| `gateway-core`                                                                            | 网关 transport/session/dispatch 抽象                    | 需要客户端连接层时                      |
+| `gateway-netty`                                                                           | WebSocket/binary Netty transport                    | 直接暴露 Netty 网关时                 |
+| `gateway-pekko`                                                                           | 网关到 Pekko runtime 的转发适配                             | 网关包要转发到 actor 时                |
+| `ephemeral-broadcast-core` / `ephemeral-broadcast-protobuf` / `ephemeral-broadcast-pekko` | 本地或 Pekko at-most-once 广播、protobuf 广播消息             | 需要在线、非持久通知时                    |
+| `event-stream-core`                                                                       | broker-neutral 事件 envelope、publisher 和 consumer 契约  | 事件需要持久化、回放或跨系统集成时              |
 
 ## 协议和 RPC
 

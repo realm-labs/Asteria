@@ -19,15 +19,16 @@
 
 ## Runtime and Communication
 
-| Module                                                      | Responsibility                                                  | Use When                                                     |
-|-------------------------------------------------------------|-----------------------------------------------------------------|--------------------------------------------------------------|
-| `cluster-pekko`                                             | Pekko actor system, cluster sharding, singletons, entity wakeup | The server runs on a Pekko cluster                           |
-| `cluster-pekko-management` / `cluster-pekko-kubernetes`     | Pekko Management or Kubernetes discovery                        | Different deployment discovery strategies                    |
-| `cluster-config`                                            | Reads node topology from a config center                        | Node host, port, roles, or seeds come from the config center |
-| `gateway-core`                                              | Gateway transport, session, and dispatch abstractions           | The service accepts client connections                       |
-| `gateway-netty`                                             | WebSocket/binary Netty transport                                | The gateway is exposed through Netty                         |
-| `gateway-pekko`                                             | Adapter from gateway routes to Pekko runtime                    | Gateway packets must be forwarded to actors                  |
-| `broadcast-core` / `broadcast-protobuf` / `broadcast-pekko` | Local or Pekko broadcast plus protobuf payloads                 | The service needs node-local or cluster-wide notifications   |
+| Module                                                                                    | Responsibility                                                   | Use When                                                     |
+|-------------------------------------------------------------------------------------------|------------------------------------------------------------------|--------------------------------------------------------------|
+| `cluster-pekko`                                                                           | Pekko actor system, cluster sharding, singletons, entity wakeup  | The server runs on a Pekko cluster                           |
+| `cluster-pekko-management` / `cluster-pekko-kubernetes`                                   | Pekko Management or Kubernetes discovery                         | Different deployment discovery strategies                    |
+| `cluster-config`                                                                          | Reads node topology from a config center                         | Node host, port, roles, or seeds come from the config center |
+| `gateway-core`                                                                            | Gateway transport, session, and dispatch abstractions            | The service accepts client connections                       |
+| `gateway-netty`                                                                           | WebSocket/binary Netty transport                                 | The gateway is exposed through Netty                         |
+| `gateway-pekko`                                                                           | Adapter from gateway routes to Pekko runtime                     | Gateway packets must be forwarded to actors                  |
+| `ephemeral-broadcast-core` / `ephemeral-broadcast-protobuf` / `ephemeral-broadcast-pekko` | Local or Pekko at-most-once broadcast plus protobuf payloads     | The service needs online, non-durable notifications          |
+| `event-stream-core`                                                                       | Broker-neutral event envelope, publisher, and consumer contracts | Events need persistence, replay, or cross-system integration |
 
 ## Protocol and RPC
 

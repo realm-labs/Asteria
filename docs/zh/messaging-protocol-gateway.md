@@ -163,11 +163,17 @@ service actor 或本地 handler。`RouteTarget.GatewayLocal` 必须提供本地 
 可把原始 packet 包装成 actor 需要的消息类型。业务如果不用 Pekko，可以实现自己的 `GatewayForwarder`，保持 transport
 和 actor 拓扑解耦。
 
-## 广播
+## 临时广播
 
-`broadcast-core` 有进程内 `LocalBroadcastBus`，`broadcast-pekko` 扩展到 Pekko 集群，`broadcast-protobuf` 提供 protobuf
-广播消息模型。广播适合通知类消息，不适合替代有明确 ack 和重试语义的 RPC。
+`ephemeral-broadcast-core` 有进程内 `LocalEphemeralBroadcastBus`，`ephemeral-broadcast-pekko` 扩展到 Pekko
+集群，`ephemeral-broadcast-protobuf` 提供 protobuf 广播消息模型。临时广播适合在线通知、缓存失效和 reload
+signal，不适合承载持久业务事实。
 
-广播 topic 是不透明字符串，框架不做业务过滤。广播语义是 at-most-once；本地 subscriber 同步执行，慢 subscriber 会阻塞同一次
-publish 中同 topic 后续投递。Pekko 广播 payload 必须能被 ActorSystem 序列化；protobuf 广播建议用
-`ProtobufBroadcastPayload`，不要直接广播未配置 serializer 的 generated message。
+临时广播 topic 是不透明字符串，框架不做业务过滤。投递语义是 at-most-once，不提供持久化、回放或离线补偿。
+本地 subscriber 同步执行，慢 subscriber 会阻塞同一次 publish 中同 topic 后续投递。Pekko 临时广播 payload
+必须能被 ActorSystem 序列化；protobuf 广播建议用 `ProtobufEphemeralBroadcastPayload`，不要直接广播未配置
+serializer 的 generated message。
+
+支付、发奖、邮件、审计日志、跨系统集成等需要持久化或回放的业务事件应使用 event stream，而不是临时广播。
+`event-stream-core` 定义 broker-neutral envelope、publisher 和 consumer 契约；具体 backend 模块负责持久化、
+投递确认、重试、死信和回放语义。内置 in-memory 实现只用于本地开发和测试。

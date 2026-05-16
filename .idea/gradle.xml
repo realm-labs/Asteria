@@ -20,9 +20,9 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/broadcast" />
-            <option value="$PROJECT_DIR$/broadcast/broadcast-core" />
-            <option value="$PROJECT_DIR$/broadcast/broadcast-pekko" />
-            <option value="$PROJECT_DIR$/broadcast/broadcast-protobuf" />
+            <option value="$PROJECT_DIR$/broadcast/ephemeral-broadcast-core" />
+            <option value="$PROJECT_DIR$/broadcast/ephemeral-broadcast-pekko" />
+            <option value="$PROJECT_DIR$/broadcast/ephemeral-broadcast-protobuf" />
             <option value="$PROJECT_DIR$/build-logic" />
             <option value="$PROJECT_DIR$/cluster" />
             <option value="$PROJECT_DIR$/cluster/cluster-config" />
@@ -40,6 +40,8 @@
             <option value="$PROJECT_DIR$/config/config-ksp" />
             <option value="$PROJECT_DIR$/config/config-luban" />
             <option value="$PROJECT_DIR$/config/config-publisher" />
+            <option value="$PROJECT_DIR$/event-stream" />
+            <option value="$PROJECT_DIR$/event-stream/event-stream-core" />
             <option value="$PROJECT_DIR$/foundation" />
             <option value="$PROJECT_DIR$/foundation/foundation-actor" />
             <option value="$PROJECT_DIR$/foundation/foundation-contribution" />

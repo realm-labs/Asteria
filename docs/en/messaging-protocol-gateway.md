@@ -177,13 +177,19 @@ singletons, service actors, or local handlers. `RouteTarget.GatewayLocal` requir
 `PekkoGatewayMessageFactory` can wrap the raw packet into the actor message shape an application expects. Projects that
 do not use Pekko can implement their own `GatewayForwarder` while keeping transport and actor topology decoupled.
 
-## Broadcast
+## Ephemeral Broadcast
 
-`broadcast-core` provides process-local `LocalBroadcastBus`; `broadcast-pekko` extends broadcast to Pekko clusters;
-`broadcast-protobuf` adds protobuf payload helpers. Broadcast is suitable for notifications, not for RPC-like flows that
-require ack and retry.
+`ephemeral-broadcast-core` provides process-local `LocalEphemeralBroadcastBus`; `ephemeral-broadcast-pekko` extends
+ephemeral broadcast to Pekko clusters; `ephemeral-broadcast-protobuf` adds protobuf payload helpers. Ephemeral broadcast
+is suitable for online notifications, cache invalidation, and reload signals, not for durable business facts.
 
-Broadcast topics are opaque strings. Delivery is at-most-once. Local subscribers run synchronously, so a slow subscriber
-delays later subscribers in the same publish call. Pekko broadcast payloads must be serializable by the ActorSystem;
-protobuf broadcast should use `ProtobufBroadcastPayload` instead of directly broadcasting generated messages without
-serializers.
+Ephemeral broadcast topics are opaque strings. Delivery is at-most-once, with no persistence, replay, or offline
+compensation. Local subscribers run synchronously, so a slow subscriber delays later subscribers in the same publish
+call.
+Pekko ephemeral broadcast payloads must be serializable by the ActorSystem; protobuf broadcast should use
+`ProtobufEphemeralBroadcastPayload` instead of directly broadcasting generated messages without serializers.
+
+Durable business events such as payments, grants, mail, audit logs, and integration events belong to event streams,
+not ephemeral broadcast. `event-stream-core` defines broker-neutral envelope, publisher, and consumer contracts.
+Concrete backend modules provide persistence, acknowledgment, retry, dead-letter, and replay semantics. The in-memory
+implementation is intended for local development and tests.
