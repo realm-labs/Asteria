@@ -201,9 +201,8 @@ in-memory implementation is intended for local development and tests.
 `correlationId`, and `causationId` support idempotency, trace correlation, and causal tracing.
 
 `DurableEventPublisher.publish` returns a `DurableEventPublishResult` after the backend accepts the event. The result
-can
-include backend partition, offset, and publication time. It only means the event was accepted for publication; it does
-not mean any consumer has processed it.
+can include backend partition, offset, and publication time. It only means the event was accepted for publication; it
+does not mean any consumer has processed it.
 
 `DurableEventConsumer.subscribe` uses `DurableEventSubscribeOptions` to declare the consumer group, start position, and
 failure policy. Start position can be latest, earliest, a timestamp, or an offset. The default delivery contract is
@@ -215,10 +214,10 @@ partition, offset, attempt, receivedAt, and redelivered metadata so business han
 diagnostics.
 
 Use outbox when business state changes and event publication must be coordinated. `DurableEventOutboxStore` stores
-events awaiting publication and normally shares the same transaction boundary as the business state. `DurableEventOutboxPump`
-claims due records in batches, publishes them through `DurableEventPublisher`, marks successful records as published,
-and marks failures for retry after a delay. Core provides an in-memory outbox; production stores should be backed by the
-application's durable datastore.
+events awaiting publication and normally shares the same transaction boundary as the business state.
+`DurableEventOutboxPump` claims due records in batches, publishes them through `DurableEventPublisher`, marks successful
+records as published, and marks failures for retry after a delay. Core provides an in-memory outbox; production stores
+should be backed by the application's durable datastore.
 
 `event-stream-protobuf` provides protobuf codecs backed by `ProtobufMessageRegistry<String>`. `encodeDurableEvent`
 encodes a generated message into a `DurableEventEnvelope` and uses the registry key as the event type. `publishProto`
@@ -229,3 +228,40 @@ does not depend on protobuf.
 stream name and uses explicit acknowledgments. A message is acked after the handler returns successfully; failures apply
 `DurableEventFailurePolicy` as nak, term, or publication to a dead-letter stream. The module registers
 `NatsJetStreamEventBus` as `DurableEventBus`, `DurableEventPublisher`, and `DurableEventConsumer`.
+
+### Selection Boundary
+
+Use ephemeral broadcast for lossy online signals such as status changes, reload, and cache invalidation:
+
+```kotlin
+ephemeralBroadcast.publish(EphemeralBroadcastTopic("config:reload"), "tables")
+```
+
+Use event streams for business facts such as orders, rewards, mail, and audit logs:
+
+```kotlin
+publisher.publish(
+    DurableEventEnvelope(
+        stream = EventStreamName("orders"),
+        type = DurableEventType("order.created"),
+        payload = payloadBytes,
+        key = orderId,
+        correlationId = requestId,
+    ),
+)
+```
+
+When business state and event publication need the same transaction boundary, write the business state and outbox record
+first, then let the outbox pump publish:
+
+```kotlin
+outboxStore.append(
+    DurableEventEnvelope(
+        stream = EventStreamName("rewards"),
+        type = DurableEventType("reward.granted"),
+        payload = payloadBytes,
+        key = playerId,
+    ),
+)
+outboxPump.drainOnce()
+```

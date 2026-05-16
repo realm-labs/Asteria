@@ -206,3 +206,39 @@ generated message 编码成 `DurableEventEnvelope`，事件类型使用 registry
 JetStream stream name，使用 explicit ack；handler 成功返回后 ack，失败时根据 `DurableEventFailurePolicy`
 执行 nak、term 或发布到 dead-letter stream。模块会把 `NatsJetStreamEventBus` 注册为 `DurableEventBus`、
 `DurableEventPublisher` 和 `DurableEventConsumer`。
+
+### 选择边界
+
+在线状态变更、reload、缓存失效等可丢信号使用临时广播：
+
+```kotlin
+ephemeralBroadcast.publish(EphemeralBroadcastTopic("config:reload"), "tables")
+```
+
+订单、发奖、邮件、审计等业务事实使用 event stream：
+
+```kotlin
+publisher.publish(
+    DurableEventEnvelope(
+        stream = EventStreamName("orders"),
+        type = DurableEventType("order.created"),
+        payload = payloadBytes,
+        key = orderId,
+        correlationId = requestId,
+    ),
+)
+```
+
+当业务状态和事件发布需要同一事务边界时，先写业务状态和 outbox record，再由 outbox pump 发布：
+
+```kotlin
+outboxStore.append(
+    DurableEventEnvelope(
+        stream = EventStreamName("rewards"),
+        type = DurableEventType("reward.granted"),
+        payload = payloadBytes,
+        key = playerId,
+    ),
+)
+outboxPump.drainOnce()
+```
