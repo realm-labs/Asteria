@@ -1,5 +1,7 @@
 package io.github.realmlabs.asteria.script
 
+import java.util.concurrent.CancellationException
+
 /**
  * Execution boundary used by policy, routing, and idempotency checks.
  */
@@ -127,28 +129,47 @@ object NoopScriptAuditSink : ScriptAuditSink
 
 /**
  * Fan-out audit sink that records each event to all configured sinks in order.
+ *
+ * If one or more sinks fail, all sinks are still attempted and the first failure is rethrown with later failures attached
+ * as suppressed exceptions.
  */
 class CompositeScriptAuditSink(
     private val sinks: List<ScriptAuditSink>,
 ) : ScriptAuditSink {
     override suspend fun started(request: ScriptExecutionRequest) {
-        sinks.forEach { it.started(request) }
+        sinks.notifyEach { started(request) }
     }
 
     override suspend fun completed(request: ScriptExecutionRequest, result: ScriptExecutionResult) {
-        sinks.forEach { it.completed(request, result) }
+        sinks.notifyEach { completed(request, result) }
     }
 
     override suspend fun alreadyRunning(request: ScriptExecutionRequest) {
-        sinks.forEach { it.alreadyRunning(request) }
+        sinks.notifyEach { alreadyRunning(request) }
     }
 
     override suspend fun replayed(request: ScriptExecutionRequest, result: ScriptExecutionResult) {
-        sinks.forEach { it.replayed(request, result) }
+        sinks.notifyEach { replayed(request, result) }
     }
 
     override suspend fun rejected(request: ScriptExecutionRequest, reason: String) {
-        sinks.forEach { it.rejected(request, reason) }
+        sinks.notifyEach { rejected(request, reason) }
+    }
+
+    private suspend fun List<ScriptAuditSink>.notifyEach(block: suspend ScriptAuditSink.() -> Unit) {
+        var failure: Throwable? = null
+        for (sink in this) {
+            try {
+                sink.block()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                failure?.addSuppressed(error) ?: run {
+                    failure = error
+                }
+            }
+        }
+        failure?.let { throw it }
     }
 }
 

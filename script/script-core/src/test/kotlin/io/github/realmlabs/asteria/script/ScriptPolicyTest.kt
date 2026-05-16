@@ -2,6 +2,8 @@ package io.github.realmlabs.asteria.script
 
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 class ScriptPolicyTest {
@@ -47,6 +49,33 @@ class ScriptPolicyTest {
         )
 
         assertIs<ScriptAuthorization.Allowed>(authorization)
+    }
+
+    @Test
+    fun compositeAuditSinkNotifiesLaterSinksBeforeRethrowing(): Unit = runBlocking {
+        val events = mutableListOf<String>()
+        val sink = CompositeScriptAuditSink(
+            listOf(
+                object : ScriptAuditSink {
+                    override suspend fun started(request: ScriptExecutionRequest) {
+                        events += "first"
+                        error("audit failed")
+                    }
+                },
+                object : ScriptAuditSink {
+                    override suspend fun started(request: ScriptExecutionRequest) {
+                        events += "second"
+                    }
+                },
+            ),
+        )
+
+        val error = assertFailsWith<IllegalStateException> {
+            sink.started(request())
+        }
+
+        assertEquals("audit failed", error.message)
+        assertEquals(listOf("first", "second"), events)
     }
 
     private fun request(

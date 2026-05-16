@@ -76,13 +76,18 @@ class GatewaySessionTransportHandler(
 
     /**
      * Creates a session, registers it, and invokes `connected` lifecycle hooks.
+     *
+     * Lifecycle hook failures are logged and do not reject the accepted session.
      */
     override suspend fun connected(connection: GatewayConnection): GatewaySession {
         val tags = connection.metricTags()
         metrics.counter("asteria.gateway.connection.connected.total", tags).increment()
         val session = sessionFactory(connection)
         sessions.register(session)
-        lifecycle.connected(GatewaySessionContext(session))
+        val context = GatewaySessionContext(session)
+        runGatewayLifecycleHook(logger, context, "connected") {
+            lifecycle.connected(context)
+        }
         logger.info(
             "gateway connected session={} connection={} transport={} remote={}",
             session.id.value,
@@ -122,6 +127,7 @@ class GatewaySessionTransportHandler(
      * Unregisters the session and applies close lifecycle hooks.
      *
      * If the session was already absent from the registry, the callback becomes a no-op.
+     * Lifecycle hook failures are logged and do not prevent session cleanup.
      */
     override suspend fun disconnected(session: GatewaySession, cause: Throwable?) {
         val removed = sessions.unregister(session.id) ?: return
@@ -131,10 +137,16 @@ class GatewaySessionTransportHandler(
             GatewayCloseReason.error(cause)
         }
         val context = GatewaySessionContext(removed)
-        lifecycle.beforeClose(context, reason)
+        runGatewayLifecycleHook(logger, context, "beforeClose") {
+            lifecycle.beforeClose(context, reason)
+        }
         removed.markClosed(reason)
-        lifecycle.disconnected(context, reason)
-        lifecycle.afterClose(context, reason)
+        runGatewayLifecycleHook(logger, context, "disconnected") {
+            lifecycle.disconnected(context, reason)
+        }
+        runGatewayLifecycleHook(logger, context, "afterClose") {
+            lifecycle.afterClose(context, reason)
+        }
         metrics.counter(
             "asteria.gateway.connection.disconnected.total",
             removed.metricTags() + MetricTags.of("reason" to reason.code),

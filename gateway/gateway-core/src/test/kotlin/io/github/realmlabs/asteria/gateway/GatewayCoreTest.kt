@@ -213,6 +213,65 @@ class GatewayCoreTest {
     }
 
     @Test
+    fun `composite lifecycle continues after hook failure`(): Unit = runBlocking {
+        val events = mutableListOf<String>()
+        val session = GatewaySession(GatewaySessionId("s1"), RecordingConnection())
+        val context = GatewaySessionContext(session)
+        val lifecycle = CompositeGatewaySessionLifecycle(
+            listOf(
+                object : GatewaySessionLifecycle {
+                    override suspend fun beforeClose(context: GatewaySessionContext, reason: GatewayCloseReason) {
+                        events += "first"
+                        error("lifecycle failed")
+                    }
+                },
+                object : GatewaySessionLifecycle {
+                    override suspend fun beforeClose(context: GatewaySessionContext, reason: GatewayCloseReason) {
+                        events += "second"
+                    }
+                },
+            ),
+        )
+
+        lifecycle.beforeClose(context, GatewayCloseReason.Application)
+
+        assertEquals(listOf("first", "second"), events)
+    }
+
+    @Test
+    fun `transport disconnect closes session when lifecycle fails`(): Unit = runBlocking {
+        val registry = LocalGatewaySessionRegistry()
+        val events = mutableListOf<String>()
+        val lifecycle = object : GatewaySessionLifecycle {
+            override suspend fun beforeClose(context: GatewaySessionContext, reason: GatewayCloseReason) {
+                events += "beforeClose"
+                error("lifecycle failed")
+            }
+
+            override suspend fun disconnected(context: GatewaySessionContext, reason: GatewayCloseReason) {
+                events += "disconnected"
+            }
+
+            override suspend fun afterClose(context: GatewaySessionContext, reason: GatewayCloseReason) {
+                events += "afterClose"
+            }
+        }
+        val handler = GatewaySessionTransportHandler(
+            sessionFactory = { GatewaySession(GatewaySessionId("s1"), it) },
+            sessions = registry,
+            lifecycle = lifecycle,
+            receiver = GatewayFrameReceiver { _, _ -> },
+        )
+
+        val session = handler.connected(RecordingConnection())
+        handler.disconnected(session)
+
+        assertEquals(null, registry.get(GatewaySessionId("s1")))
+        assertEquals(GatewaySessionState.CLOSED, session.state)
+        assertEquals(listOf("beforeClose", "disconnected", "afterClose"), events)
+    }
+
+    @Test
     fun `idle detector reports idle sessions without applying policy`() {
         val registry = LocalGatewaySessionRegistry()
         val now = Instant.parse("2026-05-02T00:00:00Z")

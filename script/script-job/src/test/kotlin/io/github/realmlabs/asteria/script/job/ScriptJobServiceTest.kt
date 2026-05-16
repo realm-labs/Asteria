@@ -10,6 +10,34 @@ import kotlin.time.Duration.Companion.milliseconds
 
 class ScriptJobServiceTest {
     @Test
+    fun compositeAuditSinkRecordsLaterSinksBeforeRethrowing() = runBlocking {
+        val events = mutableListOf<String>()
+        val sink = CompositeScriptJobAuditSink(
+            listOf(
+                ScriptJobAuditSink {
+                    events += "first"
+                    error("audit failed")
+                },
+                ScriptJobAuditSink {
+                    events += "second"
+                },
+            ),
+        )
+
+        val error = assertFailsWith<IllegalStateException> {
+            sink.record(
+                ScriptJobAuditEvent(
+                    type = ScriptJobAuditEventType.JobSubmitted,
+                    jobId = ScriptJobId("job-1"),
+                ),
+            )
+        }
+
+        assertEquals("audit failed", error.message)
+        assertEquals(listOf("first", "second"), events)
+    }
+
+    @Test
     fun submitCreatesItemsAndStoresResults() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val repository = InMemoryScriptJobRepository()

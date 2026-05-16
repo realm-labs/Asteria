@@ -2,6 +2,7 @@ package io.github.realmlabs.asteria.gm.core
 
 import java.time.Instant
 import java.util.*
+import java.util.concurrent.CancellationException
 
 /**
  * Audit record for a GM operation.
@@ -38,11 +39,26 @@ object NoopGmAuditSink : GmAuditSink {
 
 /**
  * Fan-out sink for writing audit events to multiple destinations.
+ *
+ * If one or more sinks fail, all sinks are still attempted and the first failure is rethrown with later failures attached
+ * as suppressed exceptions.
  */
 class CompositeGmAuditSink(
     private val sinks: List<GmAuditSink>,
 ) : GmAuditSink {
     override suspend fun record(event: GmAuditEvent) {
-        sinks.forEach { it.record(event) }
+        var failure: Throwable? = null
+        for (sink in sinks) {
+            try {
+                sink.record(event)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                failure?.addSuppressed(error) ?: run {
+                    failure = error
+                }
+            }
+        }
+        failure?.let { throw it }
     }
 }

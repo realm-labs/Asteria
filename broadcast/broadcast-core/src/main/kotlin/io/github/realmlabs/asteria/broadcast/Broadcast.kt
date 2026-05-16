@@ -48,7 +48,9 @@ data class BroadcastEnvelope(
  * Receives envelopes that match subscribed topics.
  *
  * Implementations should avoid blocking. A slow subscriber delays local delivery
- * to later subscribers on the same publishing call.
+ * to later subscribers on the same publishing call. Subscriber failures are
+ * handled by the bus implementation; [LocalBroadcastBus] logs them and continues
+ * delivering to later local subscribers.
  */
 fun interface BroadcastSubscriber {
     fun onBroadcast(envelope: BroadcastEnvelope)

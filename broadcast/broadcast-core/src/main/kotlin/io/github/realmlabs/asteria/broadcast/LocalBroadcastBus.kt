@@ -3,6 +3,7 @@ package io.github.realmlabs.asteria.broadcast
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
 import org.slf4j.LoggerFactory
+import java.util.concurrent.CancellationException
 
 /**
  * In-memory [BroadcastBus] implementation for one JVM.
@@ -52,10 +53,11 @@ open class LocalBroadcastBus(
             try {
                 subscriber.onBroadcast(envelope)
                 metrics.counter("asteria.broadcast.local.delivery.total").increment()
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
                 metrics.counter("asteria.broadcast.local.delivery.failed.total").increment()
                 logger.error("local broadcast delivery failed", error)
-                throw error
             }
         }
         metrics.timer("asteria.broadcast.local.delivery.duration")

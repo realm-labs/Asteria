@@ -83,6 +83,20 @@ class LocalBroadcastBusTest {
     }
 
     @Test
+    fun `subscriber error does not block later subscribers`() {
+        val bus = LocalBroadcastBus()
+        val topic = BroadcastTopic("global")
+        val received = mutableListOf<String>()
+
+        bus.subscribe(topic) { error("subscriber failed") }
+        bus.subscribe(topic) { received += "second:${it.payload}" }
+
+        bus.publish(topic, "notice")
+
+        assertEquals(listOf("second:notice"), received)
+    }
+
+    @Test
     fun `local broadcast module registers broadcast bus service`() = runBlocking {
         val application = gameApplication {
             install(LocalBroadcastModule())

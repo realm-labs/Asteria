@@ -5,6 +5,7 @@ import io.github.realmlabs.asteria.script.ScriptExecutionResult
 import io.github.realmlabs.asteria.script.policyType
 import java.time.Instant
 import java.util.*
+import java.util.concurrent.CancellationException
 
 /**
  * Audit event taxonomy emitted by script job orchestration.
@@ -63,6 +64,9 @@ object NoopScriptJobAuditSink : ScriptJobAuditSink {
 
 /**
  * Sequentially forwards job audit events to multiple sinks.
+ *
+ * If one or more sinks fail, all sinks are still attempted and the first failure is rethrown with later failures attached
+ * as suppressed exceptions.
  */
 class CompositeScriptJobAuditSink(
     private val sinks: List<ScriptJobAuditSink>,
@@ -72,7 +76,19 @@ class CompositeScriptJobAuditSink(
     }
 
     override suspend fun record(event: ScriptJobAuditEvent) {
-        sinks.forEach { it.record(event) }
+        var failure: Throwable? = null
+        for (sink in sinks) {
+            try {
+                sink.record(event)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                failure?.addSuppressed(error) ?: run {
+                    failure = error
+                }
+            }
+        }
+        failure?.let { throw it }
     }
 }
 
