@@ -69,6 +69,7 @@ ask 消息，并根据成功率动态调整并发。
 install(PekkoEntityWakerModule {
     task<Long>("world") {
         kind("world")
+        targetIdCodec(PekkoEntityWakeTargetIdCodec.long())
 
         readiness = PekkoEntityWakeReadiness(
             role = RoleKey("world"),
@@ -121,9 +122,9 @@ source 要返回当前完整目标集，不是 delta。配置热更后 coordinat
 val waker = services.get<PekkoEntityWaker>()
 
 val status = waker.status("world")
-waker.wake("world", listOf("1001", "1002"))
-waker.cancel("world", listOf("1003"), reason = "bad world data")
-waker.reconcile("world")
+waker.wake("world", listOf(PekkoEntityWakeTargetId.StringId("1001"), PekkoEntityWakeTargetId.StringId("1002")))
+waker.cancel("world", listOf(PekkoEntityWakeTargetId.StringId("1003")))
+waker.reconcile()
 ```
 
 `status` 用于查看 pending、in-flight、completed、failed/exhausted 等状态。对一直失败的坏 actor，应先取消目标，修复数据后再手动
@@ -139,4 +140,5 @@ bug 导致的固定失败，需要 GM cancel，否则低频重试仍会持续产
 ## 序列化
 
 跨节点控制消息和状态响应不能依赖 Java 默认序列化。`cluster-pekko` 为 entity waker 控制消息提供显式
-serializer；新增对外控制消息时也需要同步 serializer 和 `reference.conf`。
+serializer。手动 `wake`/`cancel` 的目标 id 必须使用 `PekkoEntityWakeTargetId.StringId`、
+`PekkoEntityWakeTargetId.LongId` 或 `PekkoEntityWakeTargetId.IntId`，再由 task 的 `targetIdCodec` 转为业务 id。

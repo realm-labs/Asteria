@@ -75,6 +75,7 @@ concurrency by recent success rate.
 install(PekkoEntityWakerModule {
     task<Long>("world") {
         kind("world")
+        targetIdCodec(PekkoEntityWakeTargetIdCodec.long())
 
         readiness = PekkoEntityWakeReadiness(
             role = RoleKey("world"),
@@ -129,9 +130,9 @@ The entity waker exposes control APIs for GM and operations tools:
 val waker = services.get<PekkoEntityWaker>()
 
 val status = waker.status("world")
-waker.wake("world", listOf("1001", "1002"))
-waker.cancel("world", listOf("1003"), reason = "bad world data")
-waker.reconcile("world")
+waker.wake("world", listOf(PekkoEntityWakeTargetId.StringId("1001"), PekkoEntityWakeTargetId.StringId("1002")))
+waker.cancel("world", listOf(PekkoEntityWakeTargetId.StringId("1003")))
+waker.reconcile()
 ```
 
 `status` shows pending, in-flight, completed, failed, and exhausted targets. For bad actors that fail forever, cancel
@@ -149,5 +150,6 @@ id again.
 ## Serialization
 
 Cross-node control messages and status responses must not rely on Java default serialization. `cluster-pekko` includes
-an explicit serializer for entity-waker control messages; new public control messages must update the serializer and
-`reference.conf`.
+an explicit serializer for entity-waker control messages. Manual `wake`/`cancel` target ids must use
+`PekkoEntityWakeTargetId.StringId`, `PekkoEntityWakeTargetId.LongId`, or `PekkoEntityWakeTargetId.IntId`; each task's
+`targetIdCodec` converts them to business ids.

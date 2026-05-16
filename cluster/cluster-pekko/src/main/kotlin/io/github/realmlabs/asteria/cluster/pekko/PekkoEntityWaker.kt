@@ -46,6 +46,64 @@ fun interface PekkoEntityWakeMessageFactory<ID : Any> {
 }
 
 /**
+ * Converts between a task's target id type and the wire-safe id used by manual control messages.
+ */
+interface PekkoEntityWakeTargetIdCodec<ID : Any> {
+    fun encode(targetId: ID): PekkoEntityWakeTargetId
+
+    fun decode(targetId: PekkoEntityWakeTargetId): ID
+
+    companion object {
+        operator fun <ID : Any> invoke(
+            encode: (ID) -> PekkoEntityWakeTargetId,
+            decode: (PekkoEntityWakeTargetId) -> ID,
+        ): PekkoEntityWakeTargetIdCodec<ID> {
+            return object : PekkoEntityWakeTargetIdCodec<ID> {
+                override fun encode(targetId: ID): PekkoEntityWakeTargetId = encode.invoke(targetId)
+
+                override fun decode(targetId: PekkoEntityWakeTargetId): ID = decode.invoke(targetId)
+            }
+        }
+
+        fun string(): PekkoEntityWakeTargetIdCodec<String> {
+            return PekkoEntityWakeTargetIdCodec(
+                encode = { PekkoEntityWakeTargetId.StringId(it) },
+                decode = { targetId ->
+                    require(targetId is PekkoEntityWakeTargetId.StringId) {
+                        "wake target id requires StringId, got ${targetId::class.qualifiedName}"
+                    }
+                    targetId.value
+                },
+            )
+        }
+
+        fun long(): PekkoEntityWakeTargetIdCodec<Long> {
+            return PekkoEntityWakeTargetIdCodec(
+                encode = { PekkoEntityWakeTargetId.LongId(it) },
+                decode = { targetId ->
+                    require(targetId is PekkoEntityWakeTargetId.LongId) {
+                        "wake target id requires LongId, got ${targetId::class.qualifiedName}"
+                    }
+                    targetId.value
+                },
+            )
+        }
+
+        fun int(): PekkoEntityWakeTargetIdCodec<Int> {
+            return PekkoEntityWakeTargetIdCodec(
+                encode = { PekkoEntityWakeTargetId.IntId(it) },
+                decode = { targetId ->
+                    require(targetId is PekkoEntityWakeTargetId.IntId) {
+                        "wake target id requires IntId, got ${targetId::class.qualifiedName}"
+                    }
+                    targetId.value
+                },
+            )
+        }
+    }
+}
+
+/**
  * Classifies an ask response from a wake message.
  *
  * Throwing from this classifier is treated the same as a failed wake attempt.
@@ -127,14 +185,16 @@ data class PekkoEntityWakeReadiness(
 /**
  * One entity wake task.
  *
- * A task reads a complete desired target set from [targetSource], converts each id to a sharding message through
- * [messageFactory], and treats [resultClassifier] as the acknowledgement check. Target messages should be idempotent:
- * coordinator restarts, GM actions, or config reloads may cause the same id to be woken again.
+ * A task reads a complete desired target set from [targetSource], decodes manual control ids through
+ * [targetIdCodec], converts each id to a sharding message through [messageFactory], and treats [resultClassifier] as
+ * the acknowledgement check. Target messages should be idempotent: coordinator restarts, GM actions, or config reloads
+ * may cause the same id to be woken again.
  */
 data class PekkoEntityWakeTask<ID : Any>(
     val name: String,
     val entityKind: EntityKind,
     val targetSource: PekkoEntityWakeTargetSource<ID>,
+    val targetIdCodec: PekkoEntityWakeTargetIdCodec<ID>,
     val messageFactory: PekkoEntityWakeMessageFactory<ID>,
     val resultClassifier: PekkoEntityWakeResultClassifier = PekkoEntityWakeResultClassifier { true },
     val concurrency: PekkoEntityWakeConcurrency = PekkoEntityWakeConcurrency(),
@@ -150,6 +210,7 @@ data class PekkoEntityWakeTask<ID : Any>(
             name = name,
             entityKind = entityKind,
             targetSource = { context -> targetSource.targets(context).map { it as Any } },
+            targetIdDecoder = { targetId -> targetIdCodec.decode(targetId) },
             messageFactory = { targetId ->
                 @Suppress("UNCHECKED_CAST")
                 messageFactory.message(targetId as ID)
@@ -170,6 +231,7 @@ data class PekkoEntityWakeTask<ID : Any>(
  * ```kotlin
  * task<Long>("world") {
  *     kind("world")
+ *     targetIdCodec(PekkoEntityWakeTargetIdCodec.long())
  *     targets { services.get<GameWorldConfigService>().worldIds }
  *     message { worldId -> WorldWakeupReq(worldId) }
  *     success { response -> response is WorldWakeupResp && response.success }
@@ -186,6 +248,7 @@ class PekkoEntityWakeTaskBuilder<ID : Any> internal constructor(
     var retry: PekkoEntityWakeRetry = PekkoEntityWakeRetry()
     var readiness: PekkoEntityWakeReadiness = PekkoEntityWakeReadiness()
     private var targetSource: PekkoEntityWakeTargetSource<ID>? = null
+    private var targetIdCodec: PekkoEntityWakeTargetIdCodec<ID>? = null
     private var messageFactory: PekkoEntityWakeMessageFactory<ID>? = null
     private var resultClassifier: PekkoEntityWakeResultClassifier = PekkoEntityWakeResultClassifier { true }
 
@@ -211,6 +274,23 @@ class PekkoEntityWakeTaskBuilder<ID : Any> internal constructor(
      */
     fun targets(source: suspend PekkoEntityWakeContext.() -> Iterable<ID>) {
         targetSource = PekkoEntityWakeTargetSource { context -> context.source() }
+    }
+
+    /**
+     * Sets the codec used by manual wake and cancel control messages.
+     */
+    fun targetIdCodec(codec: PekkoEntityWakeTargetIdCodec<ID>) {
+        targetIdCodec = codec
+    }
+
+    /**
+     * Sets the codec used by manual wake and cancel control messages.
+     */
+    fun targetIdCodec(
+        encode: (ID) -> PekkoEntityWakeTargetId,
+        decode: (PekkoEntityWakeTargetId) -> ID,
+    ) {
+        targetIdCodec = PekkoEntityWakeTargetIdCodec(encode, decode)
     }
 
     /**
@@ -270,6 +350,7 @@ class PekkoEntityWakeTaskBuilder<ID : Any> internal constructor(
             name = name,
             entityKind = kind,
             targetSource = requireNotNull(targetSource) { "wake task $name requires targets" },
+            targetIdCodec = requireNotNull(targetIdCodec) { "wake task $name requires targetIdCodec" },
             messageFactory = requireNotNull(messageFactory) { "wake task $name requires message" },
             resultClassifier = resultClassifier,
             concurrency = concurrency,
@@ -436,12 +517,12 @@ class PekkoEntityWaker(
     /**
      * Manually queues targets and clears a previous [cancel] for them.
      *
-     * Control messages may cross nodes through the singleton proxy, so target ids must be `String`, `Long`, or `Int`
-     * and must use the same type as the task source ids.
+     * Control messages may cross nodes through the singleton proxy, so target ids use [PekkoEntityWakeTargetId].
+     * The task's [PekkoEntityWakeTargetIdCodec] decodes them before queuing.
      */
     fun wake(
         taskName: String,
-        targetIds: Iterable<Serializable>,
+        targetIds: Iterable<PekkoEntityWakeTargetId>,
     ) {
         proxy.tell(PekkoEntityWakerCommand.WakeTargets(taskName, targetIds.toList()), ActorRef.noSender())
     }
@@ -454,7 +535,7 @@ class PekkoEntityWaker(
      */
     fun cancel(
         taskName: String,
-        targetIds: Iterable<Serializable>,
+        targetIds: Iterable<PekkoEntityWakeTargetId>,
     ) {
         proxy.tell(PekkoEntityWakerCommand.CancelTargets(taskName, targetIds.toList()), ActorRef.noSender())
     }
@@ -477,6 +558,33 @@ class PekkoEntityWaker(
     }
 }
 
+/**
+ * Wire-safe target id for [PekkoEntityWaker.wake] and [PekkoEntityWaker.cancel].
+ */
+sealed interface PekkoEntityWakeTargetId : Serializable {
+    val value: Any
+
+    data class StringId(
+        override val value: String,
+    ) : PekkoEntityWakeTargetId
+
+    data class LongId(
+        override val value: Long,
+    ) : PekkoEntityWakeTargetId
+
+    data class IntId(
+        override val value: Int,
+    ) : PekkoEntityWakeTargetId
+
+    companion object {
+        fun string(value: String): PekkoEntityWakeTargetId = StringId(value)
+
+        fun long(value: Long): PekkoEntityWakeTargetId = LongId(value)
+
+        fun int(value: Int): PekkoEntityWakeTargetId = IntId(value)
+    }
+}
+
 sealed interface PekkoEntityWakerCommand : Serializable {
     data object Reconcile : PekkoEntityWakerCommand {
         private fun readResolve(): Any = Reconcile
@@ -484,23 +592,21 @@ sealed interface PekkoEntityWakerCommand : Serializable {
 
     data class WakeTargets(
         val taskName: String,
-        val targetIds: List<Serializable>,
+        val targetIds: List<PekkoEntityWakeTargetId>,
     ) : PekkoEntityWakerCommand {
         init {
             require(taskName.isNotBlank()) { "wake task name must not be blank" }
             require(targetIds.isNotEmpty()) { "wake target ids must not be empty" }
-            targetIds.requireSupportedWakeTargetIds()
         }
     }
 
     data class CancelTargets(
         val taskName: String,
-        val targetIds: List<Serializable>,
+        val targetIds: List<PekkoEntityWakeTargetId>,
     ) : PekkoEntityWakerCommand {
         init {
             require(taskName.isNotBlank()) { "wake task name must not be blank" }
             require(targetIds.isNotEmpty()) { "wake target ids must not be empty" }
-            targetIds.requireSupportedWakeTargetIds()
         }
     }
 
@@ -622,13 +728,4 @@ private fun ClusterSingletonManagerSettings.withOptionalRole(role: RoleKey?): Cl
 
 private fun ClusterSingletonProxySettings.withOptionalRole(role: RoleKey?): ClusterSingletonProxySettings {
     return role?.let { withRole(it.value) } ?: this
-}
-
-private fun Iterable<Serializable>.requireSupportedWakeTargetIds() {
-    forEach { targetId ->
-        require(targetId is String || targetId is Long || targetId is Int) {
-            "wake target id type ${targetId::class.qualifiedName} is not supported across Pekko serialization; " +
-                    "use String, Long, or Int"
-        }
-    }
 }

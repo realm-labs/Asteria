@@ -33,6 +33,7 @@ class PekkoEntityWakerModuleTest {
                     coordinatorRole("world")
                     task("world") {
                         kind("world")
+                        targetIdCodec(PekkoEntityWakeTargetIdCodec.long())
                         targets { listOf(101L, 102L, 103L) }
                         message { WakeEntity(it) }
                         success { it is WakeEntitySucceeded }
@@ -87,6 +88,7 @@ class PekkoEntityWakerModuleTest {
                     coordinatorRole("world")
                     task("world") {
                         kind("world")
+                        targetIdCodec(PekkoEntityWakeTargetIdCodec.long())
                         targets { listOf(201L) }
                         message { WakeEntity(it) }
                         success { it is WakeEntitySucceeded }
@@ -139,6 +141,7 @@ class PekkoEntityWakerModuleTest {
                     coordinatorRole("world")
                     task<Long>("world") {
                         kind("world")
+                        targetIdCodec(PekkoEntityWakeTargetIdCodec.long())
                         targets { sourceTargets.toList() }
                         message { WakeEntity(it) }
                         success { it is WakeEntitySucceeded }
@@ -193,10 +196,19 @@ class PekkoEntityWakerModuleTest {
                 PekkoEntityWakerModule {
                     coordinatorRole("world")
                     reconcileOnStart = false
-                    task("world") {
+                    task<WakeTargetId>("world") {
                         kind("world")
-                        targets { listOf(301L) }
-                        message { WakeEntity(it) }
+                        targetIdCodec(
+                            encode = { PekkoEntityWakeTargetId.LongId(it.value) },
+                            decode = { targetId ->
+                                require(targetId is PekkoEntityWakeTargetId.LongId) {
+                                    "wake target id requires LongId, got ${targetId::class.qualifiedName}"
+                                }
+                                WakeTargetId(targetId.value)
+                            },
+                        )
+                        targets { listOf(WakeTargetId(301L)) }
+                        message { WakeEntity(it.value) }
                         success { it is WakeEntitySucceeded }
                         retry {
                             timeout = 2.seconds
@@ -211,13 +223,13 @@ class PekkoEntityWakerModuleTest {
         app.launch()
         try {
             val waker = app.services.get<PekkoEntityWaker>()
-            waker.cancel("world", listOf(301L))
+            waker.cancel("world", listOf(PekkoEntityWakeTargetId.LongId(301L)))
             waker.reconcile()
             kotlinx.coroutines.delay(300.milliseconds)
 
             assertEquals(emptySet(), awakened)
 
-            waker.wake("world", listOf(301L))
+            waker.wake("world", listOf(PekkoEntityWakeTargetId.LongId(301L)))
             withTimeout(10.seconds) {
                 while (!awakened.contains(301L)) {
                     kotlinx.coroutines.delay(25.milliseconds)
@@ -233,6 +245,10 @@ class PekkoEntityWakerModuleTest {
 private data class WakeEntity(
     override val id: Long,
 ) : ShardMessage<Long>, Serializable
+
+private data class WakeTargetId(
+    val value: Long,
+)
 
 private data class WakeEntitySucceeded(
     val id: Long,

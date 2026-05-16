@@ -18,8 +18,24 @@ class PekkoEntityWakerSerializerTest {
 
         try {
             assertRoundTrip(serializer, PekkoEntityWakerCommand.Reconcile)
-            assertRoundTrip(serializer, PekkoEntityWakerCommand.WakeTargets("world", listOf("10001", 10002L, 10003)))
-            assertRoundTrip(serializer, PekkoEntityWakerCommand.CancelTargets("world", listOf("10004", 10005L)))
+            assertRoundTrip(
+                serializer,
+                PekkoEntityWakerCommand.WakeTargets(
+                    "world",
+                    listOf(
+                        PekkoEntityWakeTargetId.StringId("10001"),
+                        PekkoEntityWakeTargetId.LongId(10002L),
+                        PekkoEntityWakeTargetId.IntId(10003),
+                    ),
+                ),
+            )
+            assertRoundTrip(
+                serializer,
+                PekkoEntityWakerCommand.CancelTargets(
+                    "world",
+                    listOf(PekkoEntityWakeTargetId.StringId("10004"), PekkoEntityWakeTargetId.LongId(10005L)),
+                ),
+            )
             assertRoundTrip(serializer, PekkoEntityWakerCommand.GetStatus("world", targetLimit = 12))
             assertRoundTrip(serializer, status())
         } finally {

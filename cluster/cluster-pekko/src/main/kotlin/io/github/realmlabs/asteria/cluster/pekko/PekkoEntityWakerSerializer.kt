@@ -3,7 +3,10 @@ package io.github.realmlabs.asteria.cluster.pekko
 import io.github.realmlabs.asteria.cluster.pekko.PekkoEntityWakerSerializer.Companion.IDENTIFIER
 import org.apache.pekko.actor.ExtendedActorSystem
 import org.apache.pekko.serialization.SerializerWithStringManifest
-import java.io.*
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
 
 /**
  * Cluster wire serializer for entity waker control and status messages.
@@ -63,14 +66,14 @@ class PekkoEntityWakerSerializer(
 
     private fun DataOutputStream.writeTargetCommand(
         taskName: String,
-        targetIds: List<Serializable>,
+        targetIds: List<PekkoEntityWakeTargetId>,
     ) {
         writeString(taskName)
         writeInt(targetIds.size)
         targetIds.forEach { targetId -> writeTargetId(targetId) }
     }
 
-    private fun DataInputStream.readTargetCommand(): Pair<String, List<Serializable>> {
+    private fun DataInputStream.readTargetCommand(): Pair<String, List<PekkoEntityWakeTargetId>> {
         val taskName = readString()
         val targetIds = List(readInt()) { readTargetId() }
         return taskName to targetIds
@@ -177,32 +180,30 @@ class PekkoEntityWakerSerializer(
         return List(readInt()) { readString() }
     }
 
-    private fun DataOutputStream.writeTargetId(value: Serializable) {
+    private fun DataOutputStream.writeTargetId(value: PekkoEntityWakeTargetId) {
         when (value) {
-            is String -> {
+            is PekkoEntityWakeTargetId.StringId -> {
                 writeByte(TARGET_STRING)
-                writeString(value)
+                writeString(value.value)
             }
 
-            is Long -> {
+            is PekkoEntityWakeTargetId.LongId -> {
                 writeByte(TARGET_LONG)
-                writeLong(value)
+                writeLong(value.value)
             }
 
-            is Int -> {
+            is PekkoEntityWakeTargetId.IntId -> {
                 writeByte(TARGET_INT)
-                writeInt(value)
+                writeInt(value.value)
             }
-
-            else -> error("unsupported entity wake target id type ${value::class.qualifiedName}; use String, Long, or Int")
         }
     }
 
-    private fun DataInputStream.readTargetId(): Serializable {
+    private fun DataInputStream.readTargetId(): PekkoEntityWakeTargetId {
         return when (val tag = readByte().toInt()) {
-            TARGET_STRING -> readString()
-            TARGET_LONG -> readLong()
-            TARGET_INT -> readInt()
+            TARGET_STRING -> PekkoEntityWakeTargetId.StringId(readString())
+            TARGET_LONG -> PekkoEntityWakeTargetId.LongId(readLong())
+            TARGET_INT -> PekkoEntityWakeTargetId.IntId(readInt())
             else -> error("unsupported entity wake target id type tag $tag")
         }
     }

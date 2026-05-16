@@ -21,6 +21,7 @@ internal data class ErasedPekkoEntityWakeTask(
     val name: String,
     val entityKind: EntityKind,
     val targetSource: suspend (PekkoEntityWakeContext) -> Iterable<Any>,
+    val targetIdDecoder: (PekkoEntityWakeTargetId) -> Any,
     val messageFactory: (Any) -> Any,
     val resultClassifier: PekkoEntityWakeResultClassifier,
     val concurrency: PekkoEntityWakeConcurrency,
@@ -75,11 +76,12 @@ internal class PekkoEntityWakerCoordinatorActor(
 
     private fun handleManualWake(command: PekkoEntityWakerCommand.WakeTargets) {
         val state = states[command.taskName] ?: return
-        state.manualWake(command.targetIds)
+        val targetIds = state.decodeTargetIds(command.targetIds) ?: return
+        state.manualWake(targetIds)
         logger.info(
             "entity wake task {} manually queued targets={} pending={}",
             command.taskName,
-            command.targetIds.size,
+            targetIds.size,
             state.pendingSize,
         )
         pump(state)
@@ -87,13 +89,23 @@ internal class PekkoEntityWakerCoordinatorActor(
 
     private fun handleCancel(command: PekkoEntityWakerCommand.CancelTargets) {
         val state = states[command.taskName] ?: return
-        state.cancel(command.targetIds)
+        val targetIds = state.decodeTargetIds(command.targetIds) ?: return
+        state.cancel(targetIds)
         logger.info(
             "entity wake task {} cancelled targets={} suppressed={}",
             command.taskName,
-            command.targetIds.size,
+            targetIds.size,
             state.cancelled.size,
         )
+    }
+
+    private fun WakeTaskState.decodeTargetIds(targetIds: List<PekkoEntityWakeTargetId>): List<Any>? {
+        return runCatching { targetIds.map(task.targetIdDecoder) }
+            .onFailure { error ->
+                val message = error.message ?: error::class.qualifiedName
+                logger.warning("entity wake task ${task.name} rejected manual target ids: $message")
+            }
+            .getOrNull()
     }
 
     private fun reconcile(state: WakeTaskState) {
