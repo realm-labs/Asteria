@@ -114,8 +114,8 @@ results.
 Prefer immutable data classes for custom types. Use `@AsteriaMongoValue` only when the project already provides a codec
 or explicitly guarantees serialization safety.
 
-Raw `querySnapshots()` results from Mongo tables are detached snapshots; mutating them is not tracked. To mutate data,
-query keys and re-enter tracked `use`, or use the helper-provided mapper entry point.
+Use `queryKeys(filter)` to select candidate rows and re-enter tracked `use` before mutating data. For native read-only
+queries or reporting projections, use the underlying `MongoDatabase` or `MongoCollection` directly.
 
 Nullable collection properties are not a good fit for generated tracked wrappers. Use empty collections, nullable
 wrapper objects, or explicit `@AsteriaMongoValue` types to model missing state.

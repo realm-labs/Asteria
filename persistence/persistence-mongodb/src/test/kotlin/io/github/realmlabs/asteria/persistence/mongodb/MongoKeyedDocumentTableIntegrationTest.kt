@@ -65,13 +65,21 @@ class MongoKeyedDocumentTableIntegrationTest {
     }
 
     @Test
-    fun `query APIs return keys and mapped snapshots`() = withDatabase { database ->
+    fun `queryKeys returns matching keys`() = withDatabase { database ->
         insertDocument(database, 1, "alice")
         insertDocument(database, 2, "bob")
         val table = table(database)
 
         assertEquals(listOf(2), table.queryKeys(eq("name", "bob")))
-        assertEquals(listOf("alice", "bob"), table.querySnapshots { row -> row.name }.sorted())
+    }
+
+    @Test
+    fun `queryKeys decodes projected ids through Mongo codec`() = withDatabase { database ->
+        database.getCollection<Document>(LONG_KEYED_COLLECTION)
+            .insertOne(Document(mapOf("_id" to 1, "name" to "alice")))
+        val table = LongKeyedTrackedTable(database, RowCachePolicy(1.minutes), Clock.System)
+
+        assertEquals(listOf(1L), table.queryKeys(eq("name", "alice")))
     }
 
     @Test
@@ -136,6 +144,7 @@ private class KeyedTrackedTable(
 ) : MongoKeyedDocumentTable<Int, KeyedDocumentEntity, KeyedTrackedDocument>(
     collectionName = KEYED_COLLECTION,
     entityType = KeyedDocumentEntity::class,
+    idType = Int::class,
     cachePolicy = cachePolicy,
     database = database,
     clock = clock,
@@ -167,6 +176,45 @@ data class KeyedDocumentEntity(
     val name: String,
 ) : Entity<Int>
 
+private class LongKeyedTrackedTable(
+    database: MongoDatabase,
+    cachePolicy: RowCachePolicy,
+    clock: Clock,
+) : MongoKeyedDocumentTable<Long, LongKeyedDocumentEntity, LongKeyedTrackedDocument>(
+    collectionName = LONG_KEYED_COLLECTION,
+    entityType = LongKeyedDocumentEntity::class,
+    idType = Long::class,
+    cachePolicy = cachePolicy,
+    database = database,
+    clock = clock,
+) {
+    override fun wrap(context: MongoTrackContext, entity: LongKeyedDocumentEntity): LongKeyedTrackedDocument {
+        return LongKeyedTrackedDocument(context, entity)
+    }
+}
+
+private class LongKeyedTrackedDocument(
+    ctx: MongoTrackContext,
+    entity: LongKeyedDocumentEntity,
+) : MongoTrackedDocument<Long, LongKeyedDocumentEntity> {
+    override val id: Long = entity.id
+    var name: String by ctx.trackedValue("name", entity.name)
+
+    override fun toEntity(): LongKeyedDocumentEntity {
+        return LongKeyedDocumentEntity(id, name)
+    }
+
+    override fun toMongoValue(): Any {
+        return Document(mapOf("_id" to id, "name" to name))
+    }
+}
+
+data class LongKeyedDocumentEntity(
+    @param:BsonId
+    override val id: Long,
+    val name: String,
+) : Entity<Long>
+
 private class MutableKeyedClock : Clock {
     private var instant: Instant = Instant.fromEpochMilliseconds(0)
 
@@ -178,3 +226,4 @@ private class MutableKeyedClock : Clock {
 }
 
 private const val KEYED_COLLECTION = "keyed_documents"
+private const val LONG_KEYED_COLLECTION = "long_keyed_documents"

@@ -102,8 +102,8 @@ nullable collection 等容易产生不确定 dirty 结果的模型。
 遇到自定义类型时，优先把它建模成不可变 data class；只有项目已经提供 codec 或确认可安全序列化时才使用
 `@AsteriaMongoValue`。
 
-Mongo table 的 raw `querySnapshots()` 返回 detached snapshot，修改它不会被追踪。需要修改数据时，用 key 查询后重新进入
-tracked `use`，或者使用 helper 提供的 mapper 入口。
+需要修改数据时，用 `queryKeys(filter)` 查询候选 key，再重新进入 tracked `use`。原生只读查询或报表 projection
+应该直接使用底层 `MongoDatabase` 或 `MongoCollection`。
 
 nullable collection 属性不适合作为生成 tracked wrapper 的字段。用空集合、nullable wrapper object，或明确的
 `@AsteriaMongoValue` 类型表达缺省状态。

@@ -147,14 +147,13 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
     }
 
     @Test
-    fun `query APIs return keys and mapped snapshots`() = withDatabase { database ->
+    fun `queryKeys returns matching keys`() = withDatabase { database ->
         val table = table(database)
         table.createLoaded(TestEntity(1, "alice", linkedMapOf("a" to 1)))
         table.createLoaded(TestEntity(2, "bob", linkedMapOf("b" to 2)))
         assertTrue(table.flush())
 
         assertEquals(listOf(2), table.queryKeys(eq("name", "bob")))
-        assertEquals(listOf("alice", "bob"), table.querySnapshots { row -> row.name }.sorted())
     }
 
     @Test
@@ -231,6 +230,7 @@ class MongoScannedKeyedDocumentTableIntegrationTest {
         return MongoScannedKeyedDocumentTable(
             collectionName = COLLECTION,
             entityType = TestEntity::class,
+            idType = Int::class,
             scanPlan = SCAN_PLAN,
             cachePolicy = cachePolicy,
             database = database,

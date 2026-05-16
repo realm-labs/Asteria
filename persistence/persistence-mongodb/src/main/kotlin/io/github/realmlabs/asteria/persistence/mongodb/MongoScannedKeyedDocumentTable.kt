@@ -1,6 +1,7 @@
 package io.github.realmlabs.asteria.persistence.mongodb
 
 import com.mongodb.client.model.Filters.eq
+import com.mongodb.client.model.Projections.include
 import com.mongodb.kotlin.client.coroutine.MongoCollection
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.observability.MetricTags
@@ -8,7 +9,9 @@ import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
 import io.github.realmlabs.asteria.persistence.*
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
+import org.bson.BsonDocument
 import org.bson.Document
 import org.bson.conversions.Bson
 import java.util.*
@@ -25,6 +28,7 @@ import kotlin.time.TimeSource
 open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
     private val collectionName: String,
     entityType: KClass<E>,
+    idType: KClass<ID>,
     private val scanPlan: EntityScanPlan<E>,
     cachePolicy: RowCachePolicy,
     private val database: MongoDatabase,
@@ -33,6 +37,9 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
     clock: Clock = Clock.System,
 ) : KeyedDataTable<ID, E>(cachePolicy, clock), MongoScannedTable {
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
+    private val idProjectionCollection: MongoCollection<BsonDocument> =
+        database.getCollection(collectionName, BsonDocument::class.java)
+    private val idDecoder = MongoProjectedIdDecoder(collectionName, idType, database.codecRegistry)
     private val runtimes: MutableMap<E, MongoScannedDocumentRuntime<ID, E>> = IdentityHashMap()
     private val rowsById: MutableMap<ID, E> = linkedMapOf()
     private val dirtyRows: DirtyRowQueue<ID> = DirtyRowQueue()
@@ -261,31 +268,10 @@ open class MongoScannedKeyedDocumentTable<ID : Any, E : Entity<ID>>(
      * Use the returned keys with [use] before mutating rows so the scan runtime observes the current loaded row.
      */
     suspend fun queryKeys(filter: Bson = Document()): List<ID> {
-        return collection.find(filter).toList().map { it.id }
-    }
-
-    /**
-     * Queries database-side snapshots and immediately projects them to caller-owned values.
-     *
-     * Returned raw Mongo entities are not attached to this table's row cache. Mutating them will not be scanned or
-     * flushed. Prefer this overload for read-only filtering, reporting, or candidate selection.
-     */
-    suspend fun <T> querySnapshots(filter: Bson = Document(), mapper: (E) -> T): List<T> {
-        return collection.find(filter).toList().map(mapper)
-    }
-
-    /**
-     * Queries detached raw Mongo entities.
-     *
-     * Mutating returned objects is not scanned. Use [queryKeys] and re-enter [use], or use the mapper overload to return
-     * immutable caller-owned snapshots.
-     */
-    @Deprecated(
-        message = "Raw query snapshots are detached and mutable. Use querySnapshots(filter, mapper) or queryKeys + use.",
-        replaceWith = ReplaceWith("querySnapshots(filter) { it }"),
-    )
-    suspend fun querySnapshots(filter: Bson = Document()): List<E> {
-        return collection.find(filter).toList()
+        return idProjectionCollection.find(filter)
+            .projection(include("_id"))
+            .map(idDecoder::decode)
+            .toList()
     }
 
     protected fun runtime(row: E): MongoScannedDocumentRuntime<ID, E> {

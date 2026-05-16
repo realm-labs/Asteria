@@ -1243,9 +1243,10 @@ object AsteriaMongoEntityCodeGenerator {
                     .addCode(
                         CodeBlock.builder()
                             .add(
-                                "return object : %T(COLLECTION, %T::class, cachePolicy, database, journal, clock) {\n",
+                                "return object : %T(COLLECTION, %T::class, %T::class, cachePolicy, database, journal, clock) {\n",
                                 tableType,
-                                model.entityType
+                                model.entityType,
+                                model.id.type.copy(nullable = false),
                             )
                             .indent()
                             .add(
@@ -1282,9 +1283,10 @@ object AsteriaMongoEntityCodeGenerator {
                     )
                     .returns(scannedTableType)
                     .addStatement(
-                        "return %T(COLLECTION, %T::class, SCAN_PLAN, cachePolicy, database, journal, metrics, clock)",
+                        "return %T(COLLECTION, %T::class, %T::class, SCAN_PLAN, cachePolicy, database, journal, metrics, clock)",
                         scannedTableType,
                         model.entityType,
+                        model.id.type.copy(nullable = false),
                     )
                     .build(),
             )
