@@ -175,5 +175,24 @@ signal，不适合承载持久业务事实。
 serializer 的 generated message。
 
 支付、发奖、邮件、审计日志、跨系统集成等需要持久化或回放的业务事件应使用 event stream，而不是临时广播。
-`event-stream-core` 定义 broker-neutral envelope、publisher 和 consumer 契约；具体 backend 模块负责持久化、
-投递确认、重试、死信和回放语义。内置 in-memory 实现只用于本地开发和测试。
+`event-stream-core` 定义 broker-neutral envelope、publisher、consumer 和 delivery 契约；具体 backend 模块负责
+持久化、投递确认、重试、死信和回放语义。内置 in-memory 实现只用于本地开发和测试。
+
+## Event Stream
+
+`DurableEventEnvelope` 表示已经发生且需要持久化的业务事实。`payload` 是原始字节，`type` 是稳定事件类型，
+`key` 用于 backend 分区或有序投递，`eventId`、`correlationId` 和 `causationId` 用于幂等、链路关联和因果追踪。
+
+`DurableEventPublisher.publish` 在 backend 接受事件后返回 `DurableEventPublishResult`。返回值可以携带 backend
+分区、offset 和发布时间；它只表示事件已被接受发布，不表示任何 consumer 已完成处理。
+
+`DurableEventConsumer.subscribe` 通过 `DurableEventSubscribeOptions` 声明消费组、起始位置和失败策略。起始位置可以是
+latest、earliest、指定 timestamp 或指定 offset。默认投递契约是 at-least-once；handler 成功返回后 backend 才应确认
+或提交进度。handler 抛错时，backend 根据 `DurableEventFailurePolicy` 和自身配置执行重试、死信或停止消费。
+
+handler 接收 `DurableEventDelivery`，而不是裸 event envelope。delivery 包含 event、consumer group、partition、
+offset、attempt、receivedAt 和 redelivered 等投递元数据，业务 handler 应使用这些信息实现幂等和诊断。
+
+`event-stream-protobuf` 提供基于 `ProtobufMessageRegistry<String>` 的 protobuf codec。`encodeDurableEvent` 把
+generated message 编码成 `DurableEventEnvelope`，事件类型使用 registry key；`publishProto` 和 `subscribeProto`
+提供 publisher/consumer helper。protobuf codec 是独立模块，`event-stream-core` 不依赖 protobuf。

@@ -1,7 +1,7 @@
 package io.github.realmlabs.asteria.event_stream
 
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 
 /**
  * Durable event stream name.
@@ -12,6 +12,18 @@ import java.util.UUID
 value class EventStreamName(val value: String) {
     init {
         require(value.isNotBlank()) { "event stream name must not be blank" }
+    }
+
+    override fun toString(): String = value
+}
+
+/**
+ * Consumer group or subscription name used by a backend to coordinate durable consumption.
+ */
+@JvmInline
+value class EventStreamConsumerGroup(val value: String) {
+    init {
+        require(value.isNotBlank()) { "event stream consumer group must not be blank" }
     }
 
     override fun toString(): String = value
@@ -114,34 +126,159 @@ class DurableEventEnvelope(
 }
 
 /**
- * Publishes business events to a durable event stream.
+ * Position used when a consumer starts reading a stream.
  */
-interface DurableEventPublisher {
-    suspend fun publish(event: DurableEventEnvelope)
+sealed class DurableEventStartPosition {
+    data object Latest : DurableEventStartPosition()
 
-    suspend fun publishAll(events: Iterable<DurableEventEnvelope>) {
-        for (event in events) {
-            publish(event)
+    data object Earliest : DurableEventStartPosition()
+
+    data class FromTimestamp(val timestamp: Instant) : DurableEventStartPosition()
+
+    data class FromOffset(val offset: String) : DurableEventStartPosition() {
+        init {
+            require(offset.isNotBlank()) { "event stream offset must not be blank" }
         }
     }
 }
 
 /**
- * Handles one durable event delivered by a runtime-specific consumer.
+ * Handler failure mode requested by a subscription.
+ */
+enum class DurableEventFailureMode {
+    Retry,
+    DeadLetter,
+    Stop,
+}
+
+/**
+ * Failure policy requested by a consumer subscription.
+ *
+ * Backends map this policy to their own retry, dead-letter, and stop controls.
+ */
+data class DurableEventFailurePolicy(
+    val mode: DurableEventFailureMode = DurableEventFailureMode.Retry,
+    val maxAttempts: Int? = null,
+    val deadLetterStream: EventStreamName? = null,
+) {
+    init {
+        require(maxAttempts == null || maxAttempts > 0) { "durable event maxAttempts must be positive" }
+        require(mode == DurableEventFailureMode.DeadLetter || deadLetterStream == null) {
+            "deadLetterStream requires DeadLetter failure mode"
+        }
+    }
+
+    companion object {
+        fun retry(maxAttempts: Int? = null): DurableEventFailurePolicy {
+            return DurableEventFailurePolicy(mode = DurableEventFailureMode.Retry, maxAttempts = maxAttempts)
+        }
+
+        fun deadLetter(
+            stream: EventStreamName? = null,
+            maxAttempts: Int? = null,
+        ): DurableEventFailurePolicy {
+            return DurableEventFailurePolicy(
+                mode = DurableEventFailureMode.DeadLetter,
+                maxAttempts = maxAttempts,
+                deadLetterStream = stream,
+            )
+        }
+
+        fun stop(): DurableEventFailurePolicy {
+            return DurableEventFailurePolicy(mode = DurableEventFailureMode.Stop)
+        }
+    }
+}
+
+/**
+ * Consumer options for durable event subscriptions.
+ */
+data class DurableEventSubscribeOptions(
+    val consumerGroup: EventStreamConsumerGroup? = null,
+    val startPosition: DurableEventStartPosition = DurableEventStartPosition.Latest,
+    val failurePolicy: DurableEventFailurePolicy = DurableEventFailurePolicy.retry(),
+)
+
+/**
+ * Result returned after a backend accepts an event for durable publication.
+ */
+data class DurableEventPublishResult(
+    val stream: EventStreamName,
+    val eventId: String,
+    val partition: String? = null,
+    val offset: String? = null,
+    val publishedAt: Instant = Instant.now(),
+    val metadata: Map<String, String> = emptyMap(),
+) {
+    init {
+        require(eventId.isNotBlank()) { "durable event publish result eventId must not be blank" }
+        require(partition == null || partition.isNotBlank()) { "durable event partition must not be blank" }
+        require(offset == null || offset.isNotBlank()) { "durable event offset must not be blank" }
+        metadata.forEach { (name, _) ->
+            require(name.isNotBlank()) { "durable event publish result metadata name must not be blank" }
+        }
+    }
+}
+
+/**
+ * Event and backend metadata delivered to a handler.
+ */
+data class DurableEventDelivery(
+    val event: DurableEventEnvelope,
+    val consumerGroup: EventStreamConsumerGroup? = null,
+    val partition: String? = null,
+    val offset: String? = null,
+    val attempt: Int = 1,
+    val receivedAt: Instant = Instant.now(),
+    val redelivered: Boolean = false,
+    val metadata: Map<String, String> = emptyMap(),
+) {
+    init {
+        require(partition == null || partition.isNotBlank()) { "durable event partition must not be blank" }
+        require(offset == null || offset.isNotBlank()) { "durable event offset must not be blank" }
+        require(attempt > 0) { "durable event attempt must be positive" }
+        metadata.forEach { (name, _) ->
+            require(name.isNotBlank()) { "durable event delivery metadata name must not be blank" }
+        }
+    }
+}
+
+/**
+ * Publishes business events to a durable event stream.
+ *
+ * A successful call means the backend accepted the event for durable publication. It does not imply that any consumer
+ * has processed the event.
+ */
+interface DurableEventPublisher {
+    suspend fun publish(event: DurableEventEnvelope): DurableEventPublishResult
+
+    suspend fun publishAll(events: Iterable<DurableEventEnvelope>): List<DurableEventPublishResult> {
+        val results = mutableListOf<DurableEventPublishResult>()
+        for (event in events) {
+            results += publish(event)
+        }
+        return results
+    }
+}
+
+/**
+ * Handles one durable event delivery.
  */
 fun interface DurableEventHandler {
-    suspend fun handle(event: DurableEventEnvelope)
+    suspend fun handle(delivery: DurableEventDelivery)
 }
 
 /**
  * Consumes durable events from a stream.
  *
- * Implementations should acknowledge or commit an event only after [handler] returns successfully. If the handler
- * throws, retry, dead-letter, or stop behavior is defined by the backend configuration.
+ * The default delivery contract is at-least-once. Implementations should acknowledge or commit an event only after
+ * [handler] returns successfully. If the handler throws, retry, dead-letter, or stop behavior is defined by the
+ * subscription options and backend configuration.
  */
 interface DurableEventConsumer {
     suspend fun subscribe(
         stream: EventStreamName,
+        options: DurableEventSubscribeOptions = DurableEventSubscribeOptions(),
         handler: DurableEventHandler,
     ): DurableEventSubscription
 }

@@ -190,6 +190,32 @@ Pekko ephemeral broadcast payloads must be serializable by the ActorSystem; prot
 `ProtobufEphemeralBroadcastPayload` instead of directly broadcasting generated messages without serializers.
 
 Durable business events such as payments, grants, mail, audit logs, and integration events belong to event streams,
-not ephemeral broadcast. `event-stream-core` defines broker-neutral envelope, publisher, and consumer contracts.
-Concrete backend modules provide persistence, acknowledgment, retry, dead-letter, and replay semantics. The in-memory
-implementation is intended for local development and tests.
+not ephemeral broadcast. `event-stream-core` defines broker-neutral envelope, publisher, consumer, and delivery
+contracts. Concrete backend modules provide persistence, acknowledgment, retry, dead-letter, and replay semantics. The
+in-memory implementation is intended for local development and tests.
+
+## Event Stream
+
+`DurableEventEnvelope` represents a business fact that has happened and must be persisted. `payload` is raw bytes,
+`type` is the stable event type, `key` is available for backend partitioning or ordered delivery, and `eventId`,
+`correlationId`, and `causationId` support idempotency, trace correlation, and causal tracing.
+
+`DurableEventPublisher.publish` returns a `DurableEventPublishResult` after the backend accepts the event. The result
+can
+include backend partition, offset, and publication time. It only means the event was accepted for publication; it does
+not mean any consumer has processed it.
+
+`DurableEventConsumer.subscribe` uses `DurableEventSubscribeOptions` to declare the consumer group, start position, and
+failure policy. Start position can be latest, earliest, a timestamp, or an offset. The default delivery contract is
+at-least-once; a backend should acknowledge or commit progress only after the handler returns successfully. If the
+handler throws, the backend applies `DurableEventFailurePolicy` and its own retry, dead-letter, or stop configuration.
+
+Handlers receive `DurableEventDelivery`, not a bare event envelope. The delivery carries event, consumer group,
+partition, offset, attempt, receivedAt, and redelivered metadata so business handlers can implement idempotency and
+diagnostics.
+
+`event-stream-protobuf` provides protobuf codecs backed by `ProtobufMessageRegistry<String>`. `encodeDurableEvent`
+encodes a generated message into a `DurableEventEnvelope` and uses the registry key as the event type. `publishProto`
+and `subscribeProto` provide publisher and consumer helpers. The protobuf codec is a separate module;
+`event-stream-core`
+does not depend on protobuf.

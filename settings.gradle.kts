@@ -41,6 +41,7 @@ include(
     "broadcast:ephemeral-broadcast-protobuf",
     "broadcast:ephemeral-broadcast-pekko",
     "event-stream:event-stream-core",
+    "event-stream:event-stream-protobuf",
     "script:script-core",
     "script:script-control-api",
     "script:script-job",

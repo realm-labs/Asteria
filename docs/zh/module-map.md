@@ -28,7 +28,7 @@
 | `gateway-netty`                                                                           | WebSocket/binary Netty transport                    | 直接暴露 Netty 网关时                 |
 | `gateway-pekko`                                                                           | 网关到 Pekko runtime 的转发适配                             | 网关包要转发到 actor 时                |
 | `ephemeral-broadcast-core` / `ephemeral-broadcast-protobuf` / `ephemeral-broadcast-pekko` | 本地或 Pekko at-most-once 广播、protobuf 广播消息             | 需要在线、非持久通知时                    |
-| `event-stream-core`                                                                       | broker-neutral 事件 envelope、publisher 和 consumer 契约  | 事件需要持久化、回放或跨系统集成时              |
+| `event-stream-core` / `event-stream-protobuf`                                             | broker-neutral 事件契约、protobuf 事件 codec               | 事件需要持久化、回放或跨系统集成时              |
 
 ## 协议和 RPC
 
