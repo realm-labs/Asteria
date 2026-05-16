@@ -214,6 +214,12 @@ Handlers receive `DurableEventDelivery`, not a bare event envelope. The delivery
 partition, offset, attempt, receivedAt, and redelivered metadata so business handlers can implement idempotency and
 diagnostics.
 
+Use outbox when business state changes and event publication must be coordinated. `DurableEventOutboxStore` stores
+events awaiting publication and normally shares the same transaction boundary as the business state. `DurableEventOutboxPump`
+claims due records in batches, publishes them through `DurableEventPublisher`, marks successful records as published,
+and marks failures for retry after a delay. Core provides an in-memory outbox; production stores should be backed by the
+application's durable datastore.
+
 `event-stream-protobuf` provides protobuf codecs backed by `ProtobufMessageRegistry<String>`. `encodeDurableEvent`
 encodes a generated message into a `DurableEventEnvelope` and uses the registry key as the event type. `publishProto`
 and `subscribeProto` provide publisher and consumer helpers. The protobuf codec is a separate module; `event-stream-core`

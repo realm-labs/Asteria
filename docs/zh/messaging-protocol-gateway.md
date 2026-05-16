@@ -193,6 +193,11 @@ latest、earliest、指定 timestamp 或指定 offset。默认投递契约是 at
 handler 接收 `DurableEventDelivery`，而不是裸 event envelope。delivery 包含 event、consumer group、partition、
 offset、attempt、receivedAt 和 redelivered 等投递元数据，业务 handler 应使用这些信息实现幂等和诊断。
 
+如果业务状态写入和事件发布必须一起保证，使用 outbox。`DurableEventOutboxStore` 保存待发布事件，通常与业务状态位于
+同一个事务边界；`DurableEventOutboxPump` 批量 claim 到期记录，通过 `DurableEventPublisher` 发布，成功后标记
+published，失败后按 retry delay 标记 failed。core 提供 in-memory outbox，生产环境应把 store 接到业务使用的持久化
+存储。
+
 `event-stream-protobuf` 提供基于 `ProtobufMessageRegistry<String>` 的 protobuf codec。`encodeDurableEvent` 把
 generated message 编码成 `DurableEventEnvelope`，事件类型使用 registry key；`publishProto` 和 `subscribeProto`
 提供 publisher/consumer helper。protobuf codec 是独立模块，`event-stream-core` 不依赖 protobuf。
