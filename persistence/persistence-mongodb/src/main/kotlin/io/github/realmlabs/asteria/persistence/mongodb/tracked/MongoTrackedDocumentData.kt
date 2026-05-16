@@ -1,56 +1,59 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.tracked
 
 import com.mongodb.client.model.Filters.eq
 import com.mongodb.kotlin.client.coroutine.MongoCollection
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
-import io.github.realmlabs.asteria.observability.Metrics
-import io.github.realmlabs.asteria.observability.NoopMetrics
 import io.github.realmlabs.asteria.persistence.AutoFlushMemData
 import io.github.realmlabs.asteria.persistence.DataScope
 import io.github.realmlabs.asteria.persistence.Entity
-import io.github.realmlabs.asteria.persistence.EntityScanPlan
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoPendingWriteQueue
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoWriteJournal
+import io.github.realmlabs.asteria.persistence.mongodb.write.NoopMongoWriteJournal
 import kotlinx.coroutines.flow.firstOrNull
 import kotlin.reflect.KClass
 
 /**
- * Base class for one Mongo document tracked by periodic entity scans.
+ * Base class for one tracked Mongo document owned by an actor.
  *
- * Business code mutates the loaded raw entity. Before flushing, the runtime scans the entity, compares it with the last
- * snapshot, and writes only changed fields.
- *
- * The runtime snapshot means "already converted into pending writes", not "already persisted". Failed flushes keep the
- * pending write queued for retry.
+ * The loaded value is a generated or hand-written wrapper. Mutating wrapper properties enqueues Mongo patches
+ * immediately; [flush] only drains the runtime queue.
  */
-abstract class MongoScannedDocumentData<ID : Any, E : Entity<ID>>(
+abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrackedDocument<ID, E>>(
     protected val scope: DataScope<ID>,
     protected val collectionName: String,
     private val entityType: KClass<E>,
-    scanPlan: EntityScanPlan<E>,
+    private val wrapper: (MongoTrackContext, E) -> T,
     database: MongoDatabase = scope.services.get(),
     journal: MongoWriteJournal = NoopMongoWriteJournal,
-    metrics: Metrics = NoopMetrics,
 ) : AutoFlushMemData {
-    protected val runtime: MongoScannedDocumentRuntime<ID, E> =
-        MongoScannedDocumentRuntime(collectionName, scope.entityId, scanPlan, database, journal, metrics)
+    protected val runtime: MongoTrackedDocumentRuntime =
+        MongoTrackedDocumentRuntime(collectionName, scope.entityId, database, journal)
+    protected val queue: MongoPendingWriteQueue
+        get() = runtime.queue
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)
 
-    var value: E? = null
+    var value: T? = null
         private set
 
     override suspend fun load() {
         val loaded = collection.find(eq("_id", scope.entityId)).firstOrNull()
-        value = loaded?.also(runtime::attachLoaded)
+        value = loaded?.let(::attachLoaded)
     }
 
-    protected fun createScanned(entity: E): E {
-        require(value == null) { "scanned document $collectionName:${entity.id} is already loaded" }
-        runtime.enqueueCreated(entity)
-        value = entity
-        return entity
+    protected fun attachLoaded(entity: E): T {
+        return wrapper(runtime.context(), entity)
     }
 
-    protected fun requireValue(): E {
-        return requireNotNull(value) { "scanned document $collectionName:${scope.entityId} is not loaded" }
+    protected fun createTracked(entity: E): T {
+        require(value == null) { "tracked document $collectionName:${entity.id} is already loaded" }
+        val tracked = attachLoaded(entity)
+        runtime.enqueueCreated(tracked)
+        value = tracked
+        return tracked
+    }
+
+    protected fun requireValue(): T {
+        return requireNotNull(value) { "tracked document $collectionName:${scope.entityId} is not loaded" }
     }
 
     /**
@@ -73,7 +76,6 @@ abstract class MongoScannedDocumentData<ID : Any, E : Entity<ID>>(
     }
 
     override suspend fun flush(): Boolean {
-        value?.let { entity -> runtime.scan(entity) }
         return runtime.flushSafely()
     }
 

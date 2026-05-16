@@ -1,4 +1,4 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.write
 
 import kotlin.time.Duration
 

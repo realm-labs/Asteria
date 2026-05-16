@@ -163,7 +163,7 @@ class AsteriaMongoEntityCodeGeneratorTest {
             "mongoScannedField(\"quests\") { entity: PlayerEntity -> entity.quests.map { value -> trackedQuestStateMongoValue(value) } }"
         )
         assertContains(code, "fun table(")
-        assertContains(code, "MongoKeyedDocumentTable<Long, PlayerEntity, TrackedPlayerEntity>")
+        assertContains(code, "MongoTrackedKeyedDocumentTable<Long, PlayerEntity, TrackedPlayerEntity>")
         assertContains(code, "fun scannedTable(")
         assertContains(code, "MongoScannedKeyedDocumentTable<Long, PlayerEntity>")
         assertContains(code, "metrics: Metrics = NoopMetrics")

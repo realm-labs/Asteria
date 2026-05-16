@@ -1,4 +1,9 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.write
+
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoDocumentKey
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoPath
+import io.github.realmlabs.asteria.persistence.mongodb.common.mongoValueOf
+import io.github.realmlabs.asteria.persistence.mongodb.common.path
 
 /**
  * One dirty operation against a Mongo document.

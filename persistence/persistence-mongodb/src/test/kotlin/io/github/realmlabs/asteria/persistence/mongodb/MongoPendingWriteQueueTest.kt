@@ -1,5 +1,11 @@
 package io.github.realmlabs.asteria.persistence.mongodb
 
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoDocumentKey
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoPath
+import io.github.realmlabs.asteria.persistence.mongodb.common.path
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoChangeOp
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoPendingWrite
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoPendingWriteQueue
 import org.bson.Document
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -1,6 +1,8 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.scanned
 
 import io.github.realmlabs.asteria.persistence.AutoFlushMemData
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoScanFlushPolicy
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoScanFlushProgress
 
 /**
  * Common contract for scanned Mongo row tables.

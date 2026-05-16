@@ -1,10 +1,16 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.tracked
 
 import com.mongodb.client.model.Filters.eq
 import com.mongodb.client.model.Projections.include
 import com.mongodb.kotlin.client.coroutine.MongoCollection
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.persistence.*
+import io.github.realmlabs.asteria.persistence.mongodb.common.DirtyRowQueue
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoProjectedIdDecoder
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoFlushBudget
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoFlushProgress
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoWriteJournal
+import io.github.realmlabs.asteria.persistence.mongodb.write.NoopMongoWriteJournal
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
@@ -22,7 +28,7 @@ import kotlin.time.TimeSource
  * Each loaded row owns a [MongoTrackedDocumentRuntime], so [flushRow] writes only the dirty Mongo patch accumulated by
  * the row wrapper. Database-side queries return row keys; callers should re-enter [use] before mutating a candidate row.
  */
-abstract class MongoKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTrackedDocument<ID, E>>(
+abstract class MongoTrackedKeyedDocumentTable<ID : Any, E : Entity<ID>, T : MongoTrackedDocument<ID, E>>(
     private val collectionName: String,
     entityType: KClass<E>,
     idType: KClass<ID>,

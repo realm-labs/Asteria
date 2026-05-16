@@ -5,6 +5,11 @@ import com.mongodb.kotlin.client.coroutine.MongoClient
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.persistence.Entity
 import io.github.realmlabs.asteria.persistence.RowCachePolicy
+import io.github.realmlabs.asteria.persistence.mongodb.tracked.MongoTrackContext
+import io.github.realmlabs.asteria.persistence.mongodb.tracked.MongoTrackedDocument
+import io.github.realmlabs.asteria.persistence.mongodb.tracked.MongoTrackedKeyedDocumentTable
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoFlushBudget
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoFlushProgress
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import org.bson.Document
@@ -20,7 +25,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-class MongoKeyedDocumentTableIntegrationTest {
+class MongoTrackedKeyedDocumentTableIntegrationTest {
     @Test
     fun `flushSome respects budget and keeps remaining dirty rows queued`() = withDatabase { database ->
         insertDocument(database, 1, "alice")
@@ -141,7 +146,7 @@ private class KeyedTrackedTable(
     database: MongoDatabase,
     cachePolicy: RowCachePolicy,
     clock: Clock,
-) : MongoKeyedDocumentTable<Int, KeyedDocumentEntity, KeyedTrackedDocument>(
+) : MongoTrackedKeyedDocumentTable<Int, KeyedDocumentEntity, KeyedTrackedDocument>(
     collectionName = KEYED_COLLECTION,
     entityType = KeyedDocumentEntity::class,
     idType = Int::class,
@@ -180,7 +185,7 @@ private class LongKeyedTrackedTable(
     database: MongoDatabase,
     cachePolicy: RowCachePolicy,
     clock: Clock,
-) : MongoKeyedDocumentTable<Long, LongKeyedDocumentEntity, LongKeyedTrackedDocument>(
+) : MongoTrackedKeyedDocumentTable<Long, LongKeyedDocumentEntity, LongKeyedTrackedDocument>(
     collectionName = LONG_KEYED_COLLECTION,
     entityType = LongKeyedDocumentEntity::class,
     idType = Long::class,

@@ -1,4 +1,4 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.common
 
 import org.bson.BsonDocument
 import org.bson.BsonDocumentReader

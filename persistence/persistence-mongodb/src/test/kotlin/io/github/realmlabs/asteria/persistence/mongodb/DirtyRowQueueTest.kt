@@ -1,5 +1,6 @@
 package io.github.realmlabs.asteria.persistence.mongodb
 
+import io.github.realmlabs.asteria.persistence.mongodb.common.DirtyRowQueue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

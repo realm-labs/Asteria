@@ -1,6 +1,6 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.common
 
-import io.github.realmlabs.asteria.persistence.mongodb.MongoPath.Companion.encodePathPart
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoPath.Companion.encodePathPart
 
 
 /**

@@ -76,7 +76,7 @@ tracked wrapper 模式适合业务在 actor 内直接修改并实时记录 dirty
 `profile.name` 的旧更新。
 
 `flush()` 会 drain 当前 pending writes，转换成 Mongo bulk write。成功后确认对应 journal sequence；失败时把未成功的 write
-重新放回 queue，下一次 flush 继续尝试。`MongoKeyedDocumentTable` 还维护 dirty row 队列，`flushSome(budget)`
+重新放回 queue，下一次 flush 继续尝试。`MongoTrackedKeyedDocumentTable` 还维护 dirty row 队列，`flushSome(budget)`
 按行数和耗时预算刷一部分脏行，适合 actor timer 分摊写入压力。
 
 创建新文档时，runtime 会把除 `_id` 之外的字段作为 `$set` 入队；删除文档时用 whole-document delete，并压掉同一 document

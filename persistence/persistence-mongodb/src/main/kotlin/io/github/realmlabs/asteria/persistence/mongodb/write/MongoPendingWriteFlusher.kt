@@ -1,4 +1,4 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.write
 
 import com.mongodb.bulk.BulkWriteResult
 import com.mongodb.client.model.*
@@ -8,6 +8,7 @@ import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
+import io.github.realmlabs.asteria.persistence.mongodb.common.mongoValueOf
 import org.bson.Document
 import org.bson.conversions.Bson
 import org.slf4j.LoggerFactory

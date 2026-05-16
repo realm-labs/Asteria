@@ -2,6 +2,9 @@ package io.github.realmlabs.asteria.persistence.mongodb
 
 import io.github.realmlabs.asteria.persistence.FieldChange
 import io.github.realmlabs.asteria.persistence.FieldPath
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoPath
+import io.github.realmlabs.asteria.persistence.mongodb.scanned.*
+import io.github.realmlabs.asteria.persistence.mongodb.write.MongoChangeOp
 import org.bson.Document
 import kotlin.test.Test
 import kotlin.test.assertEquals

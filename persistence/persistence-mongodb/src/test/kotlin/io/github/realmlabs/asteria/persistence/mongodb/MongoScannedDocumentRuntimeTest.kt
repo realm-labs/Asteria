@@ -2,6 +2,11 @@ package io.github.realmlabs.asteria.persistence.mongodb
 
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.persistence.Entity
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoDocumentKey
+import io.github.realmlabs.asteria.persistence.mongodb.scanned.MongoScannedDocumentRuntime
+import io.github.realmlabs.asteria.persistence.mongodb.scanned.mongoScanPlan
+import io.github.realmlabs.asteria.persistence.mongodb.scanned.mongoScannedField
+import io.github.realmlabs.asteria.persistence.mongodb.scanned.mongoScannedMapField
 import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals

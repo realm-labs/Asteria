@@ -82,7 +82,8 @@ operations into a `MongoPendingWriteQueue`; the queue merges repeated operations
 hierarchical paths, for example an update to `profile` makes an older `profile.name` update unnecessary.
 
 `flush()` drains current pending writes and turns them into Mongo bulk writes. On success, covered journal sequences are
-acknowledged; on failure, unflushed writes are requeued for the next flush. `MongoKeyedDocumentTable` also keeps a dirty
+acknowledged; on failure, unflushed writes are requeued for the next flush. `MongoTrackedKeyedDocumentTable` also keeps
+a dirty
 row queue, and `flushSome(budget)` flushes part of it by row-count and duration budget so actor timers can spread write
 load over time.
 

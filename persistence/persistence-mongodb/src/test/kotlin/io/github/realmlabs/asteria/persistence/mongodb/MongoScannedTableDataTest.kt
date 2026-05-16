@@ -1,5 +1,8 @@
 package io.github.realmlabs.asteria.persistence.mongodb
 
+import io.github.realmlabs.asteria.persistence.mongodb.scanned.MongoScannedTable
+import io.github.realmlabs.asteria.persistence.mongodb.scanned.MongoScannedTableData
+import io.github.realmlabs.asteria.persistence.mongodb.write.*
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals

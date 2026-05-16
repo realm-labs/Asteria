@@ -99,10 +99,10 @@ object AsteriaMongoEntityCodeGenerator {
         model: MongoEntityCodegenModel,
         wrapperType: ClassName,
     ): TypeSpec {
-        val contextType = ClassName(MONGODB_PACKAGE, "MongoTrackContext")
-        val documentType = ClassName(MONGODB_PACKAGE, "MongoTrackedDocument")
+        val contextType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackContext")
+        val documentType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackedDocument")
             .parameterizedBy(model.id.type.copy(nullable = false), model.entityType)
-        val supportType = ClassName(MONGODB_PACKAGE, "MongoTrackedObjectSupport")
+        val supportType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackedObjectSupport")
 
         return TypeSpec.classBuilder(wrapperType)
             .addKdoc(
@@ -282,10 +282,10 @@ object AsteriaMongoEntityCodeGenerator {
     }
 
     private fun buildNestedWrapper(model: MongoNestedObjectModel): TypeSpec {
-        val pathType = ClassName(MONGODB_PACKAGE, "MongoPath")
-        val queueType = ClassName(MONGODB_PACKAGE, "MongoChangeQueue")
-        val dirtyTargetType = ClassName(MONGODB_PACKAGE, "MongoDirtyTarget").copy(nullable = true)
-        val supportType = ClassName(MONGODB_PACKAGE, "MongoTrackedObjectSupport")
+        val pathType = ClassName(MONGODB_COMMON_PACKAGE, "MongoPath")
+        val queueType = ClassName(MONGODB_WRITE_PACKAGE, "MongoChangeQueue")
+        val dirtyTargetType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoDirtyTarget").copy(nullable = true)
+        val supportType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackedObjectSupport")
 
         return TypeSpec.classBuilder(model.wrapperType)
             .addKdoc("Generated dirty-tracking wrapper for nested value [%T].\n", model.sourceType)
@@ -543,10 +543,10 @@ object AsteriaMongoEntityCodeGenerator {
         val keyType = sourceMapType.typeArguments.getOrNull(0) ?: return null
         val valueType = sourceMapType.typeArguments.getOrNull(1) ?: return null
         val trackedValueType = trackedMapType.typeArguments.getOrNull(1) ?: return null
-        val pathType = ClassName(MONGODB_PACKAGE, "MongoPath")
-        val queueType = ClassName(MONGODB_PACKAGE, "MongoChangeQueue")
-        val dirtyTargetType = ClassName(MONGODB_PACKAGE, "MongoDirtyTarget").copy(nullable = true)
-        val supportType = ClassName(MONGODB_PACKAGE, "MongoTrackedObjectSupport")
+        val pathType = ClassName(MONGODB_COMMON_PACKAGE, "MongoPath")
+        val queueType = ClassName(MONGODB_WRITE_PACKAGE, "MongoChangeQueue")
+        val dirtyTargetType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoDirtyTarget").copy(nullable = true)
+        val supportType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackedObjectSupport")
         val trackedMap = MUTABLE_MAP.parameterizedBy(keyType, trackedValueType)
         val sourceMap = MAP.parameterizedBy(keyType, valueType)
         val sourceMutableMap = MUTABLE_MAP.parameterizedBy(keyType, valueType)
@@ -754,11 +754,11 @@ object AsteriaMongoEntityCodeGenerator {
         val trackedListType = property.trackedType as? ParameterizedTypeName ?: return null
         val valueType = sourceListType.typeArguments.getOrNull(0) ?: return null
         val trackedValueType = trackedListType.typeArguments.getOrNull(0) ?: return null
-        val pathType = ClassName(MONGODB_PACKAGE, "MongoPath")
-        val queueType = ClassName(MONGODB_PACKAGE, "MongoChangeQueue")
-        val dirtyTargetType = ClassName(MONGODB_PACKAGE, "MongoDirtyTarget").copy(nullable = true)
-        val dirtyTarget = ClassName(MONGODB_PACKAGE, "MongoDirtyTarget")
-        val supportType = ClassName(MONGODB_PACKAGE, "MongoTrackedObjectSupport")
+        val pathType = ClassName(MONGODB_COMMON_PACKAGE, "MongoPath")
+        val queueType = ClassName(MONGODB_WRITE_PACKAGE, "MongoChangeQueue")
+        val dirtyTargetType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoDirtyTarget").copy(nullable = true)
+        val dirtyTarget = ClassName(MONGODB_TRACKED_PACKAGE, "MongoDirtyTarget")
+        val supportType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackedObjectSupport")
         val trackedList = MUTABLE_LIST.parameterizedBy(trackedValueType)
         val sourceList = LIST.parameterizedBy(valueType)
         val sourceMutableList = MUTABLE_LIST.parameterizedBy(valueType)
@@ -1191,18 +1191,18 @@ object AsteriaMongoEntityCodeGenerator {
         helperType: ClassName,
         wrapperType: ClassName,
     ): TypeSpec {
-        val contextType = ClassName(MONGODB_PACKAGE, "MongoTrackContext")
+        val contextType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackContext")
         val databaseType = ClassName("com.mongodb.kotlin.client.coroutine", "MongoDatabase")
         val cachePolicyType = ClassName(PERSISTENCE_PACKAGE, "RowCachePolicy")
         val scanPlanType = ClassName(PERSISTENCE_PACKAGE, "EntityScanPlan").parameterizedBy(model.entityType)
-        val journalType = ClassName(MONGODB_PACKAGE, "MongoWriteJournal")
-        val noopJournal = ClassName(MONGODB_PACKAGE, "NoopMongoWriteJournal")
+        val journalType = ClassName(MONGODB_WRITE_PACKAGE, "MongoWriteJournal")
+        val noopJournal = ClassName(MONGODB_WRITE_PACKAGE, "NoopMongoWriteJournal")
         val metricsType = ClassName("io.github.realmlabs.asteria.observability", "Metrics")
         val noopMetrics = ClassName("io.github.realmlabs.asteria.observability", "NoopMetrics")
         val clockType = ClassName("kotlin.time", "Clock")
-        val tableType = ClassName(MONGODB_PACKAGE, "MongoKeyedDocumentTable")
+        val tableType = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackedKeyedDocumentTable")
             .parameterizedBy(model.id.type.copy(nullable = false), model.entityType, wrapperType)
-        val scannedTableType = ClassName(MONGODB_PACKAGE, "MongoScannedKeyedDocumentTable")
+        val scannedTableType = ClassName(MONGODB_SCANNED_PACKAGE, "MongoScannedKeyedDocumentTable")
             .parameterizedBy(model.id.type.copy(nullable = false), model.entityType)
 
         return TypeSpec.objectBuilder(helperType)
@@ -1480,16 +1480,20 @@ object AsteriaMongoEntityCodeGenerator {
     private val MUTABLE_MAP = ClassName("kotlin.collections", "MutableMap")
     private val MUTABLE_LIST = ClassName("kotlin.collections", "MutableList")
     private val MUTABLE_SET = ClassName("kotlin.collections", "MutableSet")
-    private val MONGO_TRACKED_MUTABLE_MAP = ClassName(MONGODB_PACKAGE, "MongoTrackedMutableMap")
-    private val MONGO_TRACKED_MUTABLE_LIST = ClassName(MONGODB_PACKAGE, "MongoTrackedMutableList")
-    private val MONGO_TRACKED_MAP = MemberName(MONGODB_PACKAGE, "mongoTrackedMap")
-    private val MONGO_TRACKED_LIST = MemberName(MONGODB_PACKAGE, "mongoTrackedList")
-    private val MONGO_TRACKED_SET = MemberName(MONGODB_PACKAGE, "mongoTrackedSet")
-    private val MONGO_TRACKED_VALUE = MemberName(MONGODB_PACKAGE, "mongoTrackedValue")
-    private val MONGO_VALUE_OF = MemberName(MONGODB_PACKAGE, "mongoValueOf")
-    private val MONGO_SCAN_PLAN = MemberName(MONGODB_PACKAGE, "mongoScanPlan")
-    private val MONGO_SCANNED_FIELD = MemberName(MONGODB_PACKAGE, "mongoScannedField")
-    private val MONGO_SCANNED_MAP_FIELD = MemberName(MONGODB_PACKAGE, "mongoScannedMapField")
+    private val MONGO_TRACKED_MUTABLE_MAP = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackedMutableMap")
+    private val MONGO_TRACKED_MUTABLE_LIST = ClassName(MONGODB_TRACKED_PACKAGE, "MongoTrackedMutableList")
+    private val MONGO_TRACKED_MAP = MemberName(MONGODB_TRACKED_PACKAGE, "mongoTrackedMap")
+    private val MONGO_TRACKED_LIST = MemberName(MONGODB_TRACKED_PACKAGE, "mongoTrackedList")
+    private val MONGO_TRACKED_SET = MemberName(MONGODB_TRACKED_PACKAGE, "mongoTrackedSet")
+    private val MONGO_TRACKED_VALUE = MemberName(MONGODB_TRACKED_PACKAGE, "mongoTrackedValue")
+    private val MONGO_VALUE_OF = MemberName(MONGODB_COMMON_PACKAGE, "mongoValueOf")
+    private val MONGO_SCAN_PLAN = MemberName(MONGODB_SCANNED_PACKAGE, "mongoScanPlan")
+    private val MONGO_SCANNED_FIELD = MemberName(MONGODB_SCANNED_PACKAGE, "mongoScannedField")
+    private val MONGO_SCANNED_MAP_FIELD = MemberName(MONGODB_SCANNED_PACKAGE, "mongoScannedMapField")
     private const val PERSISTENCE_PACKAGE = "io.github.realmlabs.asteria.persistence"
-    private const val MONGODB_PACKAGE = "io.github.realmlabs.asteria.persistence.mongodb"
+    private const val MONGODB_BASE_PACKAGE = "io.github.realmlabs.asteria.persistence.mongodb"
+    private const val MONGODB_COMMON_PACKAGE = "$MONGODB_BASE_PACKAGE.common"
+    private const val MONGODB_WRITE_PACKAGE = "$MONGODB_BASE_PACKAGE.write"
+    private const val MONGODB_TRACKED_PACKAGE = "$MONGODB_BASE_PACKAGE.tracked"
+    private const val MONGODB_SCANNED_PACKAGE = "$MONGODB_BASE_PACKAGE.scanned"
 }

@@ -1,4 +1,4 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.common
 
 internal class DirtyRowQueue<ID : Any> {
     private val rows: ArrayDeque<ID> = ArrayDeque()

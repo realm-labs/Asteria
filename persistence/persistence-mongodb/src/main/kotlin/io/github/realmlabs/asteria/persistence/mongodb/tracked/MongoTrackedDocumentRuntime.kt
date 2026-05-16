@@ -1,4 +1,4 @@
-package io.github.realmlabs.asteria.persistence.mongodb
+package io.github.realmlabs.asteria.persistence.mongodb.tracked
 
 import com.mongodb.bulk.BulkWriteResult
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
@@ -6,6 +6,9 @@ import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
 import io.github.realmlabs.asteria.persistence.DataLease
 import io.github.realmlabs.asteria.persistence.DataLeaseAware
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoDocumentKey
+import io.github.realmlabs.asteria.persistence.mongodb.common.MongoPath
+import io.github.realmlabs.asteria.persistence.mongodb.write.*
 
 /**
  * Dirty tracking runtime for one Mongo document.
