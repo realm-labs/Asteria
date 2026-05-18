@@ -11,47 +11,47 @@ import kotlin.time.Clock
  * Actor-local manager for one entity's mutable data modules.
  *
  * The manager assumes serialized access from the owning actor or an equivalent single-threaded boundary. A typical
- * lifecycle is `loadEager`, then `getOrLoad` or `use` during message handling, followed by periodic `tick`/`flush` and
- * `unloadIdle`. Data in [DataLoadPolicy.UnloadableLazy] buckets must be accessed through [use] so the manager can keep
+ * lifecycle is `start`, then `getOrLoad` or `use` during message handling, followed by periodic `tick`/`flush` and
+ * `unloadIdle`. Data in [DataBucket.unloadableLazy] buckets must be accessed through [use] so the manager can keep
  * the lease valid only while the caller is inside the block.
  */
 class DataManager<ID : Any>(
     private val scope: DataScope<ID>,
-    modules: Iterable<DataModule<ID, out MemData>>,
+    modules: Iterable<DataModule<ID, out MemData, out DataBucketPolicy>>,
     private val clock: Clock = Clock.System,
     private val metrics: Metrics = NoopMetrics,
 ) {
     private val logger = LoggerFactory.getLogger(DataManager::class.java)
-    private val modules: List<DataModule<ID, out MemData>> = modules.toList()
-    private val modulesByType: Map<KClass<out MemData>, DataModule<ID, out MemData>> =
+    private val modules: List<DataModule<ID, out MemData, out DataBucketPolicy>> = modules.toList()
+    private val modulesByType: Map<KClass<out MemData>, DataModule<ID, out MemData, out DataBucketPolicy>> =
         this.modules.associateBy { it.type }.also { modulesByType ->
             check(modulesByType.size == this.modules.size) { "data modules contain duplicate data types" }
         }
     private val loadedDataByType: MutableMap<KClass<out MemData>, LoadedData<ID, out MemData>> = linkedMapOf()
-    private var eagerLoaded: Boolean = false
+    private var lifecycle: DataManagerLifecycle = DataManagerLifecycle.Created
 
     /**
-     * Loads modules declared with [DataLoadPolicy.Eager].
+     * Starts this manager and loads modules declared with [DataBucket.eager].
      */
-    suspend fun loadEager() = measured("load_eager", baseTags()) {
-        check(!eagerLoaded) { "eager data for ${scope.entityKind}:${scope.entityId} already loaded" }
-        eagerLoaded = true
+    suspend fun start() = measured("start", baseTags()) {
+        check(lifecycle == DataManagerLifecycle.Created) {
+            "data manager for ${scope.entityKind}:${scope.entityId} already started"
+        }
         modulesByType.values
-            .filter { it.bucket.loadPolicy == DataLoadPolicy.Eager }
+            .filter { it.bucket is EagerDataBucket }
             .forEach { load(it) }
+        lifecycle = DataManagerLifecycle.Active
     }
 
     /**
      * Returns loaded data or lazily loads it.
      *
-     * Unloadable data is intentionally excluded from this API because the returned reference could outlive its lease.
-     * Use [use] for unloadable data.
+     * Only [ResidentMemData] is accepted because the returned reference can outlive the call. Use [use] for unloadable
+     * data.
      */
-    suspend fun <T : MemData> getOrLoad(type: KClass<T>): T {
-        val module = module(type)
-        check(module.bucket.loadPolicy != DataLoadPolicy.UnloadableLazy) {
-            "unloadable mem data ${type.qualifiedName} must be accessed with use"
-        }
+    suspend fun <T : ResidentMemData> getOrLoad(type: KClass<T>): T {
+        requireActive()
+        val module = residentModule(type)
         loaded(type)?.let { data ->
             metrics.counter("asteria.persistence.data.cache.hit.total", dataTags(module)).increment()
             return data
@@ -64,6 +64,7 @@ class DataManager<ID : Any>(
      * Runs [block] with data loaded and marks it as recently accessed.
      */
     suspend fun <T : MemData, R> use(type: KClass<T>, block: suspend (T) -> R): R {
+        requireActive()
         val module = module(type)
         return measured("use", dataTags(module)) {
             val data = getOrLoadForUse(module)
@@ -139,11 +140,13 @@ class DataManager<ID : Any>(
      * and does not refresh idle timestamps.
      */
     fun <T : MemData> requireLoaded(type: KClass<T>): T {
+        requireActive()
         @Suppress("UNCHECKED_CAST")
         return loadedDataByType[type]?.data as? T ?: error("mem data ${type.qualifiedName} not loaded")
     }
 
     suspend fun tick() = measured("tick", baseTags()) {
+        requireActive()
         loadedDataByType.values.toList().forEach { loadedData ->
             val data = loadedData.data
             if (data is AutoFlushMemData) {
@@ -162,6 +165,7 @@ class DataManager<ID : Any>(
      * recorded and rethrown by the manager's operation wrapper.
      */
     suspend fun flush(): Boolean = measured("flush", baseTags()) {
+        requireActive()
         var success = true
         loadedDataByType.values
             .map { it.data }
@@ -179,6 +183,7 @@ class DataManager<ID : Any>(
      * unload/shutdown work. The manager returns false if any data unit cannot become clean.
      */
     suspend fun drain(): Boolean = measured("drain", baseTags()) {
+        requireActive()
         var success = true
         loadedDataByType.values
             .map { it.data }
@@ -193,10 +198,12 @@ class DataManager<ID : Any>(
      * Flushes and unloads idle data from unloadable buckets.
      */
     suspend fun unloadIdle() = measured("unload_idle", baseTags()) {
+        requireActive()
         val now = clock.now().toEpochMilliseconds()
         val expired = loadedDataByType.values
             .filter { loadedData ->
-                val idleUnloadAfter = loadedData.module.bucket.idleUnloadAfter ?: return@filter false
+                val bucket = loadedData.module.bucket as? UnloadableLazyDataBucket ?: return@filter false
+                val idleUnloadAfter = bucket.idleUnloadAfter
                 val idleMillis = idleUnloadAfter.inWholeMilliseconds
                 now - loadedData.lastAccessMillis >= idleMillis
             }
@@ -204,13 +211,19 @@ class DataManager<ID : Any>(
         expired.forEach { unload(it) }
     }
 
-    private fun <T : MemData> module(type: KClass<T>): DataModule<ID, T> {
+    private fun <T : ResidentMemData> residentModule(type: KClass<T>): ResidentDataModule<ID, T> {
         @Suppress("UNCHECKED_CAST")
-        return modulesByType[type] as? DataModule<ID, T>
+        return modulesByType[type] as? ResidentDataModule<ID, T>
+            ?: error("resident data module ${type.qualifiedName} not registered")
+    }
+
+    private fun <T : MemData> module(type: KClass<T>): DataModule<ID, T, out DataBucketPolicy> {
+        @Suppress("UNCHECKED_CAST")
+        return modulesByType[type] as? DataModule<ID, T, out DataBucketPolicy>
             ?: error("data module ${type.qualifiedName} not registered")
     }
 
-    private fun moduleUntyped(type: KClass<out MemData>): DataModule<ID, out MemData> {
+    private fun moduleUntyped(type: KClass<out MemData>): DataModule<ID, out MemData, out DataBucketPolicy> {
         return modulesByType[type] ?: error("data module ${type.qualifiedName} not registered")
     }
 
@@ -219,7 +232,7 @@ class DataManager<ID : Any>(
         return loadedDataByType[type]?.data as? T
     }
 
-    private suspend fun <T : MemData> getOrLoadForUse(module: DataModule<ID, T>): T {
+    private suspend fun <T : MemData> getOrLoadForUse(module: DataModule<ID, T, out DataBucketPolicy>): T {
         loaded(module.type)?.let { data ->
             metrics.counter("asteria.persistence.data.cache.hit.total", dataTags(module)).increment()
             return data
@@ -232,6 +245,7 @@ class DataManager<ID : Any>(
         types: List<KClass<out MemData>>,
         block: suspend (List<MemData>) -> R,
     ): R {
+        requireActive()
         checkDistinctUseTypes(types)
         val modules = types.map(::moduleUntyped)
         return measured("use_many", baseTags()) {
@@ -245,20 +259,11 @@ class DataManager<ID : Any>(
         }
     }
 
-    private suspend fun <T : MemData> load(module: DataModule<ID, T>): T {
+    private suspend fun <T : MemData> load(module: DataModule<ID, T, out DataBucketPolicy>): T {
         loaded(module.type)?.let { return it }
         return measured("load", dataTags(module)) {
             val data = module.create(scope)
-            val lease = if (module.bucket.loadPolicy == DataLoadPolicy.UnloadableLazy) {
-                val lease = DataLease("mem data ${module.type.qualifiedName}")
-                require(data is DataLeaseAware) {
-                    "unloadable mem data ${module.type.qualifiedName} must implement DataLeaseAware"
-                }
-                data.bindLease(lease)
-                lease
-            } else {
-                null
-            }
+            val lease = module.bindLeaseIfNeeded(data)
             data.load()
             loadedDataByType[module.type] = LoadedData(module, data, clock.now().toEpochMilliseconds(), lease)
             data
@@ -273,6 +278,12 @@ class DataManager<ID : Any>(
 
     private fun checkDistinctUseTypes(types: List<KClass<out MemData>>) {
         check(types.toSet().size == types.size) { "use requires distinct mem data types" }
+    }
+
+    private fun requireActive() {
+        check(lifecycle == DataManagerLifecycle.Active) {
+            "data manager for ${scope.entityKind}:${scope.entityId} is not started"
+        }
     }
 
     private suspend fun unload(loadedData: LoadedData<ID, out MemData>) =
@@ -292,12 +303,12 @@ class DataManager<ID : Any>(
         return MetricTags.of("entity_kind" to scope.entityKind.value)
     }
 
-    private fun dataTags(module: DataModule<ID, out MemData>): MetricTags {
+    private fun dataTags(module: DataModule<ID, out MemData, out DataBucketPolicy>): MetricTags {
         return MetricTags.of(
             "entity_kind" to scope.entityKind.value,
             "data" to (module.type.qualifiedName ?: module.type.toString()),
             "bucket" to module.bucket.name,
-            "load_policy" to module.bucket.loadPolicy.name,
+            "load_policy" to module.bucket.metricName,
         )
     }
 
@@ -318,14 +329,19 @@ class DataManager<ID : Any>(
     }
 }
 
+private enum class DataManagerLifecycle {
+    Created,
+    Active,
+}
+
 private data class LoadedData<ID : Any, T : MemData>(
-    val module: DataModule<ID, T>,
+    val module: DataModule<ID, T, out DataBucketPolicy>,
     val data: T,
     var lastAccessMillis: Long,
     val lease: DataLease?,
 )
 
-suspend inline fun <reified T : MemData> DataManager<*>.getOrLoad(): T = getOrLoad(T::class)
+suspend inline fun <reified T : ResidentMemData> DataManager<*>.getOrLoad(): T = getOrLoad(T::class)
 
 suspend inline fun <reified T : MemData, R> DataManager<*>.use(noinline block: suspend (T) -> R): R {
     return use(T::class, block)

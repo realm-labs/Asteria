@@ -9,7 +9,7 @@ flushing, and unloading happen inside the actor's serialized boundary.
 class PlayerProfileData(
     private val repository: PlayerProfileRepository,
     private val playerId: Long,
-) : MemData, AutoFlushMemData {
+) : ResidentMemData, AutoFlushMemData {
     lateinit var profile: PlayerProfile
 
     override suspend fun load() {
@@ -23,13 +23,13 @@ class PlayerProfileData(
 }
 
 val profileModule = dataModule<Long, PlayerProfileData>(
-    bucket = DataBucket("profile", DataLoadPolicy.Eager),
+    bucket = DataBucket.eager("profile"),
 ) { scope ->
     PlayerProfileData(repository, scope.entityId)
 }
 ```
 
-Actors usually call `loadEager()` during startup, use `getOrLoad<T>()` or `use<T> { ... }` during message handling, and
+Actors usually call `start()` during startup, use `getOrLoad<T>()` or `use<T> { ... }` during message handling, and
 call `tick()` or `flush()` from timers.
 
 ## Load Policies

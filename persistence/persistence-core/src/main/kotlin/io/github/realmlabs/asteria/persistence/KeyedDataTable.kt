@@ -131,13 +131,8 @@ abstract class KeyedDataTable<K : Any, R : Any>(
 
     /**
      * Binds a row lease when a row enters the cache.
-     *
-     * Override this when the row delegates lease propagation to generated wrappers or nested runtime objects.
      */
-    protected open fun bindLease(row: R, lease: DataLease) {
-        require(row is DataLeaseAware) { "row must implement DataLeaseAware" }
-        row.bindLease(lease)
-    }
+    protected abstract fun bindLease(row: R, lease: DataLease)
 
     /**
      * Hook called after a row lease is invalidated and the row is removed from the cache.

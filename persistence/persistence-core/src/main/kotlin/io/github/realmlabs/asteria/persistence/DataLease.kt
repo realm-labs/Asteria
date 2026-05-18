@@ -48,7 +48,7 @@ interface DataLeaseAware {
 /**
  * Base class for unloadable data units.
  */
-abstract class LeaseGuardedMemData : MemData, DataLeaseAware {
+abstract class LeaseGuardedMemData : UnloadableMemData {
     private var lease: DataLease? = null
 
     override fun bindLease(lease: DataLease) {

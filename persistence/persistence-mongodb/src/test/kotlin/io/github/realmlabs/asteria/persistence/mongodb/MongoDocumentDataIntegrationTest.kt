@@ -32,6 +32,7 @@ class MongoDocumentDataIntegrationTest {
                 TestTrackedDocumentData(it, database)
             }),
         )
+        manager.start()
         val data = manager.getOrLoad<TestTrackedDocumentData>()
 
         data.create(TestDocumentEntity(1, "alice"))
@@ -54,6 +55,7 @@ class MongoDocumentDataIntegrationTest {
                 TestScannedDocumentData(it, database)
             }),
         )
+        manager.start()
         val data = manager.getOrLoad<TestScannedDocumentData>()
 
         data.create(TestDocumentEntity(1, "alice"))
@@ -74,6 +76,7 @@ class MongoDocumentDataIntegrationTest {
                 TestScannedDocumentData(it, database)
             }),
         )
+        manager.start()
         val data = manager.getOrLoad<TestScannedDocumentData>()
 
         assertEquals("alice", data.currentName())

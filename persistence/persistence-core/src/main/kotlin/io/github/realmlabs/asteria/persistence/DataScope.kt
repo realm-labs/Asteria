@@ -20,26 +20,68 @@ data class DataScope<ID : Any>(
 /**
  * Factory for one actor-local data unit.
  */
-interface DataModule<ID : Any, T : MemData> {
-    val type: KClass<T>
-    val bucket: DataBucket
+sealed class DataModule<ID : Any, T : MemData, P : DataBucketPolicy>(
+    val type: KClass<T>,
+    val bucket: DataBucket<P>,
+) {
 
     /**
      * Constructs an actor-local data unit before [MemData.load] runs.
      *
      * Implementations should wire dependencies here and leave blocking storage reads to [MemData.load].
      */
-    fun create(scope: DataScope<ID>): T
+    abstract fun create(scope: DataScope<ID>): T
+
+    internal open fun bindLeaseIfNeeded(data: T): DataLease? = null
 }
 
-inline fun <ID : Any, reified T : MemData> dataModule(
-    bucket: DataBucket = DataBucket.eager(),
-    noinline create: (DataScope<ID>) -> T,
-): DataModule<ID, T> {
-    return object : DataModule<ID, T> {
-        override val type: KClass<T> = T::class
-        override val bucket: DataBucket = bucket
+sealed class ResidentDataModule<ID : Any, T : ResidentMemData>(
+    type: KClass<T>,
+    bucket: ResidentDataBucket<ResidentDataBucketPolicy>,
+) : DataModule<ID, T, ResidentDataBucketPolicy>(type, bucket)
 
-        override fun create(scope: DataScope<ID>): T = create(scope)
+sealed class UnloadableDataModule<ID : Any, T : UnloadableMemData>(
+    type: KClass<T>,
+    bucket: UnloadableLazyDataBucket,
+) : DataModule<ID, T, UnloadableDataBucketPolicy>(type, bucket) {
+    final override fun bindLeaseIfNeeded(data: T): DataLease {
+        val lease = DataLease("mem data ${type.qualifiedName}")
+        data.bindLease(lease)
+        return lease
     }
+}
+
+inline fun <ID : Any, reified T : ResidentMemData> dataModule(
+    bucket: ResidentDataBucket<ResidentDataBucketPolicy> = DataBucket.eager(),
+    noinline create: (DataScope<ID>) -> T,
+): ResidentDataModule<ID, T> {
+    return DefaultResidentDataModule(T::class, bucket, create)
+}
+
+/**
+ * Declares a module whose data may be unloaded while the owning actor is alive.
+ */
+inline fun <ID : Any, reified T : UnloadableMemData> unloadableDataModule(
+    bucket: UnloadableLazyDataBucket,
+    noinline create: (DataScope<ID>) -> T,
+): UnloadableDataModule<ID, T> {
+    return DefaultUnloadableDataModule(T::class, bucket, create)
+}
+
+@PublishedApi
+internal class DefaultResidentDataModule<ID : Any, T : ResidentMemData>(
+    type: KClass<T>,
+    bucket: ResidentDataBucket<ResidentDataBucketPolicy>,
+    private val factory: (DataScope<ID>) -> T,
+) : ResidentDataModule<ID, T>(type, bucket) {
+    override fun create(scope: DataScope<ID>): T = factory(scope)
+}
+
+@PublishedApi
+internal class DefaultUnloadableDataModule<ID : Any, T : UnloadableMemData>(
+    type: KClass<T>,
+    bucket: UnloadableLazyDataBucket,
+    private val factory: (DataScope<ID>) -> T,
+) : UnloadableDataModule<ID, T>(type, bucket) {
+    override fun create(scope: DataScope<ID>): T = factory(scope)
 }

@@ -17,6 +17,19 @@ interface MemData {
 }
 
 /**
+ * Data unit whose references may safely remain valid for the actor lifetime.
+ *
+ * Only resident data can be returned by [DataManager.getOrLoad]. Data that may be unloaded should implement
+ * [DataLeaseAware] instead and be accessed through [DataManager.use].
+ */
+interface ResidentMemData : MemData
+
+/**
+ * Data unit whose references are guarded by a manager-owned lease and may be invalidated after idle unload.
+ */
+interface UnloadableMemData : MemData, DataLeaseAware
+
+/**
  * Data unit that owns buffered writes.
  */
 interface AutoFlushMemData : MemData {

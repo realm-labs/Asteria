@@ -6,6 +6,7 @@ import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.persistence.AutoFlushMemData
 import io.github.realmlabs.asteria.persistence.DataScope
 import io.github.realmlabs.asteria.persistence.Entity
+import io.github.realmlabs.asteria.persistence.ResidentMemData
 import io.github.realmlabs.asteria.persistence.mongodb.write.MongoPendingWriteQueue
 import io.github.realmlabs.asteria.persistence.mongodb.write.MongoWriteJournal
 import io.github.realmlabs.asteria.persistence.mongodb.write.NoopMongoWriteJournal
@@ -25,7 +26,7 @@ abstract class MongoTrackedDocumentData<ID : Any, E : Entity<ID>, T : MongoTrack
     private val wrapper: (MongoTrackContext, E) -> T,
     database: MongoDatabase = scope.services.get(),
     journal: MongoWriteJournal = NoopMongoWriteJournal,
-) : AutoFlushMemData {
+) : ResidentMemData, AutoFlushMemData {
     protected val runtime: MongoTrackedDocumentRuntime =
         MongoTrackedDocumentRuntime(collectionName, scope.entityId, database, journal)
     protected val queue: MongoPendingWriteQueue

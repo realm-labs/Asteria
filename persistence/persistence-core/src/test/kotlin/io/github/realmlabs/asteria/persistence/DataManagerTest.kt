@@ -10,7 +10,7 @@ import kotlin.time.Instant
 
 class DataManagerTest {
     @Test
-    fun `loadEager only loads eager modules`(): Unit = runBlocking {
+    fun `start only loads eager modules`(): Unit = runBlocking {
         val eagerData = TestData()
         val lazyData = NamedData("mail")
         val manager = DataManager(
@@ -21,7 +21,7 @@ class DataManagerTest {
             ),
         )
 
-        manager.loadEager()
+        manager.start()
 
         assertTrue(eagerData.loaded)
         assertFalse(lazyData.loaded)
@@ -40,7 +40,7 @@ class DataManagerTest {
             modules = listOf(dataModule(bucket = DataBucket.lazy()) { data }),
         )
 
-        manager.loadEager()
+        manager.start()
 
         assertFalse(data.loaded)
 
@@ -51,17 +51,31 @@ class DataManagerTest {
     }
 
     @Test
-    fun `unloadable data must be accessed with scoped use`(): Unit = runBlocking {
+    fun `data access requires started manager`(): Unit = runBlocking {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
-            modules = listOf(
-                dataModule(bucket = DataBucket.unloadableLazy("mail", 30.seconds)) { GuardedData() },
-            ),
+            modules = listOf(dataModule(bucket = DataBucket.lazy()) { NamedData("mail") }),
         )
 
         assertFailsWith<IllegalStateException> {
-            manager.getOrLoad<GuardedData>()
+            manager.getOrLoad<NamedData>()
         }
+        assertFailsWith<IllegalStateException> {
+            manager.use<NamedData, Unit> { }
+        }
+    }
+
+    @Test
+    fun `unloadable data is accessed with scoped use`(): Unit = runBlocking {
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("mail", 30.seconds)) { GuardedData() },
+            ),
+        )
+
+        manager.start()
+        manager.use<GuardedData, Unit> { data -> data.touch() }
     }
 
     @Test
@@ -71,11 +85,12 @@ class DataManagerTest {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(
-                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { GuardedData() },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { GuardedData() },
             ),
             clock = clock,
         )
 
+        manager.start()
         manager.use<GuardedData, Unit> { data ->
             data.touch()
             leaked = data
@@ -97,11 +112,12 @@ class DataManagerTest {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(
-                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { data },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { data },
             ),
             clock = clock,
         )
 
+        manager.start()
         manager.use<GuardedData, Unit> { it.touch() }
 
         clock.advanceSeconds(10)
@@ -118,11 +134,12 @@ class DataManagerTest {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(
-                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { data },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { data },
             ),
             clock = clock,
         )
 
+        manager.start()
         manager.use<GuardedData, Unit> { it.touch() }
         clock.advanceSeconds(9)
         manager.use<GuardedData, Unit> { it.touch() }
@@ -149,12 +166,13 @@ class DataManagerTest {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(
-                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { expired },
-                dataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { active },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { expired },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { active },
             ),
             clock = clock,
         )
 
+        manager.start()
         manager.use<GuardedData, Unit> { it.touch() }
         clock.advanceSeconds(5)
         manager.use<OtherGuardedData, Unit> { it.touch() }
@@ -177,12 +195,13 @@ class DataManagerTest {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(
-                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { first },
-                dataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { second },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { first },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { second },
             ),
             clock = clock,
         )
 
+        manager.start()
         val result = manager.use { mail: GuardedData, activity: OtherGuardedData ->
             mail.touch()
             activity.touch()
@@ -210,11 +229,12 @@ class DataManagerTest {
     fun `multi use rejects duplicate data types`(): Unit = runBlocking {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
-            modules = listOf(dataModule(bucket = DataBucket.lazy()) { GuardedData() }),
+            modules = listOf(dataModule(bucket = DataBucket.lazy()) { NamedData("mail") }),
         )
 
+        manager.start()
         assertFailsWith<IllegalStateException> {
-            manager.use(GuardedData::class, GuardedData::class) { _, _ -> }
+            manager.use(NamedData::class, NamedData::class) { _, _ -> }
         }
     }
 
@@ -231,6 +251,7 @@ class DataManagerTest {
             ),
         )
 
+        manager.start()
         val result =
             manager.use { first: NamedData, second: SecondData, third: ThirdData, fourth: FourthData, fifth: FifthData ->
                 listOf(first.name, second.name, third.name, fourth.name, fifth.name)
@@ -246,7 +267,7 @@ class DataManagerTest {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(
-                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) {
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) {
                     GuardedData().also { created += it }
                 },
             ),
@@ -255,6 +276,7 @@ class DataManagerTest {
         lateinit var first: GuardedData
         lateinit var second: GuardedData
 
+        manager.start()
         manager.use<GuardedData, Unit> { first = it }
         clock.advanceSeconds(10)
         manager.tick()
@@ -269,16 +291,16 @@ class DataManagerTest {
     }
 
     @Test
-    fun `loadEager cannot be called twice`(): Unit = runBlocking {
+    fun `start cannot be called twice`(): Unit = runBlocking {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(dataModule { TestData() }),
         )
 
-        manager.loadEager()
+        manager.start()
 
         assertFailsWith<IllegalStateException> {
-            manager.loadEager()
+            manager.start()
         }
     }
 
@@ -302,6 +324,7 @@ class DataManagerTest {
             modules = emptyList(),
         )
 
+        manager.start()
         assertFailsWith<IllegalStateException> {
             manager.getOrLoad<NamedData>()
         }
@@ -323,6 +346,7 @@ class DataManagerTest {
             ),
         )
 
+        manager.start()
         assertFailsWith<IllegalStateException> {
             manager.getOrLoad<FailableLoadData>()
         }
@@ -345,7 +369,7 @@ class DataManagerTest {
             ),
         )
 
-        manager.loadEager()
+        manager.start()
 
         assertFalse(manager.flush())
         assertEquals(1, first.flushes)
@@ -357,20 +381,6 @@ class DataManagerTest {
     }
 
     @Test
-    fun `unloadable data must be lease aware`(): Unit = runBlocking {
-        val manager = DataManager(
-            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
-            modules = listOf(
-                dataModule(bucket = DataBucket.unloadableLazy("broken", 10.seconds)) { NotLeaseAwareFlushData() },
-            ),
-        )
-
-        assertFailsWith<IllegalArgumentException> {
-            manager.use<NotLeaseAwareFlushData, Unit> { }
-        }
-    }
-
-    @Test
     fun `multi use refreshes access time when block fails`(): Unit = runBlocking {
         val clock = MutableClock()
         val first = GuardedData()
@@ -378,12 +388,13 @@ class DataManagerTest {
         val manager = DataManager(
             scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
             modules = listOf(
-                dataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { first },
-                dataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { second },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { first },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { second },
             ),
             clock = clock,
         )
 
+        manager.start()
         manager.use { mail: GuardedData, activity: OtherGuardedData ->
             mail.touch()
             activity.touch()
@@ -415,7 +426,7 @@ class DataManagerTest {
 private class TestData(
     private val flushResult: Boolean = true,
     private val drainResult: Boolean = true,
-) : AutoFlushMemData {
+) : ResidentMemData, AutoFlushMemData {
     var loaded: Boolean = false
     var flushes: Int = 0
     var drains: Int = 0
@@ -441,7 +452,7 @@ private class TestData(
 
 private class NamedData(
     val name: String,
-) : MemData {
+) : ResidentMemData {
     var loaded: Boolean = false
 
     override suspend fun load() {
@@ -499,7 +510,7 @@ private class OtherGuardedData : LeaseGuardedMemData(), AutoFlushMemData {
     }
 }
 
-private class OtherAutoFlushData : AutoFlushMemData {
+private class OtherAutoFlushData : ResidentMemData, AutoFlushMemData {
     var flushes: Int = 0
     var drains: Int = 0
 
@@ -520,7 +531,7 @@ private class OtherAutoFlushData : AutoFlushMemData {
 
 private class FailableLoadData(
     private val failLoad: Boolean,
-) : MemData {
+) : ResidentMemData {
     var loaded: Boolean = false
 
     override suspend fun load() {
@@ -529,35 +540,25 @@ private class FailableLoadData(
     }
 }
 
-private class NotLeaseAwareFlushData : AutoFlushMemData {
-    override suspend fun load() = Unit
-
-    override suspend fun tick() = Unit
-
-    override suspend fun flush(): Boolean = true
-
-    override suspend fun drain(): Boolean = true
-}
-
-private class SecondData : MemData {
+private class SecondData : ResidentMemData {
     val name: String = "second"
 
     override suspend fun load() = Unit
 }
 
-private class ThirdData : MemData {
+private class ThirdData : ResidentMemData {
     val name: String = "third"
 
     override suspend fun load() = Unit
 }
 
-private class FourthData : MemData {
+private class FourthData : ResidentMemData {
     val name: String = "fourth"
 
     override suspend fun load() = Unit
 }
 
-private class FifthData : MemData {
+private class FifthData : ResidentMemData {
     val name: String = "fifth"
 
     override suspend fun load() = Unit

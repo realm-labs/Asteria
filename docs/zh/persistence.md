@@ -8,7 +8,7 @@
 class PlayerProfileData(
     private val repository: PlayerProfileRepository,
     private val playerId: Long,
-) : MemData, AutoFlushMemData {
+) : ResidentMemData, AutoFlushMemData {
     lateinit var profile: PlayerProfile
 
     override suspend fun load() {
@@ -22,13 +22,13 @@ class PlayerProfileData(
 }
 
 val profileModule = dataModule<Long, PlayerProfileData>(
-    bucket = DataBucket("profile", DataLoadPolicy.Eager),
+    bucket = DataBucket.eager("profile"),
 ) { scope ->
     PlayerProfileData(repository, scope.entityId)
 }
 ```
 
-actor 启动时通常调用 `loadEager()`；消息处理时用 `getOrLoad<T>()` 或 `use<T> { ... }`；timer 中周期性调用 `tick()` 或
+actor 启动时通常调用 `start()`；消息处理时用 `getOrLoad<T>()` 或 `use<T> { ... }`；timer 中周期性调用 `tick()` 或
 `flush()`。
 
 ## 加载策略

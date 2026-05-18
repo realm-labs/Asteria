@@ -232,6 +232,10 @@ private class TestTable(
 
     override fun keyOf(row: TestRow): Int = row.id
 
+    override fun bindLease(row: TestRow, lease: DataLease) {
+        row.bindLease(lease)
+    }
+
     override suspend fun flushRow(row: TestRow): Boolean {
         flushed += row.id
         if (flushResult) {

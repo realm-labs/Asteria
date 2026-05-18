@@ -5,10 +5,7 @@ import com.mongodb.kotlin.client.coroutine.MongoCollection
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
-import io.github.realmlabs.asteria.persistence.AutoFlushMemData
-import io.github.realmlabs.asteria.persistence.DataScope
-import io.github.realmlabs.asteria.persistence.Entity
-import io.github.realmlabs.asteria.persistence.EntityScanPlan
+import io.github.realmlabs.asteria.persistence.*
 import io.github.realmlabs.asteria.persistence.mongodb.write.MongoWriteJournal
 import io.github.realmlabs.asteria.persistence.mongodb.write.NoopMongoWriteJournal
 import kotlinx.coroutines.flow.firstOrNull
@@ -31,7 +28,7 @@ abstract class MongoScannedDocumentData<ID : Any, E : Entity<ID>>(
     database: MongoDatabase = scope.services.get(),
     journal: MongoWriteJournal = NoopMongoWriteJournal,
     metrics: Metrics = NoopMetrics,
-) : AutoFlushMemData {
+) : ResidentMemData, AutoFlushMemData {
     protected val runtime: MongoScannedDocumentRuntime<ID, E> =
         MongoScannedDocumentRuntime(collectionName, scope.entityId, scanPlan, database, journal, metrics)
     protected val collection: MongoCollection<E> = database.getCollection(collectionName, entityType.java)

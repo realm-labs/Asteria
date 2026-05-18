@@ -18,7 +18,7 @@ import kotlin.time.Duration.Companion.seconds
  * ```kotlin
  * private val gate = ActorLifecycleGate(
  *     owner = this,
- *     load = { data.loadEager() },
+ *     load = { data.start() },
  *     drain = { data.drain() },
  * )
  *

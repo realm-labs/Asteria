@@ -1,6 +1,7 @@
 package io.github.realmlabs.asteria.persistence.mongodb.scanned
 
 import io.github.realmlabs.asteria.persistence.AutoFlushMemData
+import io.github.realmlabs.asteria.persistence.ResidentMemData
 import io.github.realmlabs.asteria.persistence.mongodb.write.MongoScanFlushPolicy
 import io.github.realmlabs.asteria.persistence.mongodb.write.MongoScanFlushProgress
 
@@ -28,7 +29,7 @@ interface MongoScannedTable {
  * [AutoFlushMemData.drain], so business data can implement this interface to make scan + flush scheduling part of the
  * normal data lifecycle.
  */
-interface MongoScannedTableData : AutoFlushMemData {
+interface MongoScannedTableData : ResidentMemData, AutoFlushMemData {
     /**
      * Shared scheduling policy applied to all [scannedTables].
      */
