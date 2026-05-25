@@ -1,6 +1,8 @@
 import dev.detekt.gradle.Detekt
 import dev.detekt.gradle.extensions.DetektExtension
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
 plugins {
     `java-library`
@@ -22,7 +24,18 @@ dependencies {
 }
 
 extensions.configure<KotlinJvmProjectExtension> {
-    jvmToolchain(21)
+    jvmToolchain(17)
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(17)
+}
+
+tasks.withType<KotlinJvmCompile>().configureEach {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+        freeCompilerArgs.add("-Xjdk-release=17")
+    }
 }
 
 extensions.configure<DetektExtension> {
@@ -34,7 +47,7 @@ extensions.configure<DetektExtension> {
 }
 
 tasks.withType<Detekt>().configureEach {
-    jvmTarget.set("21")
+    jvmTarget.set("17")
     description = description ?: "Runs Detekt static analysis."
     reports {
         checkstyle.required.set(true)
