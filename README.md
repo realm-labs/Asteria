@@ -67,21 +67,22 @@ From there, add the runtime pieces the service needs:
 
 The detailed guides live under `docs/`:
 
-- [English documentation](docs/en/README.md)
-- [中文文档](docs/zh/README.md)
+- [GitHub Pages](https://realm-labs.github.io/Asteria/)
+- [English documentation](docs/src/index.md)
+- [中文文档](docs/src/zh/index.md)
 
 Start with:
 
-- [Module map](docs/en/module-map.md)
-- [Application lifecycle](docs/en/application-lifecycle.md)
-- [Events](docs/en/events.md)
-- [Config](docs/en/config.md)
-- [Pekko cluster](docs/en/cluster-pekko.md)
-- [Messaging, protocol, and gateway](docs/en/messaging-protocol-gateway.md)
-- [Persistence](docs/en/persistence.md)
-- [Script and GM](docs/en/script-and-gm.md)
-- [Runtime patches](docs/en/patch.md)
-- [Observability and starter](docs/en/observability-and-starter.md)
+- [Module map](docs/src/module-map.md)
+- [Application lifecycle](docs/src/application-lifecycle.md)
+- [Events](docs/src/events.md)
+- [Config](docs/src/config.md)
+- [Pekko cluster](docs/src/cluster-pekko.md)
+- [Messaging, protocol, and gateway](docs/src/messaging-protocol-gateway.md)
+- [Persistence](docs/src/persistence.md)
+- [Script and GM](docs/src/script-and-gm.md)
+- [Runtime patches](docs/src/patch.md)
+- [Observability and starter](docs/src/observability-and-starter.md)
 
 ## Example Project
 

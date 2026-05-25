@@ -20,6 +20,9 @@ out/
 .kotlin
 .jqwik-database
 
+### Documentation ###
+docs/book/
+
 ### Eclipse ###
 .apt_generated
 .classpath

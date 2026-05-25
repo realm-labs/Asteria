@@ -1,0 +1,13 @@
+[book]
+title = "Asteria"
+description = "A modular Kotlin game server runtime."
+authors = ["Realm Labs"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/realm-labs/Asteria"
+edit-url-template = "https://github.com/realm-labs/Asteria/edit/main/docs/{path}"
+site-url = "/Asteria/"
+additional-js = ["theme/language-toggle.js"]
+no-section-label = true
