@@ -10,6 +10,11 @@ configuration, scripts, GM tooling, runtime patches, and observability.
 Game projects still own their topology and domain model. Concepts such as `World`, `Home`, `Player`, `Room`, or `Match`
 are application-level choices, not framework requirements.
 
+## Documentation
+
+- [English documentation](https://realm-labs.github.io/Asteria/) ([source](docs/src/index.md))
+- [中文文档](https://realm-labs.github.io/Asteria/zh/) ([source](docs/src/zh/index.md))
+
 ## Quick Start
 
 Add only the modules your service needs:
@@ -62,27 +67,6 @@ From there, add the runtime pieces the service needs:
 - `gateway-netty` for client transport.
 - `persistence-*` modules for actor-local data.
 - `script-*` and `gm-*` modules for operations tooling.
-
-## Documentation
-
-The detailed guides live under `docs/`:
-
-- [GitHub Pages](https://realm-labs.github.io/Asteria/)
-- [English documentation](docs/src/index.md)
-- [中文文档](docs/src/zh/index.md)
-
-Start with:
-
-- [Module map](docs/src/module-map.md)
-- [Application lifecycle](docs/src/application-lifecycle.md)
-- [Events](docs/src/events.md)
-- [Config](docs/src/config.md)
-- [Pekko cluster](docs/src/cluster-pekko.md)
-- [Messaging, protocol, and gateway](docs/src/messaging-protocol-gateway.md)
-- [Persistence](docs/src/persistence.md)
-- [Script and GM](docs/src/script-and-gm.md)
-- [Runtime patches](docs/src/patch.md)
-- [Observability and starter](docs/src/observability-and-starter.md)
 
 ## Example Project
 
