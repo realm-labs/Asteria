@@ -381,6 +381,38 @@ class DataManagerTest {
     }
 
     @Test
+    fun `idle unload attempts remaining modules after one unload throws`(): Unit = runBlocking {
+        val clock = MutableClock()
+        val first = ThrowingDrainData()
+        val second = OtherGuardedData()
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("mail", 10.seconds)) { first },
+                unloadableDataModule(bucket = DataBucket.unloadableLazy("activity", 10.seconds)) { second },
+            ),
+            clock = clock,
+        )
+
+        manager.start()
+        manager.use<ThrowingDrainData, Unit> { it.touch() }
+        manager.use<OtherGuardedData, Unit> { it.touch() }
+        clock.advanceSeconds(10)
+
+        val error = assertFailsWith<IllegalStateException> {
+            manager.tick()
+        }
+
+        assertEquals("drain failed", error.message)
+        assertEquals(1, first.drains)
+        assertEquals(1, second.drains)
+        first.touch()
+        assertFailsWith<IllegalStateException> {
+            second.touch()
+        }
+    }
+
+    @Test
     fun `multi use refreshes access time when block fails`(): Unit = runBlocking {
         val clock = MutableClock()
         val first = GuardedData()
@@ -507,6 +539,25 @@ private class OtherGuardedData : LeaseGuardedMemData(), AutoFlushMemData {
     override suspend fun drain(): Boolean {
         drains += 1
         return true
+    }
+}
+
+private class ThrowingDrainData : LeaseGuardedMemData(), AutoFlushMemData {
+    var drains: Int = 0
+
+    override suspend fun load() = Unit
+
+    fun touch() {
+        ensureActive()
+    }
+
+    override suspend fun tick() = Unit
+
+    override suspend fun flush(): Boolean = true
+
+    override suspend fun drain(): Boolean {
+        drains += 1
+        error("drain failed")
     }
 }
 

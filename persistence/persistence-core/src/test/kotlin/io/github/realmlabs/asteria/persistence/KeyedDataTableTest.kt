@@ -185,6 +185,51 @@ class KeyedDataTableTest {
     }
 
     @Test
+    fun `flush attempts remaining rows after one row returns false`(): Unit = runBlocking {
+        val table = TestTable(
+            rows = listOf(TestRow(1, "alice"), TestRow(2, "bob"), TestRow(3, "carol")),
+            failedFlushKeys = setOf(2),
+        )
+
+        table.use(1) { it.rename("alice-1") }
+        table.use(2) { it.rename("bob-1") }
+        table.use(3) { it.rename("carol-1") }
+
+        assertFalse(table.flush())
+
+        assertEquals(listOf(1, 2, 3), table.flushed)
+        assertEquals("alice-1", table.source.getValue(1).name)
+        assertEquals("bob", table.source.getValue(2).name)
+        assertEquals("carol-1", table.source.getValue(3).name)
+    }
+
+    @Test
+    fun `idle unload attempts remaining rows after one row throws`(): Unit = runBlocking {
+        val clock = MutableTableClock()
+        val table = TestTable(
+            rows = listOf(TestRow(1, "alice"), TestRow(2, "bob"), TestRow(3, "carol")),
+            clock = clock,
+            throwingFlushKeys = setOf(2),
+        )
+
+        table.use(1) { it.rename("alice-1") }
+        table.use(2) { it.rename("bob-1") }
+        table.use(3) { it.rename("carol-1") }
+        clock.advanceSeconds(10)
+
+        val error = assertFailsWith<IllegalStateException> {
+            table.unloadIdle()
+        }
+
+        assertEquals("flush failed for row 2", error.message)
+        assertEquals(listOf(1, 2, 3), table.flushed)
+        assertEquals(setOf(2), table.loadedKeys())
+        assertEquals("alice-1", table.source.getValue(1).name)
+        assertEquals("bob", table.source.getValue(2).name)
+        assertEquals("carol-1", table.source.getValue(3).name)
+    }
+
+    @Test
     fun `database queries return candidate keys and caller rechecks current row`(): Unit = runBlocking {
         val table = TestTable(
             rows = listOf(
@@ -213,6 +258,8 @@ private class TestTable(
     rows: List<TestRow>,
     clock: Clock = Clock.System,
     private val flushResult: Boolean = true,
+    private val failedFlushKeys: Set<Int> = emptySet(),
+    private val throwingFlushKeys: Set<Int> = emptySet(),
 ) : KeyedDataTable<Int, TestRow>(
     cachePolicy = RowCachePolicy(10.seconds),
     clock = clock,
@@ -238,10 +285,12 @@ private class TestTable(
 
     override suspend fun flushRow(row: TestRow): Boolean {
         flushed += row.id
-        if (flushResult) {
+        check(row.id !in throwingFlushKeys) { "flush failed for row ${row.id}" }
+        val success = flushResult && row.id !in failedFlushKeys
+        if (success) {
             source[row.id] = row.copy()
         }
-        return flushResult
+        return success
     }
 
     fun createLoaded(row: TestRow) {

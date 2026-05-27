@@ -70,7 +70,11 @@ abstract class KeyedDataTable<K : Any, R : Any>(
      * A false result means at least one row remains dirty and should stay loaded for retry.
      */
     suspend fun flush(): Boolean {
-        return rows.values.all { flushRow(it.row) }
+        var success = true
+        rows.values.toList().forEach { loaded ->
+            success = flushRow(loaded.row) && success
+        }
+        return success
     }
 
     /**
@@ -81,7 +85,15 @@ abstract class KeyedDataTable<K : Any, R : Any>(
         val expired = rows.values
             .filter { now - it.lastAccessMillis >= cachePolicy.idleUnloadAfter.inWholeMilliseconds }
             .toList()
-        expired.forEach { unload(it) }
+        val failure = BatchFailure()
+        expired.forEach { row ->
+            try {
+                unload(row)
+            } catch (error: Throwable) {
+                failure.record(error)
+            }
+        }
+        failure.throwIfAny()
     }
 
     protected abstract suspend fun loadRow(key: K): R?

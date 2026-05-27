@@ -208,7 +208,15 @@ class DataManager<ID : Any>(
                 now - loadedData.lastAccessMillis >= idleMillis
             }
             .toList()
-        expired.forEach { unload(it) }
+        val failure = BatchFailure()
+        expired.forEach { loadedData ->
+            try {
+                unload(loadedData)
+            } catch (error: Throwable) {
+                failure.record(error)
+            }
+        }
+        failure.throwIfAny()
     }
 
     private fun <T : ResidentMemData> residentModule(type: KClass<T>): ResidentDataModule<ID, T> {
