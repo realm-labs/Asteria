@@ -56,19 +56,20 @@
 
 ## Operations
 
-| Module                                                                               | Responsibility                                                       | Use When                                          |
-|--------------------------------------------------------------------------------------|----------------------------------------------------------------------|---------------------------------------------------|
-| `script-core`                                                                        | Script engine, context, targets, execution results                   | GM or operational scripts are required            |
-| `script-pekko`                                                                       | Maps script targets to Pekko nodes, roles, entities, and singletons  | Scripts need to run against actor runtime         |
-| `script-job` / `script-job-mongodb`                                                  | Async script jobs, persisted results, throttling, leases             | GM scripts may be long-running or multi-target    |
-| `gm-core`                                                                            | GM feature metadata, operation authorization, audit context          | The service has GM tools                          |
-| `gm-shutdown`                                                                        | Business-side shutdown plans, phases, steps, and GM action metadata  | GM or operations workflows trigger graceful stop  |
-| `gm-config-center`                                                                   | Read-only raw ConfigStore browsing, bounded previews, decoder hooks  | GM must inspect raw config center paths and bytes |
-| `gm-*` starters                                                                      | Spring HTTP APIs and concrete feature adapters                       | GM operations are exposed over HTTP               |
-| `ops-http-ktor`                                                                      | Node-local Ktor HTTP endpoint for SSH/curl script and patch controls | No GM node exists but local operations are needed |
-| `patch-core` / `patch-jar` / `patch-mongodb` / `patch-config-center` / `patch-pekko` | Runtime patches, plugin resolution, repositories, cluster control    | Online runtime patches or patch audit are needed  |
-| `observability-core` / `observability-opentelemetry`                                 | Metrics/tracing abstractions and OTel implementation                 | The service reports observability data            |
-| `starter-game-server-pekko`                                                          | Local and cluster startup DSL, route module, patch starter           | Business projects want less startup glue          |
+| Module                                                                | Responsibility                                                          | Use When                                          |
+|-----------------------------------------------------------------------|-------------------------------------------------------------------------|---------------------------------------------------|
+| `script-core`                                                         | Script engine, context, targets, execution results                      | GM or operational scripts are required            |
+| `script-pekko`                                                        | Maps script targets to Pekko nodes, roles, entities, and singletons     | Scripts need to run against actor runtime         |
+| `script-job` / `script-job-mongodb`                                   | Async script jobs, persisted results, throttling, leases                | GM scripts may be long-running or multi-target    |
+| `gm-core`                                                             | GM feature metadata, operation authorization, audit context             | The service has GM tools                          |
+| `gm-shutdown`                                                         | Business-side shutdown plans, phases, steps, and GM action metadata     | GM or operations workflows trigger graceful stop  |
+| `gm-config-center`                                                    | Read-only raw ConfigStore browsing, bounded previews, decoder hooks     | GM must inspect raw config center paths and bytes |
+| `gm-*` starters                                                       | Spring HTTP APIs and concrete feature adapters                          | GM operations are exposed over HTTP               |
+| `ops-http-ktor`                                                       | Node-local Ktor HTTP endpoint for SSH/curl script and patch controls    | No GM node exists but local operations are needed |
+| `patch-core` / `patch-message` / `patch-event`                        | Runtime patch core plus message/event patchable registry adapters       | Business handlers need runtime replacement        |
+| `patch-jar` / `patch-mongodb` / `patch-config-center` / `patch-pekko` | Plugin resolution, repositories, config-center storage, cluster control | Online runtime patches or patch audit are needed  |
+| `observability-core` / `observability-opentelemetry`                  | Metrics/tracing abstractions and OTel implementation                    | The service reports observability data            |
+| `starter-game-server-pekko`                                           | Local and cluster startup DSL, route module, patch starter              | Business projects want less startup glue          |
 
 ## How It Works
 
@@ -77,11 +78,11 @@
 - `foundation-contribution-*`: KSP scans `@AsteriaContribution` at compile time and emits static contribution lists.
   Runtime code does not scan the classpath. Business code turns the list into maps, grouped indexes, or patchable
   registries.
-- `foundation-event-*`: KSP emits handler handles, registries, and dispatchers. Generated registries are patchable slot
-  registries, so patches replace one handler slot rather than the dispatcher object.
+- `foundation-event-*`: KSP emits handler handles, immutable registries, and dispatchers. Runtime event patching is an
+  explicit `patch-event` adapter choice.
 - `foundation-message-*`: message KSP emits only handler handles. Application startup code chooses the concrete
-  `MessageHandleRegistry` and constructs `MessageDispatcher`; `patch-core` provides the runtime patch registry when
-  that behavior is desired.
+  `MessageHandleRegistry` and constructs `MessageDispatcher`; use `patch-message` when runtime handler replacement is
+  desired.
 - `config-*`: each `ConfigLoader` run creates a complete snapshot, which is published only after validators pass.
   Config-center watches are reread signals, not full state. Config KSP generates typed table access and change-handler
   lists.
@@ -93,9 +94,9 @@
   flush dirty state in batches.
 - `script-*`, `gm-*`, and `ops-http-ktor`: script runtime, GM features, and node-local HTTP control are separate layers.
   Script runtime owns targets and policy; GM/ops entry points own authorization, audit context, and request submission.
-- `patch-*`: patch plugins declare service, message handler, or event handler replacements through
-  `RuntimePatchInstallContext`. Base entries remain registered, so uninstall falls back to the next patch layer or the
-  base implementation.
+- `patch-*`: `patch-core` owns the runtime and generic patchable slots. `patch-message` and `patch-event` add framework
+  adapters for handler registries. Base entries remain registered, so uninstall falls back to the next patch layer or
+  the base implementation.
 
 ## Suggested Combinations
 

@@ -112,6 +112,13 @@ layers directly.
 Business code usually exposes patchable targets through a binding object and registers it in the node
 `ServiceRegistry` during startup:
 
+Use `patch-message` for `PatchableMessageHandlerRegistry` and `RuntimePatchInstallContext.messageHandlers`; use
+`patch-event` for `PatchableEventHandleRegistry` and `RuntimePatchInstallContext.eventHandlers`. `patch-core` only owns
+the runtime and generic patchable slot mechanism.
+For direct message-handler replacement outside the patch lifecycle, use `HotswapMessageHandlerRegistry`; it mutates the
+active registry immediately and leaves validation or rollback to the caller.
+For the same direct-replacement model on event handlers, use `HotswapEventHandleRegistry` from `patch-event`.
+
 ```kotlin
 class GamePatchBindings(
     val playerServices: PatchableServiceRegistry,
@@ -225,8 +232,9 @@ normal releases. Patch code must be repeatable or able to detect already-applied
 duplicate hooks.
 
 Only replacements made through `RuntimePatchInstallContext` entry points such as `services`, `messageHandlers`, and
-`eventHandlers` are tracked and rolled back automatically. Threads, external hooks, or global state changed by a plugin
-must be cleaned up in `uninstall`.
+`eventHandlers` are tracked and rolled back automatically. The message and event entry points are available only when
+the corresponding adapter module is on the classpath. Threads, external hooks, or global state changed by a plugin must
+be cleaned up in `uninstall`.
 
 Use a recording context when an operator or validation step needs to inspect the slots a patch would touch before
 committing it:

@@ -477,7 +477,7 @@ private class AsteriaEventHandlerSymbolProcessor(
                     addProperty(
                         PropertySpec.builder(
                             dispatcherKey.toRegistryPropertyName(),
-                            PATCHABLE_EVENT_HANDLE_REGISTRY.parameterizedBy(contextType),
+                            DEFAULT_EVENT_HANDLE_REGISTRY.parameterizedBy(contextType),
                         )
                             .initializer(buildRegistryExpression(rootPackage, moduleName, dispatcherKey, contextType))
                             .build(),
@@ -642,7 +642,7 @@ private class AsteriaEventHandlerSymbolProcessor(
         )
         return CodeBlock.of(
             "%T(%T.all())",
-            PATCHABLE_EVENT_HANDLE_REGISTRY.parameterizedBy(contextType),
+            DEFAULT_EVENT_HANDLE_REGISTRY.parameterizedBy(contextType),
             handlesObject,
         )
     }
@@ -849,8 +849,8 @@ private class AsteriaEventHandlerSymbolProcessor(
         private val EVENT_HANDLE = ClassName("io.github.realmlabs.asteria.event", "EventHandle")
         private val EVENT_HANDLE_KEY = MemberName("io.github.realmlabs.asteria.event", "eventHandleKey")
         private val EVENT_DISPATCHER = ClassName("io.github.realmlabs.asteria.event", "EventDispatcher")
-        private val PATCHABLE_EVENT_HANDLE_REGISTRY =
-            ClassName("io.github.realmlabs.asteria.event", "PatchableEventHandleRegistry")
+        private val DEFAULT_EVENT_HANDLE_REGISTRY =
+            ClassName("io.github.realmlabs.asteria.event", "DefaultEventHandleRegistry")
         private val EVENT_TOPIC_PATH = MemberName("io.github.realmlabs.asteria.event", "eventTopicPath")
         private const val HANDLER_CHUNK_SIZE = 200
     }

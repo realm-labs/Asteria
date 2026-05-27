@@ -5,9 +5,10 @@ import io.github.realmlabs.asteria.core.NodeState
 import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.core.ServiceRegistry
 import io.github.realmlabs.asteria.message.DefaultHandlerContext
-import io.github.realmlabs.asteria.patch.*
-import kotlinx.coroutines.runBlocking
-import kotlin.test.*
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class EventDispatcherTest {
     @Test
@@ -79,75 +80,6 @@ class EventDispatcherTest {
         dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 1, newLevel = 2))
 
         assertEquals(listOf("generated-type:2", "generated-topic:player.progression.level.changed"), records)
-    }
-
-    @Test
-    fun `dispatcher uses current patchable event handle`() = runBlocking {
-        val records = mutableListOf<String>()
-        val handleKey = eventHandleKey(GeneratedPlayerLevelChangedHandler::class)
-        val registry = PatchableEventHandleRegistry<DefaultHandlerContext>()
-        registry.register(PlayerLevelChanged::class, key = handleKey) { _, event, _ ->
-            records += "base:${event.newLevel}"
-        }
-        val dispatcher = EventDispatcher(registry)
-        val runtime = PatchRuntime(TestRuntime)
-
-        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 1, newLevel = 2))
-        assertIs<PatchApplyResult.Applied>(
-            runtime.apply(
-                patch("level-handler-fix"),
-                plugin {
-                    eventHandlers.replaceEventType(
-                        registry,
-                        PlayerLevelChanged::class,
-                        key = handleKey
-                    ) { _, event, _ ->
-                        records += "patched:${event.newLevel}"
-                    }
-                },
-            ),
-        )
-        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 2, newLevel = 3))
-
-        assertEquals(listOf("base:2", "patched:3"), records)
-    }
-
-    @Test
-    fun `removing patch restores previous event handler layer`() = runBlocking {
-        val records = mutableListOf<String>()
-        val handleKey = eventHandleKey(GeneratedProgressionTopicHandler::class, PlayerEvents.Progression.topic)
-        val registry = PatchableEventHandleRegistry<DefaultHandlerContext>()
-        registry.registerTopic(PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
-            records += "base"
-        }
-        val dispatcher = EventDispatcher(registry)
-        val runtime = PatchRuntime(TestRuntime)
-        val first = patch("first", revision = 1)
-        val second = patch("second", revision = 2)
-
-        assertIs<PatchApplyResult.Applied>(
-            runtime.apply(first, plugin {
-                eventHandlers.replaceTopic(registry, PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
-                    records += "first"
-                }
-            }),
-        )
-        assertIs<PatchApplyResult.Applied>(
-            runtime.apply(second, plugin {
-                eventHandlers.replaceTopic(registry, PlayerEvents.Progression.topic, key = handleKey) { _, _, _ ->
-                    records += "second"
-                }
-            }),
-        )
-        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 1, newLevel = 2))
-
-        runtime.remove(second.id)
-        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 2, newLevel = 3))
-
-        runtime.remove(first.id)
-        dispatcher.publish(context(), PlayerLevelChanged(oldLevel = 3, newLevel = 4))
-
-        assertEquals(listOf("second", "first", "base"), records)
     }
 
     @Test
@@ -325,21 +257,6 @@ class EventDispatcherTest {
 
     private fun context(): DefaultHandlerContext {
         return DefaultHandlerContext(TestRuntime)
-    }
-
-    private fun patch(
-        id: String,
-        revision: Long = 1,
-    ): RuntimePatch {
-        return RuntimePatch(PatchId(id), revision)
-    }
-
-    private fun plugin(block: RuntimePatchInstallContext.() -> Unit): RuntimePatchPlugin {
-        return object : RuntimePatchPlugin {
-            override suspend fun install(context: RuntimePatchInstallContext) {
-                context.block()
-            }
-        }
     }
 
     private object PlayerEvents : EventTopicCatalog("player") {

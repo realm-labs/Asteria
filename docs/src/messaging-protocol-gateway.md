@@ -79,8 +79,9 @@ val registry = MyMessageHandleRegistry(GeneratedGameMessageHandles.PROTOBUF_HAND
 val dispatcher = MessageDispatcher(registry)
 ```
 
-Projects that want runtime patch layers can use `patch-core` and wrap the same handles in
-`PatchableMessageHandlerRegistry`.
+Projects that want runtime patch layers can use `patch-message` and wrap the same handles in
+`PatchableMessageHandlerRegistry`. For simpler workflows that do not need patch ids, ordering, or automatic rollback,
+`patch-message` also provides `HotswapMessageHandlerRegistry` with direct `replace` and `remove` operations.
 
 `@AsteriaMessageRoute(route = "...")` is only useful with `foundation-message-ksp`. The annotation itself has no
 runtime behavior; KSP reads it and writes route hints to

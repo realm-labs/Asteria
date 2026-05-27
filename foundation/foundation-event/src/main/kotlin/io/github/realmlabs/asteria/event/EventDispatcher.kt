@@ -1,7 +1,6 @@
 package io.github.realmlabs.asteria.event
 
 import io.github.realmlabs.asteria.message.HandlerContext
-import io.github.realmlabs.asteria.patch.*
 import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 
@@ -139,77 +138,6 @@ class DefaultEventHandleRegistry<C : HandlerContext>(
 }
 
 /**
- * Event-handle registry that can be modified through the runtime patch system.
- */
-class PatchableEventHandleRegistry<C : HandlerContext>(
-    handles: Iterable<EventHandle<C>> = emptyList(),
-) : EventHandleRegistry<C>, PatchSlotRegistry<EventHandleKey, EventHandle<C>> {
-    private val registry = PatchableRegistry(handles.associateByKey())
-
-    override fun handlersFor(eventType: KClass<out GameEvent>): List<EventHandle<C>> {
-        return all().filter { it.eventType == eventType }
-    }
-
-    override fun handlersFor(topic: EventTopic): List<EventHandle<C>> {
-        return all().filter { it.topic == topic }
-    }
-
-    override fun all(): List<EventHandle<C>> {
-        return registry.snapshot().values.sortedBy(EventHandle<C>::order)
-    }
-
-    fun register(handle: EventHandle<C>) {
-        registry.register(handle.key, handle)
-    }
-
-    fun <E : GameEvent> register(
-        eventType: KClass<E>,
-        order: Int = 0,
-        key: EventHandleKey = EventHandleKey("event:${eventType.qualifiedName ?: eventType.simpleName}:$order"),
-        handler: EventHandler<C, E>,
-    ) {
-        register(EventHandle.forEventType(eventType, order, key, handler))
-    }
-
-    inline fun <reified E : GameEvent> register(
-        order: Int = 0,
-        key: EventHandleKey = EventHandleKey("event:${E::class.qualifiedName ?: E::class.simpleName}:$order"),
-        handler: EventHandler<C, E>,
-    ) {
-        register(E::class, order, key, handler)
-    }
-
-    fun registerTopic(
-        topic: EventTopic,
-        order: Int = 0,
-        key: EventHandleKey = EventHandleKey("topic:${topic.path}:$order"),
-        handler: EventHandler<C, GameEvent>,
-    ) {
-        register(EventHandle.forTopic(topic, order, key, handler))
-    }
-
-    override fun current(key: EventHandleKey): EventHandle<C>? {
-        return registry.current(key)
-    }
-
-    override fun replace(
-        key: EventHandleKey,
-        value: EventHandle<C>,
-        order: PatchOrder,
-        scope: PatchRegistryMutationScope,
-    ) {
-        registry.replace(key, value, order, scope)
-    }
-
-    override fun remove(
-        id: PatchId,
-        scope: PatchRegistryMutationScope,
-    ) {
-        registry.remove(id, scope)
-    }
-}
-
-/**
  * Builder for manual event dispatcher registration.
  */
 class EventHandleRegistryBuilder<C : HandlerContext> {
@@ -250,43 +178,6 @@ fun <C : HandlerContext> eventHandlers(
     configure: EventHandleRegistryBuilder<C>.() -> Unit,
 ): DefaultEventHandleRegistry<C> {
     return EventHandleRegistryBuilder<C>().apply(configure).build()
-}
-
-/**
- * Runtime patch entry point for replacing event handles.
- */
-val RuntimePatchInstallContext.eventHandlers: RuntimePatchEventHandlerReplacements
-    get() = RuntimePatchEventHandlerReplacements(this)
-
-class RuntimePatchEventHandlerReplacements internal constructor(
-    private val context: RuntimePatchInstallContext,
-) {
-    fun <C : HandlerContext> replace(
-        registry: PatchableEventHandleRegistry<C>,
-        handle: EventHandle<C>,
-    ) {
-        context.replaceSlot(registry, handle.key, handle)
-    }
-
-    fun <C : HandlerContext, E : GameEvent> replaceEventType(
-        registry: PatchableEventHandleRegistry<C>,
-        eventType: KClass<E>,
-        order: Int = 0,
-        key: EventHandleKey = EventHandleKey("event:${eventType.qualifiedName ?: eventType.simpleName}:$order"),
-        handler: EventHandler<C, E>,
-    ) {
-        replace(registry, EventHandle.forEventType(eventType, order, key, handler))
-    }
-
-    fun <C : HandlerContext> replaceTopic(
-        registry: PatchableEventHandleRegistry<C>,
-        topic: EventTopic,
-        order: Int = 0,
-        key: EventHandleKey = EventHandleKey("topic:${topic.path}:$order"),
-        handler: EventHandler<C, GameEvent>,
-    ) {
-        replace(registry, EventHandle.forTopic(topic, order, key, handler))
-    }
 }
 
 /**
@@ -669,15 +560,6 @@ private fun <T : Any> Iterable<T>.distinctByIdentity(): List<T> {
         if (seen.put(value, Unit) == null) {
             result += value
         }
-    }
-    return result
-}
-
-private fun <C : HandlerContext> Iterable<EventHandle<C>>.associateByKey(): Map<EventHandleKey, EventHandle<C>> {
-    val result = linkedMapOf<EventHandleKey, EventHandle<C>>()
-    for (handle in this) {
-        check(handle.key !in result) { "duplicate event handle key ${handle.key}" }
-        result[handle.key] = handle
     }
     return result
 }

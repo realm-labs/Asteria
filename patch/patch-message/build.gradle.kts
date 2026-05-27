@@ -3,8 +3,7 @@ plugins {
 }
 
 dependencies {
+    api(project(":patch:patch-core"))
     api(project(":foundation:foundation-message"))
-
-    implementation(libs.slf4j.api)
     testImplementation(libs.kotlinx.coroutines.core)
 }

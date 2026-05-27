@@ -74,8 +74,9 @@ val registry = MyMessageHandleRegistry(GeneratedGameMessageHandles.PROTOBUF_HAND
 val dispatcher = MessageDispatcher(registry)
 ```
 
-需要运行时补丁 layer 的项目可以使用 `patch-core`，并把同一组 handles 包装成
-`PatchableMessageHandlerRegistry`。
+需要运行时补丁 layer 的项目可以使用 `patch-message`，并把同一组 handles 包装成
+`PatchableMessageHandlerRegistry`。如果只是简单热替换，不需要 patch id、排序或自动回滚，`patch-message` 也提供
+`HotswapMessageHandlerRegistry`，可以直接 `replace` / `remove`。
 
 `@AsteriaMessageRoute(route = "...")` 只有配合 `foundation-message-ksp` 才有意义。注解本身没有运行时行为；
 KSP 读取它，并把 route hint 写入 `META-INF/asteria/message-route-hints/<moduleId>.json`，供工具或下游生成器使用。

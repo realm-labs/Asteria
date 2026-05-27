@@ -56,10 +56,19 @@ class PatchRegistryMutationScope internal constructor()
  * ordered replacement layers and rebuilds the active snapshot from the original base entries, which
  * makes startup replay and online patching use the same ordering rules.
  */
-class PatchableRegistry<K : Any, V : Any>(
+class PatchableIndexedRegistry<K : Any, V : Any, I : Any>(
     entries: Map<K, V> = emptyMap(),
+    private val indexFactory: (Map<K, V>) -> I,
 ) : PatchSlotRegistry<K, V> {
-    private val state = AtomicReference(RegistryState(entries.toMap()))
+    private val state = AtomicReference(
+        entries.toMap().let { base ->
+            RegistryState(
+                base = base,
+                active = base,
+                index = indexFactory(base),
+            )
+        },
+    )
 
     /**
      * Returns the currently active value for [key].
@@ -96,6 +105,13 @@ class PatchableRegistry<K : Any, V : Any>(
     }
 
     /**
+     * Returns the derived index built from the active registry view.
+     */
+    fun index(): I {
+        return state.get().index
+    }
+
+    /**
      * Returns metadata about installed replacement layers.
      *
      * This is diagnostic information only. It does not include base-only entries that have never been replaced.
@@ -115,7 +131,7 @@ class PatchableRegistry<K : Any, V : Any>(
     fun register(key: K, value: V) {
         state.updateAndGet { old ->
             check(key !in old.base) { "patchable registry key $key already exists" }
-            old.copy(base = old.base + (key to value)).rebuild()
+            old.copy(base = old.base + (key to value)).rebuild(indexFactory)
         }
     }
 
@@ -133,7 +149,7 @@ class PatchableRegistry<K : Any, V : Any>(
     ) {
         state.updateAndGet { old ->
             check(key in old.base) { "patchable registry key $key does not exist" }
-            old.withReplacement(key, value, order).rebuild()
+            old.withReplacement(key, value, order).rebuild(indexFactory)
         }
     }
 
@@ -148,16 +164,17 @@ class PatchableRegistry<K : Any, V : Any>(
         scope: PatchRegistryMutationScope,
     ) {
         state.updateAndGet { old ->
-            old.copy(layers = old.layers.filterNot { it.order.id == id }).rebuild()
+            old.copy(layers = old.layers.filterNot { it.order.id == id }).rebuild(indexFactory)
         }
     }
 
-    private data class RegistryState<K : Any, V : Any>(
+    private data class RegistryState<K : Any, V : Any, I : Any>(
         val base: Map<K, V>,
         val layers: List<ReplacementLayer<K, V>> = emptyList(),
         val active: Map<K, V> = base,
+        val index: I,
     ) {
-        fun withReplacement(key: K, value: V, order: PatchOrder): RegistryState<K, V> {
+        fun withReplacement(key: K, value: V, order: PatchOrder): RegistryState<K, V, I> {
             val layerIndex = layers.indexOfFirst { it.order == order }
             val nextLayers = if (layerIndex >= 0) {
                 layers.toMutableList().also { layers ->
@@ -170,12 +187,17 @@ class PatchableRegistry<K : Any, V : Any>(
             return copy(layers = nextLayers.sortedBy { it.order })
         }
 
-        fun rebuild(): RegistryState<K, V> {
+        fun rebuild(indexFactory: (Map<K, V>) -> I): RegistryState<K, V, I> {
             val next = LinkedHashMap(base)
             layers.sortedBy { it.order }.forEach { layer ->
                 next.putAll(layer.replacements)
             }
-            return copy(layers = layers.sortedBy { it.order }, active = next.toMap())
+            val active = next.toMap()
+            return copy(
+                layers = layers.sortedBy { it.order },
+                active = active,
+                index = indexFactory(active),
+            )
         }
     }
 
@@ -183,6 +205,55 @@ class PatchableRegistry<K : Any, V : Any>(
         val order: PatchOrder,
         val replacements: Map<K, V>,
     )
+}
+
+/**
+ * Copy-on-write registry whose active snapshot is also its public read model.
+ */
+class PatchableRegistry<K : Any, V : Any>(
+    entries: Map<K, V> = emptyMap(),
+) : PatchSlotRegistry<K, V> {
+    private val registry = PatchableIndexedRegistry<K, V, Map<K, V>>(entries) { it }
+
+    fun get(key: K): V? {
+        return registry.get(key)
+    }
+
+    fun require(key: K): V {
+        return registry.require(key)
+    }
+
+    override fun current(key: K): V? {
+        return registry.current(key)
+    }
+
+    fun snapshot(): Map<K, V> {
+        return registry.snapshot()
+    }
+
+    fun replacementInfo(): List<PatchRegistryReplacementInfo<K>> {
+        return registry.replacementInfo()
+    }
+
+    fun register(key: K, value: V) {
+        registry.register(key, value)
+    }
+
+    override fun replace(
+        key: K,
+        value: V,
+        order: PatchOrder,
+        scope: PatchRegistryMutationScope,
+    ) {
+        registry.replace(key, value, order, scope)
+    }
+
+    override fun remove(
+        id: PatchId,
+        scope: PatchRegistryMutationScope,
+    ) {
+        registry.remove(id, scope)
+    }
 }
 
 data class PatchRegistryReplacementInfo<K : Any>(

@@ -145,20 +145,29 @@ override fun createReceive(): Receive {
 
 `publish` only matches and queues handlers, returning `EventPublishReceipt`. `pump` runs handlers. If work remains after
 a pump, the dispatcher calls `schedulePump` again. Increase `maxHandlers` to control how many event handlers one actor
-receive may run. The queued dispatcher and synchronous dispatcher use the same registry, so patched slot behavior is the
-same.
+receive may run. The queued dispatcher and synchronous dispatcher both depend only on `EventHandleRegistry`, so they can
+run against either generated immutable registries or patchable registries supplied by the application.
 
 ## Patch Support
 
-The generated `${dispatcher}Registry` is a `PatchableEventHandleRegistry`. Runtime patches replace one handler slot,
-not the whole dispatcher and not every handler under a topic. Dispatchers read the registry's current snapshot during
-routing, so both synchronous dispatch and actor queued dispatch see the latest handler.
+Runtime event patch support lives in `patch-event`, not `foundation-event`. KSP-generated `${dispatcher}Registry`
+properties are immutable `DefaultEventHandleRegistry` instances. Projects that need runtime event patches should build
+a `PatchableEventHandleRegistry` from the generated handle list and wire dispatchers to that registry.
+For simpler workflows that do not need patch ids, ordering, or automatic rollback, `patch-event` also provides
+`HotswapEventHandleRegistry` with direct `replace` and `remove` operations.
+
+Runtime patches replace one handler slot, not the whole dispatcher and not every handler under a topic. Dispatchers read
+the registry's current snapshot during routing, so both synchronous dispatch and actor queued dispatch see the latest
+handler when they use the same patchable registry.
 
 ```kotlin
+val playerEventRegistry = PatchableEventHandleRegistry(GeneratedGameDefaultEventHandles.all())
+val playerEvents = EventDispatcher(playerEventRegistry)
+
 class LevelPatch : RuntimePatchPlugin {
     override suspend fun install(context: RuntimePatchInstallContext) {
         context.eventHandlers.replaceEventType(
-            GeneratedGameEventDispatchers.defaultRegistry,
+            playerEventRegistry,
             PlayerLevelChanged::class,
             key = eventHandleKey(PlayerQuestLevelHandler::class),
         ) { handlerContext, event, publisher ->

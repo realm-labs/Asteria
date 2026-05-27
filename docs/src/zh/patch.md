@@ -97,6 +97,13 @@ GM 或发布流程先把补丁 jar 写入 artifact store，再把 `RuntimePatchD
 
 业务侧通常把可替换入口集中到一个 binding 对象里，并在节点启动时注册到 `ServiceRegistry`：
 
+`PatchableMessageHandlerRegistry` 和 `RuntimePatchInstallContext.messageHandlers` 来自 `patch-message`；
+`PatchableEventHandleRegistry` 和 `RuntimePatchInstallContext.eventHandlers` 来自 `patch-event`。`patch-core` 只提供
+runtime 和通用 patchable slot 机制。
+如果 message handler 只需要脱离 patch 生命周期的直接替换，可以使用 `HotswapMessageHandlerRegistry`；它会立即修改当前
+registry，校验和回滚由调用方负责。
+event handler 的同类直接替换模型由 `patch-event` 中的 `HotswapEventHandleRegistry` 提供。
+
 ```kotlin
 class GamePatchBindings(
     val playerServices: PatchableServiceRegistry,
@@ -196,7 +203,8 @@ config-center，artifact bytes 放 GridFS、对象存储或 HTTP store。
 状态中识别已应用版本，避免节点重启后重复注册同一个 hook。
 
 只有通过 `RuntimePatchInstallContext` 的 `services`、`messageHandlers`、`eventHandlers`
-这类入口做的替换会被自动追踪并回滚。补丁自己启动的线程、注册的外部 hook 或修改的全局状态，必须在 `uninstall` 中清理。
+这类入口做的替换会被自动追踪并回滚。message 和 event 入口只有在对应 adapter 模块进入 classpath 后才可用。补丁自己启动的线程、
+注册的外部 hook 或修改的全局状态，必须在 `uninstall` 中清理。
 
 安装前需要检查补丁会触碰哪些 slot 时，可以用 recording context：
 

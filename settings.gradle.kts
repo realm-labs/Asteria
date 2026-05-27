@@ -30,6 +30,8 @@ include(
     "observability:observability-core",
     "observability:observability-opentelemetry",
     "patch:patch-core",
+    "patch:patch-message",
+    "patch:patch-event",
     "patch:patch-jar",
     "patch:patch-mongodb",
     "patch:patch-config-center",

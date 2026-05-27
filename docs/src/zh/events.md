@@ -134,19 +134,29 @@ override fun createReceive(): Receive {
 
 `publish` 只负责匹配并排队 handler，返回 `EventPublishReceipt`。`pump` 才会实际执行 handler；如果队列里还有任务，
 dispatcher 会再次调用 `schedulePump`。业务可以把 `maxHandlers` 调大，控制每次 actor receive 最多处理多少个事件
-handler。队列 dispatcher 和同步 dispatcher 使用同一种 registry，因此 patch 后的 slot 规则一致。
+handler。队列 dispatcher 和同步 dispatcher 都只依赖 `EventHandleRegistry`，所以可以使用生成的不可变 registry，也可以使用业务显式接入的
+patchable registry。
 
 ## Patch 支持
 
-KSP 生成的 `${dispatcher}Registry` 是 `PatchableEventHandleRegistry`。运行时补丁替换的是某一个 handler slot，
-不是整个 dispatcher，也不是某个 topic 下的所有 handler。dispatcher 每次路由都会读取 registry 当前快照，所以同步分发和
-actor 队列分发都会看到最新 handler。
+事件运行时补丁支持位于 `patch-event`，不在 `foundation-event` 中。KSP 生成的 `${dispatcher}Registry` 是不可变的
+`DefaultEventHandleRegistry`。需要运行时事件补丁的项目，应使用生成的 handle 列表构造 `PatchableEventHandleRegistry`，再把
+dispatcher
+接到这个 registry 上。
+如果只是简单热替换，不需要 patch id、排序或自动回滚，`patch-event` 也提供 `HotswapEventHandleRegistry`，可以直接
+`replace` / `remove`。
+
+运行时补丁替换的是某一个 handler slot，不是整个 dispatcher，也不是某个 topic 下的所有 handler。dispatcher 每次路由都会读取
+registry 当前快照；同步分发和 actor 队列分发只要使用同一个 patchable registry，就会看到最新 handler。
 
 ```kotlin
+val playerEventRegistry = PatchableEventHandleRegistry(GeneratedGameDefaultEventHandles.all())
+val playerEvents = EventDispatcher(playerEventRegistry)
+
 class LevelPatch : RuntimePatchPlugin {
     override suspend fun install(context: RuntimePatchInstallContext) {
         context.eventHandlers.replaceEventType(
-            GeneratedGameEventDispatchers.defaultRegistry,
+            playerEventRegistry,
             PlayerLevelChanged::class,
             key = eventHandleKey(PlayerQuestLevelHandler::class),
         ) { handlerContext, event, publisher ->
