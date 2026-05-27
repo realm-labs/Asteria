@@ -5,7 +5,7 @@ import io.github.realmlabs.asteria.cluster.pekko.SingletonActorRegistry
 import io.github.realmlabs.asteria.gateway.GatewayForwarder
 import io.github.realmlabs.asteria.gateway.GatewayRoute
 import io.github.realmlabs.asteria.gateway.GatewaySessionContext
-import io.github.realmlabs.asteria.message.RouteTarget
+import io.github.realmlabs.asteria.gateway.RouteTarget
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics

@@ -82,6 +82,11 @@ val dispatcher = MessageDispatcher(registry)
 Projects that want runtime patch layers can use `patch-core` and wrap the same handles in
 `PatchableMessageHandlerRegistry`.
 
+`@AsteriaMessageRoute(route = "...")` is only useful with `foundation-message-ksp`. The annotation itself has no
+runtime behavior; KSP reads it and writes route hints to
+`META-INF/asteria/message-route-hints/<moduleId>.json` for tooling or downstream code generation.
+`foundation-message` does not interpret or execute the route string at runtime.
+
 ## Protobuf Protocol Generation
 
 `protocol-protobuf` provides the gateway protocol registry; `rpc-protobuf` provides the RPC registry. `protobuf-codegen`

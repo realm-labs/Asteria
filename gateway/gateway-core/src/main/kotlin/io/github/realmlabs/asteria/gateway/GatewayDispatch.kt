@@ -1,6 +1,5 @@
 package io.github.realmlabs.asteria.gateway
 
-import io.github.realmlabs.asteria.message.RouteTarget
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics

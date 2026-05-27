@@ -5,7 +5,6 @@ import io.github.realmlabs.asteria.cluster.pekko.SingletonActorRegistry
 import io.github.realmlabs.asteria.core.EntityKind
 import io.github.realmlabs.asteria.core.SingletonName
 import io.github.realmlabs.asteria.gateway.*
-import io.github.realmlabs.asteria.message.RouteTarget
 import kotlinx.coroutines.runBlocking
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.testkit.TestProbe

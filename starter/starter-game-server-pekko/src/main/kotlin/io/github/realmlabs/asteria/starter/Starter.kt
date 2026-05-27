@@ -11,8 +11,8 @@ import io.github.realmlabs.asteria.cluster.pekko.PekkoRuntimeModule
 import io.github.realmlabs.asteria.cluster.pekko.TopologyPekkoClusterStartup
 import io.github.realmlabs.asteria.config.center.*
 import io.github.realmlabs.asteria.core.*
-import io.github.realmlabs.asteria.message.RouteRegistry
-import io.github.realmlabs.asteria.message.RouteRegistryBuilder
+import io.github.realmlabs.asteria.gateway.RouteRegistry
+import io.github.realmlabs.asteria.gateway.RouteRegistryBuilder
 
 /**
  * Installs a prebuilt gateway/client protocol route registry.

@@ -5,9 +5,6 @@ import com.google.protobuf.Int32Value
 import com.google.protobuf.StringValue
 import io.github.realmlabs.asteria.core.EntityKind
 import io.github.realmlabs.asteria.gateway.*
-import io.github.realmlabs.asteria.message.DynamicRouteRegistry
-import io.github.realmlabs.asteria.message.ProtocolRoute
-import io.github.realmlabs.asteria.message.RouteTarget
 import kotlinx.coroutines.runBlocking
 import java.net.SocketAddress
 import kotlin.test.Test

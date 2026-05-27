@@ -28,7 +28,7 @@ private data class HandlerBinding(
     val sourceFile: KSFile,
 )
 
-private data class GatewayRouteBinding(
+private data class MessageRouteBinding(
     val handler: KSClassDeclaration,
     val messageClassName: ClassName,
     val sourceFile: KSFile,
@@ -52,15 +52,15 @@ private class AsteriaMessageHandlerSymbolProcessor(
         codePrefix = "ASTERIA-MESSAGE",
         annotationName = "@AsteriaMessageHandler",
     )
-    private val gatewayRouteConstructors = AsteriaKspConstructors(
+    private val messageRouteConstructors = AsteriaKspConstructors(
         diagnostics = diagnostics,
         codePrefix = "ASTERIA-MESSAGE",
-        annotationName = "@AsteriaGatewayRoute",
+        annotationName = "@AsteriaMessageRoute",
     )
     private var generated = false
     private var pendingDeferred: List<AsteriaKspDeferredSymbol> = emptyList()
     private val messageHandlerAnnotationName = "io.github.realmlabs.asteria.message.AsteriaMessageHandler"
-    private val gatewayRouteAnnotationName = "io.github.realmlabs.asteria.message.AsteriaGatewayRoute"
+    private val messageRouteAnnotationName = "io.github.realmlabs.asteria.message.AsteriaMessageRoute"
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         if (generated) {
@@ -76,24 +76,24 @@ private class AsteriaMessageHandlerSymbolProcessor(
                 )
             }
             .toList()
-        val gatewayRouteDeclarationReads = resolver.getSymbolsWithAnnotation(gatewayRouteAnnotationName)
+        val messageRouteDeclarationReads = resolver.getSymbolsWithAnnotation(messageRouteAnnotationName)
             .map { symbol ->
                 symbol.asAnnotatedClassOrInvalid(
                     diagnostics = diagnostics,
                     code = "ASTERIA-MESSAGE-014",
-                    annotationName = "@AsteriaGatewayRoute",
+                    annotationName = "@AsteriaMessageRoute",
                 )
             }
             .toList()
-        val declarationDeferred = (handlerDeclarationReads + gatewayRouteDeclarationReads).deferredSymbols()
+        val declarationDeferred = (handlerDeclarationReads + messageRouteDeclarationReads).deferredSymbols()
         if (declarationDeferred.isNotEmpty()) {
             pendingDeferred = declarationDeferred
             return declarationDeferred.map { it.symbol }
         }
         val handlerDeclarations = handlerDeclarationReads.successfulValues()
-        val gatewayRouteDeclarations = gatewayRouteDeclarationReads.successfulValues()
+        val messageRouteDeclarations = messageRouteDeclarationReads.successfulValues()
 
-        val target = if (handlerDeclarations.isNotEmpty() || gatewayRouteDeclarations.isNotEmpty()) {
+        val target = if (handlerDeclarations.isNotEmpty() || messageRouteDeclarations.isNotEmpty()) {
             codegenTarget() ?: run {
                 generated = true
                 return emptyList()
@@ -123,24 +123,24 @@ private class AsteriaMessageHandlerSymbolProcessor(
             generateDispatchers(target, handlerBindings)
         }
 
-        val gatewayRouteReads = gatewayRouteDeclarations.map { declaration ->
-            readOrDefer(declaration, "gateway route ${declaration.qualifiedName?.asString()}") {
-                declaration.toGatewayRouteBinding(
-                    declaration.requiredContainingFile("@AsteriaGatewayRoute") ?: return@readOrDefer null
+        val messageRouteReads = messageRouteDeclarations.map { declaration ->
+            readOrDefer(declaration, "message route ${declaration.qualifiedName?.asString()}") {
+                declaration.toMessageRouteBinding(
+                    declaration.requiredContainingFile("@AsteriaMessageRoute") ?: return@readOrDefer null
                 )
             }
         }
-        val gatewayRouteDeferred = gatewayRouteReads.deferredSymbols()
-        if (gatewayRouteDeferred.isNotEmpty()) {
-            pendingDeferred = gatewayRouteDeferred
-            return gatewayRouteDeferred.map { it.symbol }
+        val messageRouteDeferred = messageRouteReads.deferredSymbols()
+        if (messageRouteDeferred.isNotEmpty()) {
+            pendingDeferred = messageRouteDeferred
+            return messageRouteDeferred.map { it.symbol }
         }
-        val gatewayRouteBindings = gatewayRouteReads.successfulValues()
-        if (gatewayRouteBindings.isNotEmpty()) {
+        val messageRouteBindings = messageRouteReads.successfulValues()
+        if (messageRouteBindings.isNotEmpty()) {
             checkNotNull(target)
-            generateGatewayRouteMetadata(target, gatewayRouteBindings)
+            generateMessageRouteMetadata(target, messageRouteBindings)
         }
-        target?.let { generateCodegenSnapshot(it, handlerBindings, gatewayRouteBindings) }
+        target?.let { generateCodegenSnapshot(it, handlerBindings, messageRouteBindings) }
 
         generated = true
         pendingDeferred = emptyList()
@@ -247,13 +247,13 @@ private class AsteriaMessageHandlerSymbolProcessor(
         return null
     }
 
-    private fun KSClassDeclaration.toGatewayRouteBinding(sourceFile: KSFile): GatewayRouteBinding? {
+    private fun KSClassDeclaration.toMessageRouteBinding(sourceFile: KSFile): MessageRouteBinding? {
         if (classKind != ClassKind.CLASS || Modifier.ABSTRACT in modifiers) {
             diagnostics.error(
                 code = "ASTERIA-MESSAGE-004",
-                message = "@AsteriaGatewayRoute must target a concrete class.",
+                message = "@AsteriaMessageRoute must target a concrete class.",
                 symbol = this,
-                reason = "The generated gateway route metadata points at a handler class that must be constructible.",
+                reason = "The generated message route metadata points at a handler class that must be constructible.",
                 fix = "Move the annotation to a public concrete handler class.",
             )
             return null
@@ -263,9 +263,9 @@ private class AsteriaMessageHandlerSymbolProcessor(
         } ?: run {
             diagnostics.error(
                 code = "ASTERIA-MESSAGE-005",
-                message = "@AsteriaGatewayRoute class must define handle(context, message).",
+                message = "@AsteriaMessageRoute class must define handle(context, message).",
                 symbol = this,
-                reason = "Gateway route codegen infers the routed message type from the second handle parameter.",
+                reason = "Message route codegen infers the routed message type from the second handle parameter.",
                 fix = "Add a function shaped like fun handle(context: HandlerContextType, message: MessageType).",
             )
             return null
@@ -274,17 +274,17 @@ private class AsteriaMessageHandlerSymbolProcessor(
             ?: run {
                 diagnostics.error(
                     code = "ASTERIA-MESSAGE-006",
-                    message = "@AsteriaGatewayRoute message parameter must resolve to a class type.",
+                    message = "@AsteriaMessageRoute message parameter must resolve to a class type.",
                     symbol = handleFunction.parameters[1],
-                    reason = "Gateway route metadata stores a concrete message class name.",
+                    reason = "Message route metadata stores a concrete message class name.",
                     fix = "Use a concrete message class as the second handle parameter.",
                 )
                 return null
             }
-        val annotation = findAnnotation(gatewayRouteAnnotationName) ?: run {
+        val annotation = findAnnotation(messageRouteAnnotationName) ?: run {
             diagnostics.error(
                 code = "ASTERIA-MESSAGE-018",
-                message = "@AsteriaGatewayRoute annotation could not be resolved.",
+                message = "@AsteriaMessageRoute annotation could not be resolved.",
                 symbol = this,
                 reason = "KSP returned the symbol for the annotation, but the processor could not read the annotation instance.",
                 fix = "Check that the annotation class is available on the KSP classpath.",
@@ -295,17 +295,17 @@ private class AsteriaMessageHandlerSymbolProcessor(
         if (route.isBlank()) {
             diagnostics.error(
                 code = "ASTERIA-MESSAGE-007",
-                message = "@AsteriaGatewayRoute route must not be blank.",
+                message = "@AsteriaMessageRoute route must not be blank.",
                 symbol = this,
-                reason = "The gateway route hint is consumed by tooling and cannot be inferred from an empty string.",
-                fix = "Set route to the public gateway route path used by this message.",
+                reason = "The message route hint is consumed by tooling and cannot be inferred from an empty string.",
+                fix = "Set route to the public message route path used by this message.",
             )
             return null
         }
-        if (!gatewayRouteConstructors.validateConstructible(this)) {
+        if (!messageRouteConstructors.validateConstructible(this)) {
             return null
         }
-        return GatewayRouteBinding(
+        return MessageRouteBinding(
             handler = this,
             messageClassName = messageDeclaration.toClassName(),
             sourceFile = sourceFile,
@@ -321,7 +321,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
             diagnostics.error(
                 code = "ASTERIA-MESSAGE-008",
                 message = "KSP option $GENERATED_PACKAGE_OPTION must be configured.",
-                reason = "Message codegen needs a package for generated dispatchers, registries, catalogs, and snapshots.",
+                reason = "Message codegen needs a package for generated handles, catalogs, route metadata, and snapshots.",
                 fix = "Configure ksp { arg(\"$GENERATED_PACKAGE_OPTION\", \"your.generated.package\") } or use the Asteria message Gradle plugin.",
             )
             valid = false
@@ -495,14 +495,14 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }
     }
 
-    private fun generateGatewayRouteMetadata(target: MessageCodegenTarget, bindings: List<GatewayRouteBinding>) {
+    private fun generateMessageRouteMetadata(target: MessageCodegenTarget, bindings: List<MessageRouteBinding>) {
         val moduleId = target.moduleId.lowercase(Locale.getDefault())
         val output = codeGenerator.createNewFile(
             dependencies = Dependencies(
                 aggregating = false,
-                *bindings.map(GatewayRouteBinding::sourceFile).toTypedArray(),
+                *bindings.map(MessageRouteBinding::sourceFile).toTypedArray(),
             ),
-            packageName = "META-INF/asteria/gateway-route-hints",
+            packageName = "META-INF/asteria/message-route-hints",
             fileName = moduleId,
             extensionName = "json",
         )
@@ -530,10 +530,10 @@ private class AsteriaMessageHandlerSymbolProcessor(
     private fun generateCodegenSnapshot(
         target: MessageCodegenTarget,
         handlerBindings: List<HandlerBinding>,
-        gatewayRouteBindings: List<GatewayRouteBinding>,
+        messageRouteBindings: List<MessageRouteBinding>,
     ) {
         val sourceFiles = (handlerBindings.map(HandlerBinding::sourceFile) +
-                gatewayRouteBindings.map(GatewayRouteBinding::sourceFile))
+                messageRouteBindings.map(MessageRouteBinding::sourceFile))
             .distinctBy { it.filePath }
             .toTypedArray()
         val output = codeGenerator.createNewFile(
@@ -565,8 +565,8 @@ private class AsteriaMessageHandlerSymbolProcessor(
                     writer.appendLine()
                 }
             writer.appendLine("  ],")
-            writer.appendLine("  \"gatewayRoutes\": [")
-            gatewayRouteBindings
+            writer.appendLine("  \"messageRoutes\": [")
+            messageRouteBindings
                 .sortedBy { it.messageClassName.canonicalName }
                 .forEachIndexed { index, binding ->
                     writer.appendLine("    {")
@@ -574,7 +574,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
                     writer.appendLine("      \"handlerType\": ${jsonString(binding.handler.toClassName().canonicalName)},")
                     writer.appendLine("      \"route\": ${jsonString(binding.route)}")
                     writer.append("    }")
-                    if (index != gatewayRouteBindings.lastIndex) {
+                    if (index != messageRouteBindings.lastIndex) {
                         writer.append(',')
                     }
                     writer.appendLine()

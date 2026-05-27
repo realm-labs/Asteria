@@ -25,7 +25,7 @@ abstract class AsteriaMessageCodegenExtension @Inject constructor(objects: Objec
     val generatedPackage: Property<String> = objects.property(String::class.java)
 
     /**
-     * Logical module id used in generated type names and gateway route metadata.
+     * Logical module id used in generated type names and message route metadata.
      */
     val moduleId: Property<String> = objects.property(String::class.java)
 

@@ -77,6 +77,10 @@ val dispatcher = MessageDispatcher(registry)
 需要运行时补丁 layer 的项目可以使用 `patch-core`，并把同一组 handles 包装成
 `PatchableMessageHandlerRegistry`。
 
+`@AsteriaMessageRoute(route = "...")` 只有配合 `foundation-message-ksp` 才有意义。注解本身没有运行时行为；
+KSP 读取它，并把 route hint 写入 `META-INF/asteria/message-route-hints/<moduleId>.json`，供工具或下游生成器使用。
+`foundation-message` 本身不解释这个 route 字符串，也不会在运行时执行它。
+
 ## Protobuf 协议生成
 
 `protocol-protobuf` 提供 gateway protocol registry；`rpc-protobuf` 提供 RPC registry。`protobuf-codegen` 从 proto 描述生成

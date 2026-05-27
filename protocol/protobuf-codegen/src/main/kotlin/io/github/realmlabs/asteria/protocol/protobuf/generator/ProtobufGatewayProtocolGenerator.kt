@@ -10,7 +10,7 @@ import com.squareup.kotlinpoet.*
 import io.github.realmlabs.asteria.core.EntityKind
 import io.github.realmlabs.asteria.core.RoleKey
 import io.github.realmlabs.asteria.core.SingletonName
-import io.github.realmlabs.asteria.message.RouteTarget
+import io.github.realmlabs.asteria.gateway.RouteTarget
 import io.github.realmlabs.asteria.protocol.protobuf.GeneratedProtobufGatewayProtocol
 import io.github.realmlabs.asteria.protocol.protobuf.ProtobufGatewayProtocolBuilder
 import io.github.realmlabs.asteria.protocol.protobuf.ProtobufGatewayProtocolContributor

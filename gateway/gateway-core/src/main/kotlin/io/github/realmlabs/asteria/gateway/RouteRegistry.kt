@@ -1,4 +1,4 @@
-package io.github.realmlabs.asteria.message
+package io.github.realmlabs.asteria.gateway
 
 import io.github.realmlabs.asteria.core.EntityKind
 import io.github.realmlabs.asteria.core.RoleKey
@@ -67,9 +67,9 @@ interface ProtocolRouteRegistry {
 /**
  * Runtime-mutable route registry.
  *
- * Use this when a GM command or script needs to temporarily redirect a protocol message, for example from a world singleton
- * to player shard entities. Updates replace the complete route for one message type atomically, so each inbound packet sees
- * either the old route or the new route.
+ * Use this when a GM command or script needs to temporarily redirect a protocol message, for example from a world
+ * singleton to player shard entities. Updates replace the complete route for one message type atomically, so each
+ * inbound packet sees either the old route or the new route.
  *
  * Atomicity is per route entry only. There is no multi-message transaction across several route updates.
  */

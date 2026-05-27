@@ -1,4 +1,4 @@
-package io.github.realmlabs.asteria.message
+package io.github.realmlabs.asteria.gateway
 
 import io.github.realmlabs.asteria.core.EntityKind
 import kotlin.test.Test

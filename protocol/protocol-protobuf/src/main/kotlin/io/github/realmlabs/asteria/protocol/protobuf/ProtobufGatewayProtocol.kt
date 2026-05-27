@@ -2,12 +2,7 @@ package io.github.realmlabs.asteria.protocol.protobuf
 
 import com.google.protobuf.GeneratedMessage
 import com.google.protobuf.Parser
-import io.github.realmlabs.asteria.gateway.GatewayRoute
-import io.github.realmlabs.asteria.gateway.GatewayRouteResolver
-import io.github.realmlabs.asteria.gateway.GatewaySessionContext
-import io.github.realmlabs.asteria.message.ProtocolRouteRegistry
-import io.github.realmlabs.asteria.message.RouteRegistryBuilder
-import io.github.realmlabs.asteria.message.RouteTarget
+import io.github.realmlabs.asteria.gateway.*
 import kotlin.reflect.KClass
 
 /**
