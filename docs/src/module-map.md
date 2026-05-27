@@ -77,8 +77,11 @@
 - `foundation-contribution-*`: KSP scans `@AsteriaContribution` at compile time and emits static contribution lists.
   Runtime code does not scan the classpath. Business code turns the list into maps, grouped indexes, or patchable
   registries.
-- `foundation-event-*` and `foundation-message-*`: KSP emits handler handles, registries, and dispatchers. Generated
-  registries are patchable slot registries, so patches replace one handler slot rather than the dispatcher object.
+- `foundation-event-*`: KSP emits handler handles, registries, and dispatchers. Generated registries are patchable slot
+  registries, so patches replace one handler slot rather than the dispatcher object.
+- `foundation-message-*`: message KSP emits only handler handles. Application startup code chooses the concrete
+  `MessageHandleRegistry` and constructs `MessageDispatcher`; `patch-core` provides the runtime patch registry when
+  that behavior is desired.
 - `config-*`: each `ConfigLoader` run creates a complete snapshot, which is published only after validators pass.
   Config-center watches are reread signals, not full state. Config KSP generates typed table access and change-handler
   lists.

@@ -55,23 +55,27 @@ asteriaMessageCodegen {
 }
 ```
 
-`@AsteriaMessageHandler(dispatcher = "...")` 标记一个可生成注册代码的 handler class。handler 必须是非抽象 class，
+`@AsteriaMessageHandler(dispatcher = "...")` 标记一个可生成 handle 的 handler class。handler 必须是非抽象 class，
 并定义 `handle(context, message)`；第一个参数决定 dispatcher 的 `HandlerContext` 类型，第二个参数决定要注册的消息类型。
 同一个生成模块内的 handler 必须共享同一种 context 类型。`dispatcher` 是逻辑分发器 key，用来把登录服、游戏服、内部消息等不同入口拆成不同
-registry。
+handle 列表。
 
 KSP 会按 `generatedPackage` 和 `moduleId` 生成：
 
-- `Generated<Module>NodeDispatchers`：暴露每个 dispatcher key 对应的 `*_HANDLES`、`*_REGISTRY` 和 dispatcher。
+- `Generated<Module>MessageHandles`：暴露每个 dispatcher key 对应的 `*_HANDLES`。
 - `Generated<Module><Dispatcher>MessageHandles` 及 chunk：保存静态 `MessageHandle` 列表。
 - 可选 `MessageCatalog`：开启 `messageCatalogEnabled` 后供工具和诊断读取，不作为运行时路由入口。
 
-生成的 registry 是 `PatchableMessageHandlerRegistry`。`MessageDispatcher` 每次分发都会从 registry 读取当前 slot：
-基础 slot 来自 KSP 生成的 handles，补丁通过 `context.messageHandlers.replace(registry, ...)` 覆盖某一个消息类型的
-slot。补丁不会重建
-dispatcher，
-也不会新增未注册过的消息类型；卸载补丁后会回退到下一层补丁或基础 handler。需要自定义 `MessageHandleRegistry`
-时，可以复用生成的 handles 后自行构造 `MessageDispatcher`。
+KSP 不选择 registry 实现。应用启动层把生成的 handles 包装成自己需要的 `MessageHandleRegistry`，再构造
+`MessageDispatcher`：
+
+```kotlin
+val registry = MyMessageHandleRegistry(GeneratedGameMessageHandles.PROTOBUF_HANDLES)
+val dispatcher = MessageDispatcher(registry)
+```
+
+需要运行时补丁 layer 的项目可以使用 `patch-core`，并把同一组 handles 包装成
+`PatchableMessageHandlerRegistry`。
 
 ## Protobuf 协议生成
 

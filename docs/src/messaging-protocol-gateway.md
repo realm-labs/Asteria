@@ -58,26 +58,29 @@ asteriaMessageCodegen {
 }
 ```
 
-`@AsteriaMessageHandler(dispatcher = "...")` marks a handler class for generated registration. The handler must be a
+`@AsteriaMessageHandler(dispatcher = "...")` marks a handler class for generated handle creation. The handler must be a
 non-abstract class and define `handle(context, message)`: the first parameter determines the dispatcher's
 `HandlerContext` type, and the second parameter determines the registered message type. All handlers in one generated
-module must share the same context type. `dispatcher` is a logical dispatcher key, useful for separating login-node,
-game-node, internal-message, or other entry points into different registries.
+module must share the same context type. `dispatcher` is a logical key, useful for separating login-node, game-node,
+internal-message, or other entry points into different handle lists.
 
 KSP generates the following under `generatedPackage` and `moduleId`:
 
-- `Generated<Module>NodeDispatchers`: exposes each dispatcher key's `*_HANDLES`, `*_REGISTRY`, and dispatcher.
+- `Generated<Module>MessageHandles`: exposes each dispatcher key's `*_HANDLES`.
 - `Generated<Module><Dispatcher>MessageHandles` plus chunks: stores the static `MessageHandle` list.
 - Optional `MessageCatalog`: generated when `messageCatalogEnabled` is on, for tooling and diagnostics rather than
   runtime routing.
 
-The generated registry is a `PatchableMessageHandlerRegistry`. `MessageDispatcher` reads the current slot from the
-registry on every dispatch: base slots come from KSP-generated handles, and patches replace one message-type slot
-through
-`context.messageHandlers.replace(registry, ...)`. Patches do not rebuild the dispatcher and cannot introduce a brand-new
-message type;
-after removal, the slot falls back to the next patch layer or the base handler. Code that needs a custom
-`MessageHandleRegistry` can reuse the generated handles and construct its own `MessageDispatcher`.
+KSP does not choose a registry implementation. Application startup code turns the generated handles into whichever
+`MessageHandleRegistry` it wants and then constructs `MessageDispatcher`:
+
+```kotlin
+val registry = MyMessageHandleRegistry(GeneratedGameMessageHandles.PROTOBUF_HANDLES)
+val dispatcher = MessageDispatcher(registry)
+```
+
+Projects that want runtime patch layers can use `patch-core` and wrap the same handles in
+`PatchableMessageHandlerRegistry`.
 
 ## Protobuf Protocol Generation
 

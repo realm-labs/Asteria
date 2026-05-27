@@ -401,8 +401,6 @@ private class AsteriaMessageHandlerSymbolProcessor(
             )
             return
         }
-        val dispatcherType = ClassName("io.github.realmlabs.asteria.message", "MessageDispatcher")
-        val registryType = ClassName("io.github.realmlabs.asteria.message", "PatchableMessageHandlerRegistry")
         val messageHandleType = ClassName("io.github.realmlabs.asteria.message", "MessageHandle")
         val generatedMessageType = ClassName("com.google.protobuf", "GeneratedMessage")
         val dispatchers = bindings.map { it.dispatcher }.distinct().sorted()
@@ -411,7 +409,7 @@ private class AsteriaMessageHandlerSymbolProcessor(
             val messageSuperType = resolveMessageSuperType(dispatcherKey, dispatcherBindings, generatedMessageType)
             generateDispatcherHandles(target, contextType, dispatcherKey, dispatcherBindings, messageSuperType)
         }
-        val generatedType = TypeSpec.objectBuilder("Generated${typeNamePart}NodeDispatchers")
+        val generatedType = TypeSpec.objectBuilder("Generated${typeNamePart}MessageHandles")
             .apply {
                 dispatchers.forEach { dispatcherKey ->
                     val dispatcherBindings = bindings.filter { it.dispatcher == dispatcherKey }
@@ -427,30 +425,10 @@ private class AsteriaMessageHandlerSymbolProcessor(
                             .initializer(buildHandlesExpression(target, dispatcherBindings))
                             .build(),
                     )
-                    addProperty(
-                        PropertySpec.builder(
-                            dispatcherKey.toRegistryPropertyName(),
-                            registryType.parameterizedBy(contextType, messageSuperType),
-                        )
-                            .initializer(
-                                "%T(%N)",
-                                registryType.parameterizedBy(contextType, messageSuperType),
-                                dispatcherKey.toHandlesPropertyName(),
-                            )
-                            .build(),
-                    )
-                    addProperty(
-                        PropertySpec.builder(
-                            dispatcherKey.toDispatcherPropertyName(),
-                            dispatcherType.parameterizedBy(contextType, messageSuperType),
-                        )
-                            .initializer("%T(%N)", dispatcherType, dispatcherKey.toRegistryPropertyName())
-                            .build(),
-                    )
                 }
             }
             .build()
-        FileSpec.builder(generatedPackage, "Generated${typeNamePart}NodeDispatchers")
+        FileSpec.builder(generatedPackage, "Generated${typeNamePart}MessageHandles")
             .addType(generatedType)
             .build()
             .writeTo(
@@ -736,17 +714,6 @@ private class AsteriaMessageHandlerSymbolProcessor(
         }.joinToString("")
         val normalized = if (sanitized.firstOrNull()?.isDigit() == true) "_$sanitized" else sanitized
         return normalized.ifBlank { "DEFAULT" }
-    }
-
-    private fun String.toRegistryPropertyName(): String {
-        val dispatcherName = toDispatcherPropertyName()
-        val screamingSnake = dispatcherName.any { it.isLetter() } &&
-                dispatcherName.all { !it.isLetter() || it.isUpperCase() }
-        return if (screamingSnake) {
-            "${dispatcherName}_REGISTRY"
-        } else {
-            "${dispatcherName}Registry"
-        }
     }
 
     private fun String.toHandlesPropertyName(): String {

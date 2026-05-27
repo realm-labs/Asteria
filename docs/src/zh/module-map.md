@@ -77,9 +77,10 @@
 - `foundation-contribution-*`：KSP 在编译期扫描 `@AsteriaContribution`，生成静态贡献清单。运行期不会扫描
   classpath；业务侧把清单转换成
   list、map、groupBy 或 patchable registry。
-- `foundation-event-*` 和 `foundation-message-*`：KSP 生成 handler handle、registry 和 dispatcher。生成的 registry 是
-  patchable
-  slot registry，补丁替换的是具体 handler slot，不是整个 dispatcher。
+- `foundation-event-*`：KSP 生成 handler handle、registry 和 dispatcher。生成的 registry 是 patchable slot registry，
+  补丁替换的是具体 handler slot，不是整个 dispatcher。
+- `foundation-message-*`：message KSP 只生成 handler handles。应用启动层选择具体 `MessageHandleRegistry` 并构造
+  `MessageDispatcher`；需要运行时补丁语义时使用 `patch-core` 提供的 registry。
 - `config-*`：`ConfigLoader` 每次生成完整快照，validator 通过后才发布。配置中心 watch 只触发重读，不携带完整配置状态；配置表和变更
   handler 的 KSP 只生成强类型访问和 handler 清单。
 - `cluster-pekko-*`：应用拓扑先由 `foundation-core` 声明，Pekko runtime 再按 role、entity、singleton 元数据启动 actor

@@ -79,8 +79,3 @@ data class DefaultActorHandlerContext<A : Any>(
 ) : ActorHandlerContext<A>
 
 typealias ActorMessageHandler<A, M> = MessageHandler<ActorHandlerContext<A>, M>
-
-/**
- * Convenience alias for an actor-scoped handler registry.
- */
-typealias ActorMessageHandlerRegistry<A, M> = PatchableMessageHandlerRegistry<ActorHandlerContext<A>, M>

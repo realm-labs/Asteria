@@ -5,67 +5,30 @@ import io.github.realmlabs.asteria.observability.Counter
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.Timer
-import io.github.realmlabs.asteria.patch.*
-import kotlinx.coroutines.runBlocking
+import kotlin.reflect.KClass
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 
 class MessageDispatcherTest {
     @Test
-    fun dispatcherUsesCurrentRegistryHandle() = runBlocking {
+    fun dispatcherUsesCurrentRegistryHandle() {
         val events = mutableListOf<String>()
-        val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
+        val registry = TestMessageHandleRegistry<HandlerContext, GameMessage>()
         registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
-        val runtime = PatchRuntime(TestRuntime)
 
         dispatcher.dispatch(context(), LoginReq("p1"))
-        assertIs<PatchApplyResult.Applied>(
-            runtime.apply(
-                patch("login-fix"),
-                plugin {
-                    messageHandlers.replace(registry, LoginHandler(events, "patched"))
-                },
-            ),
-        )
+        registry.register(LoginHandler(events, "replaced"))
         dispatcher.dispatch(context(), LoginReq("p2"))
 
-        assertEquals(listOf("base:p1", "patched:p2"), events)
-    }
-
-    @Test
-    fun removingPatchRestoresPreviousHandlerLayer() = runBlocking {
-        val events = mutableListOf<String>()
-        val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
-        registry.register(LoginHandler(events, "base"))
-        val dispatcher = MessageDispatcher(registry)
-        val runtime = PatchRuntime(TestRuntime)
-        val first = patch("first", revision = 1)
-        val second = patch("second", revision = 2)
-
-        assertIs<PatchApplyResult.Applied>(
-            runtime.apply(first, plugin { messageHandlers.replace(registry, LoginHandler(events, "first")) }),
-        )
-        assertIs<PatchApplyResult.Applied>(
-            runtime.apply(second, plugin { messageHandlers.replace(registry, LoginHandler(events, "second")) }),
-        )
-        dispatcher.dispatch(context(), LoginReq("p1"))
-
-        runtime.remove(second.id)
-        dispatcher.dispatch(context(), LoginReq("p2"))
-
-        runtime.remove(first.id)
-        dispatcher.dispatch(context(), LoginReq("p3"))
-
-        assertEquals(listOf("second:p1", "first:p2", "base:p3"), events)
+        assertEquals(listOf("base:p1", "replaced:p2"), events)
     }
 
     @Test
     fun handlerCanDeclareSpecificContextType() {
         val events = mutableListOf<String>()
-        val registry = PatchableMessageHandlerRegistry<EntityHandlerContext, GameMessage>()
+        val registry = TestMessageHandleRegistry<EntityHandlerContext, GameMessage>()
         registry.register<EntityMessage> { context, message ->
             events += "${context.entityKind.value}:${context.entityId}:${message.value}"
         }
@@ -84,7 +47,7 @@ class MessageDispatcherTest {
         val events = mutableListOf<String>()
         val metrics = RecordingMetrics()
         val runtime = TestRuntime.withMetrics(metrics)
-        val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
+        val registry = TestMessageHandleRegistry<HandlerContext, GameMessage>()
         registry.register(LoginHandler(events, "base"))
         val dispatcher = MessageDispatcher(registry)
 
@@ -103,7 +66,7 @@ class MessageDispatcherTest {
     fun dispatcherRecordsFailedMessageMetrics() {
         val metrics = RecordingMetrics()
         val runtime = TestRuntime.withMetrics(metrics)
-        val registry = PatchableMessageHandlerRegistry<HandlerContext, GameMessage>()
+        val registry = TestMessageHandleRegistry<HandlerContext, GameMessage>()
         registry.register<LoginReq> { _, _ -> error("failed") }
         val dispatcher = MessageDispatcher(registry)
 
@@ -123,7 +86,7 @@ class MessageDispatcherTest {
     @Test
     fun actorDispatchBuildsActorContext() {
         val events = mutableListOf<String>()
-        val registry = ActorMessageHandlerRegistry<TestActor, GameMessage>()
+        val registry = TestMessageHandleRegistry<ActorHandlerContext<TestActor>, GameMessage>()
         registry.register<ActorMessage> { context, message ->
             events += "${context.runtime.name}:${context.actor.id}:${message.value}"
         }
@@ -140,21 +103,6 @@ class MessageDispatcherTest {
 
     private fun context(): HandlerContext {
         return DefaultHandlerContext(TestRuntime)
-    }
-
-    private fun patch(
-        id: String,
-        revision: Long = 1,
-    ): RuntimePatch {
-        return RuntimePatch(PatchId(id), revision)
-    }
-
-    private fun plugin(block: RuntimePatchInstallContext.() -> Unit): RuntimePatchPlugin {
-        return object : RuntimePatchPlugin {
-            override suspend fun install(context: RuntimePatchInstallContext) {
-                context.block()
-            }
-        }
     }
 
     private object TestRuntime : NodeRuntime {
@@ -199,6 +147,39 @@ class MessageDispatcherTest {
     ) : MessageHandler<HandlerContext, LoginReq> {
         override fun handle(context: HandlerContext, message: LoginReq) {
             events += "$name:${message.playerId}"
+        }
+    }
+
+    private class TestMessageHandleRegistry<C : HandlerContext, M : Any>(
+        handles: Iterable<MessageHandle<C, M>> = emptyList(),
+    ) : MessageHandleRegistry<C, M> {
+        private val handlesByMessageType = linkedMapOf<KClass<out M>, MessageHandle<C, M>>()
+
+        init {
+            handles.forEach(::register)
+        }
+
+        override fun get(messageType: KClass<out M>): MessageHandle<C, M>? {
+            return handlesByMessageType[messageType]
+        }
+
+        override fun all(): Collection<MessageHandle<C, M>> {
+            return handlesByMessageType.values
+        }
+
+        fun register(handle: MessageHandle<C, M>) {
+            handlesByMessageType[handle.messageType] = handle
+        }
+
+        fun <T : M> register(
+            messageType: KClass<T>,
+            handler: MessageHandler<C, T>,
+        ) {
+            register(MessageHandle.of(messageType, handler))
+        }
+
+        inline fun <reified T : M> register(handler: MessageHandler<C, T>) {
+            register(T::class, handler)
         }
     }
 
