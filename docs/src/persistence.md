@@ -32,6 +32,14 @@ val profileModule = dataModule<Long, PlayerProfileData>(
 Actors usually call `start()` during startup, use `getOrLoad<T>()` or `use<T> { ... }` during message handling, and
 call `tick()` or `flush()` from timers.
 
+`start()` loads eager modules sequentially in registration order by default. For many independent eager modules, pass
+`EagerLoadStrategy.Parallel(maxConcurrency)` to `DataManager`; the default parallelism is `4`. Use it only when modules
+have no load-time ordering dependency and their storage clients are safe for concurrent access. If one parallel load
+fails, startup fails and no eager data from that attempt is installed.
+
+When a handler needs a runtime-selected set of data types in one access window, use `useMany(types) { data -> ... }`;
+typed `use` overloads remain the preferred form when the type set is static.
+
 ## Load Policies
 
 - `Eager`: loaded when the actor starts; use for core data.

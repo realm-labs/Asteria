@@ -31,6 +31,13 @@ val profileModule = dataModule<Long, PlayerProfileData>(
 actor 启动时通常调用 `start()`；消息处理时用 `getOrLoad<T>()` 或 `use<T> { ... }`；timer 中周期性调用 `tick()` 或
 `flush()`。
 
+`start()` 默认按注册顺序串行加载 eager module。eager module 很多且彼此加载期无依赖时，可以在 `DataManager` 中传入
+`EagerLoadStrategy.Parallel(maxConcurrency)`；默认并发度是 `4`。只有模块之间没有加载顺序依赖、底层存储客户端也支持并发访问时才使用。
+并行加载中如果有一个 module 加载失败，本次启动失败，且不会安装这次已经加载完成的 eager data。
+
+需要在一个访问窗口中处理运行时决定的数据类型列表时，使用 `useMany(types) { data -> ... }`；类型集合固定时仍优先使用
+typed `use` 重载。
+
 ## 加载策略
 
 - `Eager`：actor 启动时加载，适合核心数据。

@@ -2,7 +2,10 @@ package io.github.realmlabs.asteria.persistence
 
 import io.github.realmlabs.asteria.core.EntityKind
 import io.github.realmlabs.asteria.core.ServiceRegistry
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.*
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
@@ -30,6 +33,61 @@ class DataManagerTest {
         assertEquals(1, eagerData.flushes)
         assertTrue(manager.drain())
         assertEquals(1, eagerData.drains)
+    }
+
+    @Test
+    fun `start can load eager modules concurrently when configured`(): Unit = runBlocking {
+        val firstEntered = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val secondLoaded = CompletableDeferred<Unit>()
+        val first = BlockingLoadData(entered = firstEntered, release = releaseFirst)
+        val second = OtherBlockingLoadData(loadedSignal = secondLoaded)
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.eager("first")) { first },
+                dataModule(bucket = DataBucket.eager("second")) { second },
+            ),
+            eagerLoadStrategy = EagerLoadStrategy.Parallel(),
+        )
+
+        val start = async { manager.start() }
+        firstEntered.await()
+        withTimeout(1.seconds) {
+            secondLoaded.await()
+        }
+
+        releaseFirst.complete(Unit)
+        start.await()
+
+        assertTrue(first.loaded)
+        assertTrue(second.loaded)
+    }
+
+    @Test
+    fun `parallel eager load failure does not install partial data`(): Unit = runBlocking {
+        val secondLoaded = CompletableDeferred<Unit>()
+        val first = RetryableLoadData(failAfter = secondLoaded)
+        val second = CountingLoadData(loadedSignal = secondLoaded)
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.eager("first")) { first },
+                dataModule(bucket = DataBucket.eager("second")) { second },
+            ),
+            eagerLoadStrategy = EagerLoadStrategy.Parallel(),
+        )
+
+        assertFailsWith<IllegalStateException> {
+            manager.start()
+        }
+
+        manager.start()
+
+        assertEquals(2, first.loads)
+        assertEquals(2, second.loads)
+        assertEquals(first, manager.requireLoaded<RetryableLoadData>())
+        assertEquals(second, manager.requireLoaded<CountingLoadData>())
     }
 
     @Test
@@ -222,6 +280,43 @@ class DataManagerTest {
         }
         assertFailsWith<IllegalStateException> {
             second.touch()
+        }
+    }
+
+    @Test
+    fun `useMany supports dynamic data type lists`(): Unit = runBlocking {
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = listOf(
+                dataModule(bucket = DataBucket.lazy()) { NamedData("mail") },
+                dataModule(bucket = DataBucket.lazy()) { SecondData() },
+                dataModule(bucket = DataBucket.lazy()) { ThirdData() },
+            ),
+        )
+
+        manager.start()
+        val result = manager.useMany(listOf(NamedData::class, SecondData::class, ThirdData::class)) { data ->
+            listOf(
+                (data[0] as NamedData).name,
+                (data[1] as SecondData).name,
+                (data[2] as ThirdData).name,
+            )
+        }
+
+        assertEquals(listOf("mail", "second", "third"), result)
+    }
+
+    @Test
+    fun `useMany rejects empty type lists`(): Unit = runBlocking {
+        val manager = DataManager(
+            scope = DataScope(EntityKind("player"), 1001, ServiceRegistry()),
+            modules = emptyList(),
+        )
+
+        manager.start()
+
+        assertFailsWith<IllegalArgumentException> {
+            manager.useMany(emptyList()) { }
         }
     }
 
@@ -489,6 +584,55 @@ private class NamedData(
 
     override suspend fun load() {
         loaded = true
+    }
+}
+
+private class BlockingLoadData(
+    private val entered: CompletableDeferred<Unit>? = null,
+    private val release: CompletableDeferred<Unit>? = null,
+    private val loadedSignal: CompletableDeferred<Unit>? = null,
+) : ResidentMemData {
+    var loaded: Boolean = false
+
+    override suspend fun load() {
+        entered?.complete(Unit)
+        release?.await()
+        loaded = true
+        loadedSignal?.complete(Unit)
+    }
+}
+
+private class OtherBlockingLoadData(
+    private val loadedSignal: CompletableDeferred<Unit>,
+) : ResidentMemData {
+    var loaded: Boolean = false
+
+    override suspend fun load() {
+        loaded = true
+        loadedSignal.complete(Unit)
+    }
+}
+
+private class RetryableLoadData(
+    private val failAfter: CompletableDeferred<Unit>,
+) : ResidentMemData {
+    var loads: Int = 0
+
+    override suspend fun load() {
+        loads += 1
+        failAfter.await()
+        check(loads > 1) { "load failed" }
+    }
+}
+
+private class CountingLoadData(
+    private val loadedSignal: CompletableDeferred<Unit>,
+) : ResidentMemData {
+    var loads: Int = 0
+
+    override suspend fun load() {
+        loads += 1
+        loadedSignal.complete(Unit)
     }
 }
 

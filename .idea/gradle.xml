@@ -90,7 +90,9 @@
             <option value="$PROJECT_DIR$/patch" />
             <option value="$PROJECT_DIR$/patch/patch-config-center" />
             <option value="$PROJECT_DIR$/patch/patch-core" />
+            <option value="$PROJECT_DIR$/patch/patch-event" />
             <option value="$PROJECT_DIR$/patch/patch-jar" />
+            <option value="$PROJECT_DIR$/patch/patch-message" />
             <option value="$PROJECT_DIR$/patch/patch-mongodb" />
             <option value="$PROJECT_DIR$/patch/patch-pekko" />
             <option value="$PROJECT_DIR$/persistence" />

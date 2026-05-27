@@ -3,6 +3,11 @@ package io.github.realmlabs.asteria.persistence
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.Metrics
 import io.github.realmlabs.asteria.observability.NoopMetrics
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 import kotlin.time.Clock
@@ -20,6 +25,7 @@ class DataManager<ID : Any>(
     modules: Iterable<DataModule<ID, out MemData, out DataBucketPolicy>>,
     private val clock: Clock = Clock.System,
     private val metrics: Metrics = NoopMetrics,
+    private val eagerLoadStrategy: EagerLoadStrategy = EagerLoadStrategy.Sequential,
 ) {
     private val logger = LoggerFactory.getLogger(DataManager::class.java)
     private val modules: List<DataModule<ID, out MemData, out DataBucketPolicy>> = modules.toList()
@@ -32,14 +38,15 @@ class DataManager<ID : Any>(
 
     /**
      * Starts this manager and loads modules declared with [DataBucket.eager].
+     *
+     * Eager modules are loaded sequentially in registration order by default. Use [EagerLoadStrategy.Parallel] only when
+     * eager modules are independent during load and their storage dependencies support concurrent access.
      */
     suspend fun start() = measured("start", baseTags()) {
         check(lifecycle == DataManagerLifecycle.Created) {
             "data manager for ${scope.entityKind}:${scope.entityId} already started"
         }
-        modulesByType.values
-            .filter { it.bucket is EagerDataBucket }
-            .forEach { load(it) }
+        loadEagerModules()
         lifecycle = DataManagerLifecycle.Active
     }
 
@@ -249,11 +256,18 @@ class DataManager<ID : Any>(
         return load(module)
     }
 
-    private suspend fun <R> useMany(
+    /**
+     * Runs [block] with a dynamic list of distinct data units loaded under one access window.
+     *
+     * The [data] list passed to [block] has the same order as [types]. Prefer typed [use] overloads when the type set is
+     * static at the call site.
+     */
+    suspend fun <R> useMany(
         types: List<KClass<out MemData>>,
         block: suspend (List<MemData>) -> R,
     ): R {
         requireActive()
+        require(types.isNotEmpty()) { "useMany requires at least one mem data type" }
         checkDistinctUseTypes(types)
         val modules = types.map(::moduleUntyped)
         return measured("use_many", baseTags()) {
@@ -269,12 +283,44 @@ class DataManager<ID : Any>(
 
     private suspend fun <T : MemData> load(module: DataModule<ID, T, out DataBucketPolicy>): T {
         loaded(module.type)?.let { return it }
+        val loaded = loadDetached(module)
+        loadedDataByType[module.type] = loaded
+        return loaded.data
+    }
+
+    private suspend fun loadEagerModules() {
+        val eagerModules = modulesByType.values.filter { it.bucket is EagerDataBucket }
+        when (val strategy = eagerLoadStrategy) {
+            EagerLoadStrategy.Sequential -> eagerModules.forEach { load(it) }
+            is EagerLoadStrategy.Parallel -> loadEagerModulesInParallel(eagerModules, strategy.maxConcurrency)
+        }
+    }
+
+    private suspend fun loadEagerModulesInParallel(
+        eagerModules: List<DataModule<ID, out MemData, out DataBucketPolicy>>,
+        maxConcurrency: Int,
+    ) {
+        val semaphore = Semaphore(maxConcurrency)
+        val loaded = coroutineScope {
+            eagerModules.map { module ->
+                async {
+                    semaphore.withPermit {
+                        loadDetached(module)
+                    }
+                }
+            }.awaitAll()
+        }
+        loaded.forEach { loadedData ->
+            loadedDataByType[loadedData.module.type] = loadedData
+        }
+    }
+
+    private suspend fun <T : MemData> loadDetached(module: DataModule<ID, T, out DataBucketPolicy>): LoadedData<ID, T> {
         return measured("load", dataTags(module)) {
             val data = module.create(scope)
             val lease = module.bindLeaseIfNeeded(data)
             data.load()
-            loadedDataByType[module.type] = LoadedData(module, data, clock.now().toEpochMilliseconds(), lease)
-            data
+            LoadedData(module, data, clock.now().toEpochMilliseconds(), lease)
         }
     }
 
