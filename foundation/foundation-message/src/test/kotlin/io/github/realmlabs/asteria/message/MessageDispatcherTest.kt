@@ -84,7 +84,7 @@ class MessageDispatcherTest {
     }
 
     @Test
-    fun actorDispatchBuildsActorContext() {
+    fun actorHandlersCanUseExplicitActorContext() {
         val events = mutableListOf<String>()
         val registry = TestMessageHandleRegistry<ActorHandlerContext<TestActor>, GameMessage>()
         registry.register<ActorMessage> { context, message ->
@@ -92,8 +92,12 @@ class MessageDispatcherTest {
         }
         val dispatcher = MessageDispatcher(registry)
 
-        dispatcher.dispatchActor(TestRuntime, TestActor("a1"), ActorMessage("hello"))
-        dispatcher.dispatchActor(TestRuntime, TestActor("a2"), ActorMessage::class, ActorMessage("world"))
+        dispatcher.dispatch(DefaultActorHandlerContext(TestRuntime, TestActor("a1")), ActorMessage("hello"))
+        dispatcher.dispatch(
+            DefaultActorHandlerContext(TestRuntime, TestActor("a2")),
+            ActorMessage::class,
+            ActorMessage("world"),
+        )
 
         assertEquals(
             listOf("test:a1:hello", "test:a2:world"),

@@ -1,6 +1,5 @@
 package io.github.realmlabs.asteria.message
 
-import io.github.realmlabs.asteria.core.NodeRuntime
 import io.github.realmlabs.asteria.observability.MetricTags
 import io.github.realmlabs.asteria.observability.metricsOrNoop
 import org.slf4j.LoggerFactory
@@ -103,27 +102,4 @@ class MessageDispatcher<C : HandlerContext, M : Any>(
                 .record((System.nanoTime() - startedAt) / 1_000_000)
         }
     }
-}
-
-/**
- * Convenience helper that builds an [ActorHandlerContext] and dispatches one message.
- */
-fun <A : Any, M : Any> MessageDispatcher<ActorHandlerContext<A>, M>.dispatchActor(
-    runtime: NodeRuntime,
-    actor: A,
-    message: M,
-) {
-    dispatch(DefaultActorHandlerContext(runtime, actor), message)
-}
-
-/**
- * Convenience helper that builds an [ActorHandlerContext] and dispatches one message with an explicit lookup type.
- */
-fun <A : Any, M : Any> MessageDispatcher<ActorHandlerContext<A>, M>.dispatchActor(
-    runtime: NodeRuntime,
-    actor: A,
-    messageType: KClass<out M>,
-    message: M,
-) {
-    dispatch(DefaultActorHandlerContext(runtime, actor), messageType, message)
 }
