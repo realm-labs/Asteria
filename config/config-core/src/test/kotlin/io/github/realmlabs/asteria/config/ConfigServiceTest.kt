@@ -242,6 +242,8 @@ class ConfigServiceTest {
         assertEquals(ConfigRevision("v2"), event.currentRevision)
         assertEquals(event.currentRevision, event.current.revision)
         assertEquals(setOf(ConfigTableName("items")), event.changedTables)
+        assertEquals(setOf(1), result.changedKeys.getValue(ConfigTableName("items")).updatedKeys)
+        assertEquals(setOf(1), event.changedKeys.getValue(ConfigTableName("items")).updatedKeys)
         assertEquals(event.currentRevision, service.current().revision)
     }
 
@@ -440,6 +442,69 @@ class ConfigServiceTest {
         assertEquals(listOf("added"), diff.addedTables.map { it.name.value })
         assertEquals(listOf("removed"), diff.removedTables.map { it.name.value })
         assertEquals(listOf("keep"), diff.changedTables.map { it.name.value })
+    }
+
+    @Test
+    fun `snapshot diff reports added removed and updated keys for keyed tables`() {
+        val previous = DefaultConfigSnapshot(
+            revision = ConfigRevision("v1"),
+            tables = listOf(
+                mapConfigTable(
+                    "items",
+                    listOf(
+                        ItemConfig(1, "Sword", 10),
+                        ItemConfig(2, "Potion", 5),
+                        ItemConfig(3, "Removed", 1),
+                    ).associateBy { it.id },
+                ),
+                mapConfigTable("removed", mapOf(10 to ItemConfig(10, "Old", 1))),
+            ),
+        )
+        val current = DefaultConfigSnapshot(
+            revision = ConfigRevision("v2"),
+            tables = listOf(
+                mapConfigTable(
+                    "items",
+                    listOf(
+                        ItemConfig(1, "Sword+", 10),
+                        ItemConfig(2, "Potion", 5),
+                        ItemConfig(4, "Added", 1),
+                    ).associateBy { it.id },
+                ),
+                mapConfigTable("added", mapOf(20 to ItemConfig(20, "New", 1))),
+            ),
+        )
+
+        val diff = ConfigSnapshotDiff.between(previous, current)
+        val items = diff.changedTables.single { it.name == ConfigTableName("items") }.keyChange
+        val added = diff.addedTables.single { it.name == ConfigTableName("added") }.keyChange
+        val removed = diff.removedTables.single { it.name == ConfigTableName("removed") }.keyChange
+
+        assertNotNull(items)
+        assertEquals("kotlin.Int", items.keyType)
+        assertEquals(listOf(4), items.addedKeys.toList())
+        assertEquals(listOf(3), items.removedKeys.toList())
+        assertEquals(listOf(1), items.updatedKeys.toList())
+        assertFalse(2 in items.updatedKeys)
+        assertEquals(setOf(1, 3, 4), items.changedKeys)
+        assertEquals(setOf(20), added?.addedKeys)
+        assertEquals(setOf(10), removed?.removedKeys)
+    }
+
+    @Test
+    fun `snapshot diff omits key changes for non keyed tables`() {
+        val previous = DefaultConfigSnapshot(
+            revision = ConfigRevision("v1"),
+            tables = listOf(listConfigTable("items", listOf(ItemConfig(1, "Sword", 10)))),
+        )
+        val current = DefaultConfigSnapshot(
+            revision = ConfigRevision("v2"),
+            tables = listOf(listConfigTable("items", listOf(ItemConfig(1, "Sword+", 10)))),
+        )
+
+        val diff = ConfigSnapshotDiff.between(previous, current)
+
+        assertNull(diff.changedTables.single().keyChange)
     }
 
     @Test

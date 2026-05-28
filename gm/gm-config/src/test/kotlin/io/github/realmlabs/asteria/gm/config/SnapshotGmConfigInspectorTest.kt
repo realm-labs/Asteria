@@ -80,6 +80,9 @@ class SnapshotGmConfigInspectorTest {
         assertEquals("v2", status.currentRevision?.version)
         assertEquals("v2", status.lastSuccess?.currentRevision?.version)
         assertEquals(listOf("items"), reload.changedTables.map { it.name })
+        assertEquals(listOf("2"), reload.changedTables.single().keyChange?.addedKeys)
+        assertEquals(listOf("1"), reload.changedTables.single().keyChange?.removedKeys)
+        assertEquals(emptyList(), reload.changedTables.single().keyChange?.updatedKeys)
         assertEquals(2, history.size)
     }
 

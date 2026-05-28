@@ -214,6 +214,17 @@ val dispatcher = ConfigChangeDispatcher(
 框架只负责 handler 清单、依赖匹配和 revision 去重；事件如何送到 actor、失败怎么处理、actor 的 revision 存在哪里，由业务
 runtime 决定。
 
+对于 keyed 表，reload 事件还会带上 key 级别摘要：
+
+```kotlin
+val itemKeys = event.changedKeys[GameConfigTables.Items.name]
+val addedItemIds = itemKeys?.addedKeys.orEmpty()
+val removedItemIds = itemKeys?.removedKeys.orEmpty()
+val updatedItemIds = itemKeys?.updatedKeys.orEmpty()
+```
+
+这些 key 集合只用于路由和诊断。handler 仍应从 `event.current` 读取当前完整 row 数据。
+
 ## 配置中心和发布
 
 `config-center` 提供 `ConfigStore`、`RuntimeConfigRepository` 和 `ConfigCenterReloadTrigger`。后台常驻服务应优先使用

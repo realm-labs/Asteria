@@ -145,6 +145,17 @@ private fun ConfigTableChange.toGm(): GmConfigChangedTable {
         rowType = rowType,
         previousSize = previousSize,
         currentSize = currentSize,
+        keyChange = keyChange?.toGm(),
+    )
+}
+
+private fun ConfigTableKeyChange.toGm(): GmConfigChangedKeys {
+    return GmConfigChangedKeys(
+        keyType = keyType,
+        addedKeys = addedKeys.map { it.toString() },
+        removedKeys = removedKeys.map { it.toString() },
+        updatedKeys = updatedKeys.map { it.toString() },
+        changedKeys = changedKeys.map { it.toString() },
     )
 }
 

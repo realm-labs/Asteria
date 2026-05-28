@@ -53,6 +53,18 @@ data class GmConfigChangedTable(
     val rowType: String,
     val previousSize: Int?,
     val currentSize: Int?,
+    val keyChange: GmConfigChangedKeys? = null,
+)
+
+/**
+ * Key-level change summary for a keyed config table.
+ */
+data class GmConfigChangedKeys(
+    val keyType: String,
+    val addedKeys: List<String> = emptyList(),
+    val removedKeys: List<String> = emptyList(),
+    val updatedKeys: List<String> = emptyList(),
+    val changedKeys: List<String> = emptyList(),
 )
 
 /**

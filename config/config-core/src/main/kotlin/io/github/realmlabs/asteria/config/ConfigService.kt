@@ -54,6 +54,7 @@ data class ConfigReloadResult(
     val previous: ConfigSnapshot?,
     val current: ConfigSnapshot,
     val changedTables: Set<ConfigTableName> = emptySet(),
+    val changedKeys: Map<ConfigTableName, ConfigTableKeyChange> = emptyMap(),
 ) {
     /**
      * Returns the business-facing change event for a real reload, or `null` for the initial load
@@ -69,6 +70,7 @@ data class ConfigReloadResult(
             currentRevision = current.revision,
             current = current,
             changedTables = changedTables,
+            changedKeys = changedKeys,
         )
     }
 }
@@ -152,11 +154,13 @@ class ConfigService(
                         validate(loaded)
 
                         val previous = snapshot
-                        val changedTables = ConfigSnapshotDiff.between(previous, loaded).changedTableNames()
+                        val diff = ConfigSnapshotDiff.between(previous, loaded)
+                        val changedTables = diff.changedTableNames()
                         val result = ConfigReloadResult(
                             previous = previous,
                             current = loaded,
                             changedTables = changedTables,
+                            changedKeys = diff.changedKeyChanges(),
                         )
                         snapshot = loaded
 
@@ -250,6 +254,12 @@ private fun ConfigReloadResult.traceAttributes(): TraceAttributes {
 
 private fun ConfigSnapshotDiff.changedTableNames(): Set<ConfigTableName> {
     return (addedTables + removedTables + changedTables).mapTo(linkedSetOf()) { it.name }
+}
+
+private fun ConfigSnapshotDiff.changedKeyChanges(): Map<ConfigTableName, ConfigTableKeyChange> {
+    return (addedTables + removedTables + changedTables)
+        .mapNotNull { change -> change.keyChange?.let { change.name to it } }
+        .toMap(linkedMapOf())
 }
 
 private data class BuiltConfigComponent(

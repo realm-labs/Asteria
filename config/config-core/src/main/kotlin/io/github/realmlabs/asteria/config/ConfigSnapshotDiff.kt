@@ -3,8 +3,8 @@ package io.github.realmlabs.asteria.config
 /**
  * Table-level difference between two config snapshots.
  *
- * Diff is intentionally table-grained. Row-level diffing is often expensive for generated config tables and is better
- * implemented by applications that know which tables need fine-grained diagnostics.
+ * Diff is table-grained for routing, with key-level summaries for keyed tables so callers can cheaply narrow follow-up
+ * work while still reading full rows from the current snapshot.
  */
 data class ConfigSnapshotDiff(
     val previousRevision: ConfigRevision?,
@@ -50,10 +50,21 @@ data class ConfigSnapshotDiff(
                 val before = previousTables[name]
                 val after = currentTables[name]
                 when {
-                    before == null && after != null -> added += after.toChange(previousSize = null)
-                    before != null && after == null -> removed += before.toChange(currentSize = null)
+                    before == null && after != null -> added += after.toChange(
+                        previousSize = null,
+                        keyChange = after.addedKeyChange(),
+                    )
+
+                    before != null && after == null -> removed += before.toChange(
+                        currentSize = null,
+                        keyChange = before.removedKeyChange(),
+                    )
+
                     before != null && after != null && before.fingerprint() != after.fingerprint() -> {
-                        changed += after.toChange(previousSize = before.size)
+                        changed += after.toChange(
+                            previousSize = before.size,
+                            keyChange = keyChangeBetween(before, after),
+                        )
                     }
                 }
             }
@@ -80,20 +91,41 @@ data class ConfigTableChange(
     val rowType: String,
     val previousSize: Int?,
     val currentSize: Int?,
+    val keyChange: ConfigTableKeyChange? = null,
 )
+
+/**
+ * Key-level summary for a changed keyed table.
+ *
+ * This is diagnostic and routing metadata. Callers should read row payloads from the current snapshot instead of
+ * treating this as a row patch format.
+ */
+data class ConfigTableKeyChange(
+    val keyType: String,
+    val addedKeys: Set<Any> = emptySet(),
+    val removedKeys: Set<Any> = emptySet(),
+    val updatedKeys: Set<Any> = emptySet(),
+) {
+    val changedKeys: Set<Any>
+        get() = linkedSetOf<Any>().apply {
+            addAll(addedKeys)
+            addAll(removedKeys)
+            addAll(updatedKeys)
+        }
+}
 
 private fun ConfigTable<*>.toChange(
     previousSize: Int? = size,
     currentSize: Int? = size,
+    keyChange: ConfigTableKeyChange? = null,
 ): ConfigTableChange {
     return ConfigTableChange(
         name = name,
-        keyType = (this as? KeyedConfigTable<*, *>)?.keyType?.let {
-            it.qualifiedName ?: it.simpleName ?: "unknown"
-        },
+        keyType = keyTypeName(),
         rowType = rowType.qualifiedName ?: rowType.simpleName ?: "unknown",
         previousSize = previousSize,
         currentSize = currentSize,
+        keyChange = keyChange,
     )
 }
 
@@ -123,3 +155,70 @@ private data class ConfigTableFingerprint(
     val rows: List<Any>,
     val keyedRows: List<Pair<Any?, Any?>>?,
 )
+
+private fun ConfigTable<*>.addedKeyChange(): ConfigTableKeyChange? {
+    val keyed = asKeyedTable() ?: return null
+    return ConfigTableKeyChange(
+        keyType = keyed.keyTypeName(),
+        addedKeys = keyed.keys.mapTo(linkedSetOf()) { it },
+    )
+}
+
+private fun ConfigTable<*>.removedKeyChange(): ConfigTableKeyChange? {
+    val keyed = asKeyedTable() ?: return null
+    return ConfigTableKeyChange(
+        keyType = keyed.keyTypeName(),
+        removedKeys = keyed.keys.mapTo(linkedSetOf()) { it },
+    )
+}
+
+private fun keyChangeBetween(
+    previous: ConfigTable<*>,
+    current: ConfigTable<*>,
+): ConfigTableKeyChange? {
+    val previousKeyed = previous.asKeyedTable()
+    val currentKeyed = current.asKeyedTable()
+    return when {
+        previousKeyed == null && currentKeyed == null -> null
+        previousKeyed == null && currentKeyed != null -> current.addedKeyChange()
+        previousKeyed != null && currentKeyed == null -> previous.removedKeyChange()
+        previousKeyed != null && currentKeyed != null -> keyedChangeBetween(previousKeyed, currentKeyed)
+        else -> null
+    }
+}
+
+private fun keyedChangeBetween(
+    previous: KeyedConfigTable<Any, Any>,
+    current: KeyedConfigTable<Any, Any>,
+): ConfigTableKeyChange {
+    if (previous.keyType != current.keyType) {
+        return ConfigTableKeyChange(
+            keyType = "${previous.keyTypeName()} -> ${current.keyTypeName()}",
+            addedKeys = current.keys.mapTo(linkedSetOf()) { it },
+            removedKeys = previous.keys.mapTo(linkedSetOf()) { it },
+        )
+    }
+
+    val previousKeys = previous.keys.toSet()
+    return ConfigTableKeyChange(
+        keyType = current.keyTypeName(),
+        addedKeys = current.keys.filterTo(linkedSetOf()) { it !in previousKeys },
+        removedKeys = previous.keys.filterTo(linkedSetOf()) { it !in current.keys },
+        updatedKeys = current.keys.filterTo(linkedSetOf()) { key ->
+            key in previousKeys && previous[key] != current[key]
+        },
+    )
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun ConfigTable<*>.asKeyedTable(): KeyedConfigTable<Any, Any>? {
+    return this as? KeyedConfigTable<Any, Any>
+}
+
+private fun ConfigTable<*>.keyTypeName(): String? {
+    return (this as? KeyedConfigTable<*, *>)?.keyTypeName()
+}
+
+private fun KeyedConfigTable<*, *>.keyTypeName(): String {
+    return keyType.qualifiedName ?: keyType.simpleName ?: "unknown"
+}

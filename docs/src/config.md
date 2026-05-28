@@ -227,6 +227,17 @@ retry.
 The framework provides handler aggregation, dependency matching, and revision de-duplication. Projects still decide how
 events reach actors, how failures are handled, and where each actor stores its handled revision.
 
+For keyed tables, reload events also expose key-level summaries:
+
+```kotlin
+val itemKeys = event.changedKeys[GameConfigTables.Items.name]
+val addedItemIds = itemKeys?.addedKeys.orEmpty()
+val removedItemIds = itemKeys?.removedKeys.orEmpty()
+val updatedItemIds = itemKeys?.updatedKeys.orEmpty()
+```
+
+These key sets are routing and diagnostics metadata. Handlers should still read row payloads from `event.current`.
+
 ## Config Center and Publication
 
 `config-center` provides `ConfigStore`, `RuntimeConfigRepository`, and `ConfigCenterReloadTrigger`. Long-lived
