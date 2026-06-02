@@ -52,7 +52,7 @@ object AsteriaConfigCodeGenerator {
         val tablesClass = ClassName(config.packageName, config.tablesObjectName)
         return FileSpec.builder(config.packageName, config.accessorClassName)
             .addType(buildTablesObject(tablesClass, sortedTables))
-            .addType(buildAccessorClass(config.accessorClassName, tablesClass, sortedTables))
+            .addType(buildAccessorClass(config.accessorClassName))
             .apply {
                 sortedTables.forEach { table ->
                     addProperty(buildSnapshotExtension(tablesClass, table))
@@ -69,7 +69,7 @@ object AsteriaConfigCodeGenerator {
         val tablesClass = ClassName(config.packageName, config.tablesObjectName)
         return FileSpec.builder(config.packageName, config.accessorClassName)
             .addType(buildTablesObject(tablesClass, sortedTables))
-            .addType(buildAccessorClass(config.accessorClassName, tablesClass, sortedTables))
+            .addType(buildAccessorClass(config.accessorClassName))
             .build()
     }
 
@@ -118,33 +118,84 @@ object AsteriaConfigCodeGenerator {
 
     private fun buildAccessorClass(
         accessorClassName: String,
-        tablesClass: ClassName,
-        tables: List<ConfigTableModel>,
     ): TypeSpec {
-        val builder = TypeSpec.classBuilder(accessorClassName)
+        val tableType = CONFIG_TABLE.parameterizedBy(STAR)
+        val tableTypeVariable = TypeVariableName("T", tableType)
+        val componentTypeVariable = TypeVariableName("T", ANY)
+        return TypeSpec.classBuilder(accessorClassName)
             .primaryConstructor(
                 FunSpec.constructorBuilder()
                     .addParameter(ParameterSpec.builder("configService", CONFIG_SERVICE).build())
                     .build(),
             )
+            .addSuperinterface(CONFIG_SNAPSHOT)
             .addProperty(
                 PropertySpec.builder("configService", CONFIG_SERVICE)
                     .addModifiers(KModifier.PRIVATE)
                     .initializer("configService")
                     .build(),
             )
-        tables.forEach { table ->
-            builder.addProperty(
-                PropertySpec.builder(table.propertyName, table.accessorTableType())
+            .addProperty(
+                PropertySpec.builder("current", CONFIG_SNAPSHOT)
+                    .addModifiers(KModifier.PRIVATE)
                     .getter(
                         FunSpec.getterBuilder()
-                            .addTableRequireStatement("return configService.current().", tablesClass, table)
+                            .addStatement("return configService.current()")
                             .build(),
                     )
                     .build(),
             )
-        }
-        return builder.build()
+            .addProperty(
+                PropertySpec.builder("revision", CONFIG_REVISION)
+                    .addModifiers(KModifier.OVERRIDE)
+                    .getter(
+                        FunSpec.getterBuilder()
+                            .addStatement("return current.revision")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("table")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("name", CONFIG_TABLE_NAME)
+                    .returns(tableType.copy(nullable = true))
+                    .addStatement("return current.table(name)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("table")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addTypeVariable(tableTypeVariable)
+                    .addParameter("type", KCLASS.parameterizedBy(tableTypeVariable))
+                    .returns(tableTypeVariable.copy(nullable = true))
+                    .addStatement("return current.table(type)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("tables")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(COLLECTION.parameterizedBy(tableType))
+                    .addStatement("return current.tables()")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("component")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addTypeVariable(componentTypeVariable)
+                    .addParameter("type", KCLASS.parameterizedBy(componentTypeVariable))
+                    .returns(componentTypeVariable.copy(nullable = true))
+                    .addStatement("return current.component(type)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("components")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(COLLECTION.parameterizedBy(ANY))
+                    .addStatement("return current.components()")
+                    .build(),
+            )
+            .build()
     }
 
     private fun buildSnapshotExtension(
@@ -250,6 +301,9 @@ object AsteriaConfigCodeGenerator {
 
     private val CONFIG_SERVICE = ClassName("io.github.realmlabs.asteria.config", "ConfigService")
     private val CONFIG_SNAPSHOT = ClassName("io.github.realmlabs.asteria.config", "ConfigSnapshot")
+    private val CONFIG_REVISION = ClassName("io.github.realmlabs.asteria.config", "ConfigRevision")
+    private val CONFIG_TABLE = ClassName("io.github.realmlabs.asteria.config", "ConfigTable")
+    private val CONFIG_TABLE_NAME = ClassName("io.github.realmlabs.asteria.config", "ConfigTableName")
     private val KEYED_CONFIG_TABLE = ClassName("io.github.realmlabs.asteria.config", "KeyedConfigTable")
     private val LIST_CONFIG_TABLE = ClassName("io.github.realmlabs.asteria.config", "ListConfigTable")
     private val SINGLE_CONFIG_TABLE = ClassName("io.github.realmlabs.asteria.config", "SingleConfigTable")
@@ -260,6 +314,8 @@ object AsteriaConfigCodeGenerator {
     private val REQUIRE_TABLE = MemberName("io.github.realmlabs.asteria.config", "requireTable")
     private val REQUIRE_LIST_TABLE = MemberName("io.github.realmlabs.asteria.config", "requireListTable")
     private val REQUIRE_SINGLE_TABLE = MemberName("io.github.realmlabs.asteria.config", "requireSingleTable")
+    private val KCLASS = ClassName("kotlin.reflect", "KClass")
+    private val COLLECTION = ClassName("kotlin.collections", "Collection")
     private const val TABLE_EXTENSION_CHUNK_SIZE = 200
 }
 
@@ -290,8 +346,7 @@ data class ConfigCodegenConfig(
  * Table metadata consumed by [AsteriaConfigCodeGenerator].
  *
  * [tableName] must match the name present in a runtime snapshot. [refName] becomes a property on the generated tables
- * object, while [propertyName] becomes an accessor on generated `ConfigSnapshot`, `ConfigService`, and accessor-class
- * APIs.
+ * object, while [propertyName] becomes an accessor on generated `ConfigSnapshot` and `ConfigService` extension APIs.
  */
 data class ConfigTableModel(
     val tableName: String,

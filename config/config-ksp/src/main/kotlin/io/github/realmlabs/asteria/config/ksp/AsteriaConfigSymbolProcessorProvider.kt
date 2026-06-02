@@ -558,7 +558,7 @@ private class AsteriaConfigSymbolProcessor(
             diagnostics.error(
                 code = "ASTERIA-CONFIG-018",
                 message = "Duplicate generated config accessor property name.",
-                reason = "Generated accessor properties share one class/snapshot extension namespace.",
+                reason = "Generated accessor properties share one snapshot/service extension namespace.",
                 fix = "Set a unique propertyName on one table that currently generates $duplicateProperty.",
             )
             return false
