@@ -58,6 +58,13 @@ annotation class AsteriaConfigTable(
      * Optional generated accessor property/function name, for example `items`.
      */
     val propertyName: String = "",
+    /**
+     * Optional human-readable source path, for example `Datas/Battle/monster_brick.xlsx`.
+     *
+     * Generated table refs carry this path so validation diagnostics can point designers back to the source file while
+     * [name] remains the stable runtime key.
+     */
+    val sourcePath: String = "",
 )
 
 /**

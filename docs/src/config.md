@@ -90,6 +90,7 @@ the recommended bridge is a metadata file emitted by the Luban export step:
   "tables": [
     {
       "name": "items",
+      "sourcePath": "Datas/Item/items.xlsx",
       "shape": "KEYED",
       "keyType": "kotlin.Int",
       "rowType": "cfg.item.ItemConfig",
@@ -106,15 +107,14 @@ the recommended bridge is a metadata file emitted by the Luban export step:
 
 The Gradle plugin turns this metadata into Kotlin markers, then KSP generates `GameConfigTables` and `ConfigService`
 extension properties. Generated files are chunked so large config catalogs do not become one oversized Kotlin file.
-`tableType` is optional. Without it, keyed accessors return `KeyedConfigTable<K, R>`; with it, generated accessors
-return
-the requested concrete type, such as `MapConfigTable<K, R>` or `OrderedMapConfigTable<K, R>`, so callers can use the
-underlying collection API.
+`sourcePath` is optional and is carried by generated table refs for human-facing diagnostics. `tableType` is optional.
+Without it, keyed accessors return `KeyedConfigTable<K, R>`; with it, generated accessors return the requested concrete
+type, such as `MapConfigTable<K, R>` or `OrderedMapConfigTable<K, R>`, so callers can use the underlying collection API.
 
 ### Annotations and Generated Code
 
-`@AsteriaConfigTable` marks a config row type or marker type. KSP reads `name`, `shape`, `keyType`, `rowType`,
-`tableType`, `refName`, and `propertyName`, then generates:
+`@AsteriaConfigTable` marks a config row type or marker type. KSP reads `name`, `sourcePath`, `shape`, `keyType`,
+`rowType`, `tableType`, `refName`, and `propertyName`, then generates:
 
 - `GameConfigTables`: strongly typed table references such as `GameConfigTables.Items`.
 - `ConfigSnapshot` extension properties for reading tables from a snapshot.
@@ -176,11 +176,16 @@ object ItemConfigValidator : DslConfigValidator {
   override suspend fun ConfigValidationScope.validateConfig(snapshot: ConfigSnapshot) {
     val items = snapshot.requireTable(GameConfigTables.Items)
     items.all().forEach { item ->
-      check(item.price >= 0, "price must not be negative", items.name, item.id)
+      check(item.price >= 0, "price must not be negative", GameConfigTables.Items, item.id)
     }
   }
 }
+```
 
+When the generated ref has `sourcePath`, validation exceptions include both the designer-facing source and the stable
+runtime table key, for example `[source=Datas/Item/items.xlsx, table=items, id=1001] price must not be negative`.
+
+```kotlin
 install(LubanConfigModule {
   validators(GeneratedConfigValidators.ALL)
   validationParallelism = 8

@@ -220,6 +220,11 @@ private class AsteriaConfigSymbolProcessor(
                     writer.appendLine("      \"keyType\": ${jsonString(table.keyType.toString())},")
                 }
                 writer.appendLine("      \"rowType\": ${jsonString(table.rowType.toString())},")
+                if (table.sourcePath == null) {
+                    writer.appendLine("      \"sourcePath\": null,")
+                } else {
+                    writer.appendLine("      \"sourcePath\": ${jsonString(table.sourcePath)},")
+                }
                 if (table.tableType == null) {
                     writer.appendLine("      \"tableType\": null,")
                 } else {
@@ -442,6 +447,7 @@ private class AsteriaConfigSymbolProcessor(
             return null
         }
         val tableName = annotation.stringArg("name")
+        val sourcePath = annotation.stringArg("sourcePath").takeIf { it.isNotBlank() }
         val shape = AsteriaConfigTableShape.valueOf(annotation.enumArg("shape", AsteriaConfigTableShape.KEYED.name))
         val keyType = annotation.typeKSTypeArg("keyType")
             ?.takeUnless { it.isNothingType() }
@@ -470,6 +476,7 @@ private class AsteriaConfigSymbolProcessor(
             }
         return ConfigTableModel(
             tableName = tableName,
+            sourcePath = sourcePath,
             shape = shape,
             keyType = keyType,
             rowType = rowType,

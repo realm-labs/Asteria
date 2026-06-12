@@ -18,6 +18,7 @@ class AsteriaConfigCodeGeneratorTest {
             tables = listOf(
                 ConfigTableModel(
                     tableName = "items",
+                    sourcePath = "Datas/Common/items.xlsx",
                     keyType = INT,
                     rowType = ITEM_CONFIG,
                     tableType = ConfigAccessorTableType(MAP_CONFIG_TABLE, typeArgumentCount = 2),
@@ -49,7 +50,8 @@ class AsteriaConfigCodeGeneratorTest {
         val code = file.toString()
 
         assertContains(code, "object GameConfigTables")
-        assertContains(code, "val Items: ConfigTableRef<Int, ItemConfig> = configTableRef(\"items\")")
+        assertContains(code, "val Items: ConfigTableRef<Int, ItemConfig>")
+        assertContains(code, "configTableRef(\"items\", sourcePath = \"Datas/Common/items.xlsx\")")
         assertContains(code, "val DailyTasks: ConfigTableRef<Int, TaskConfig> = configTableRef(\"daily_tasks\")")
         assertContains(code, "val RankRewards: RowConfigTableRef<ItemConfig> = rowConfigTableRef(\"rank_rewards\")")
         assertContains(code, "val Global: RowConfigTableRef<ItemConfig> = rowConfigTableRef(\"global\")")

@@ -84,6 +84,7 @@ abstract class AsteriaLubanConfigMarkerTask : DefaultTask() {
                 ?: error("Luban config marker table at index $index must be an object")
             LubanConfigTableSpec(
                 name = table.requiredString("name", index),
+                sourcePath = table.optionalString("sourcePath"),
                 shape = table.optionalString("shape")
                     .takeIf { it.isNotBlank() }
                     ?.let { LubanConfigTableShape.valueOf(it.uppercase()) }

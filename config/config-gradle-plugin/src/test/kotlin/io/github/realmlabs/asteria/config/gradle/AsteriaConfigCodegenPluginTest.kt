@@ -37,6 +37,7 @@ class AsteriaConfigCodegenPluginTest {
             tables = listOf(
                 LubanConfigTableSpec(
                     name = "items",
+                    sourcePath = "Datas/Common/items.xlsx",
                     keyType = "kotlin.Int",
                     rowType = "cfg.item.ItemConfig",
                     tableType = "io.github.realmlabs.asteria.config.MapConfigTable",
@@ -65,6 +66,7 @@ class AsteriaConfigCodegenPluginTest {
         assertContains(source, "tablesObjectName = \"GameConfigTables\"")
         assertContains(source, "@AsteriaConfigTable(")
         assertContains(source, "name = \"items\"")
+        assertContains(source, "sourcePath = \"Datas/Common/items.xlsx\"")
         assertContains(source, "keyType = kotlin.Int::class")
         assertContains(source, "rowType = cfg.item.ItemConfig::class")
         assertContains(source, "tableType = io.github.realmlabs.asteria.config.MapConfigTable::class")

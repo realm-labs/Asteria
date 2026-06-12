@@ -10,6 +10,7 @@ data class ConfigValidationError(
     val message: String,
     val table: ConfigTableName? = null,
     val id: String? = null,
+    val sourcePath: String? = null,
 )
 
 /**
@@ -86,11 +87,35 @@ class ConfigValidationScope {
         id: Any? = null,
     ) {
         if (!condition) {
-            errors += ConfigValidationError(
-                message = message,
-                table = table,
-                id = id?.toString(),
-            )
+            addError(message, table, id)
+        }
+    }
+
+    /**
+     * Records [message] with generated keyed table reference context when [condition] is `false`.
+     */
+    fun check(
+        condition: Boolean,
+        message: String,
+        table: ConfigTableRef<*, *>,
+        id: Any? = null,
+    ) {
+        if (!condition) {
+            addError(message, table.name, id, table.sourcePath)
+        }
+    }
+
+    /**
+     * Records [message] with generated row table reference context when [condition] is `false`.
+     */
+    fun check(
+        condition: Boolean,
+        message: String,
+        table: RowConfigTableRef<*>,
+        id: Any? = null,
+    ) {
+        if (!condition) {
+            addError(message, table.name, id, table.sourcePath)
         }
     }
 
@@ -102,10 +127,42 @@ class ConfigValidationScope {
         table: ConfigTableName? = null,
         id: Any? = null,
     ) {
+        addError(message, table, id)
+    }
+
+    /**
+     * Records an unconditional validation failure with generated keyed table reference context.
+     */
+    fun fail(
+        message: String,
+        table: ConfigTableRef<*, *>,
+        id: Any? = null,
+    ) {
+        addError(message, table.name, id, table.sourcePath)
+    }
+
+    /**
+     * Records an unconditional validation failure with generated row table reference context.
+     */
+    fun fail(
+        message: String,
+        table: RowConfigTableRef<*>,
+        id: Any? = null,
+    ) {
+        addError(message, table.name, id, table.sourcePath)
+    }
+
+    private fun addError(
+        message: String,
+        table: ConfigTableName? = null,
+        id: Any? = null,
+        sourcePath: String? = null,
+    ) {
         errors += ConfigValidationError(
             message = message,
             table = table,
             id = id?.toString(),
+            sourcePath = sourcePath,
         )
     }
 
@@ -128,6 +185,9 @@ fun configValidator(validate: suspend ConfigValidationScope.(ConfigSnapshot) -> 
 
 private fun ConfigValidationError.format(): String {
     val prefix = buildList {
+        if (sourcePath != null) {
+            add("source=$sourcePath")
+        }
         if (table != null) {
             add("table=$table")
         }

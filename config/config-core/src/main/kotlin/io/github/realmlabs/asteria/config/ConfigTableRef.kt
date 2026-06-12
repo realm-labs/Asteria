@@ -24,6 +24,11 @@ interface ConfigTableRef<K : Any, R : Any> {
     val name: ConfigTableName
 
     /**
+     * Optional human-readable source path, for example `Datas/Battle/monster_brick.xlsx`.
+     */
+    val sourcePath: String?
+
+    /**
      * Expected row id type.
      */
     val keyType: KClass<K>
@@ -46,6 +51,11 @@ interface RowConfigTableRef<R : Any> {
     val name: ConfigTableName
 
     /**
+     * Optional human-readable source path, for example `Datas/Battle/global.xlsx`.
+     */
+    val sourcePath: String?
+
+    /**
      * Expected row object type.
      */
     val rowType: KClass<R>
@@ -58,7 +68,12 @@ data class DefaultConfigTableRef<K : Any, R : Any>(
     override val name: ConfigTableName,
     override val keyType: KClass<K>,
     override val rowType: KClass<R>,
-) : ConfigTableRef<K, R>
+    override val sourcePath: String? = null,
+) : ConfigTableRef<K, R> {
+    init {
+        require(sourcePath == null || sourcePath.isNotBlank()) { "config table source path must not be blank" }
+    }
+}
 
 /**
  * Default immutable [RowConfigTableRef] implementation used by generated helpers and tests.
@@ -66,20 +81,31 @@ data class DefaultConfigTableRef<K : Any, R : Any>(
 data class DefaultRowConfigTableRef<R : Any>(
     override val name: ConfigTableName,
     override val rowType: KClass<R>,
-) : RowConfigTableRef<R>
+    override val sourcePath: String? = null,
+) : RowConfigTableRef<R> {
+    init {
+        require(sourcePath == null || sourcePath.isNotBlank()) { "config table source path must not be blank" }
+    }
+}
 
 /**
  * Creates a strongly typed table reference with key and row types inferred from reified arguments.
  */
-inline fun <reified K : Any, reified R : Any> configTableRef(name: String): ConfigTableRef<K, R> {
-    return DefaultConfigTableRef(ConfigTableName(name), K::class, R::class)
+inline fun <reified K : Any, reified R : Any> configTableRef(
+    name: String,
+    sourcePath: String? = null,
+): ConfigTableRef<K, R> {
+    return DefaultConfigTableRef(ConfigTableName(name), K::class, R::class, sourcePath)
 }
 
 /**
  * Creates a strongly typed row table reference with row type inferred from a reified argument.
  */
-inline fun <reified R : Any> rowConfigTableRef(name: String): RowConfigTableRef<R> {
-    return DefaultRowConfigTableRef(ConfigTableName(name), R::class)
+inline fun <reified R : Any> rowConfigTableRef(
+    name: String,
+    sourcePath: String? = null,
+): RowConfigTableRef<R> {
+    return DefaultRowConfigTableRef(ConfigTableName(name), R::class, sourcePath)
 }
 
 /**

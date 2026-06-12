@@ -107,9 +107,14 @@ object AsteriaConfigCodeGenerator {
     ): TypeSpec {
         val builder = TypeSpec.objectBuilder(tablesClass)
         tables.forEach { table ->
+            val initializer = if (table.sourcePath == null) {
+                CodeBlock.of("%M(%S)", table.refFactory(), table.tableName)
+            } else {
+                CodeBlock.of("%M(%S, sourcePath = %S)", table.refFactory(), table.tableName, table.sourcePath)
+            }
             builder.addProperty(
                 PropertySpec.builder(table.refName, table.refType())
-                    .initializer("%M(%S)", table.refFactory(), table.tableName)
+                    .initializer(initializer)
                     .build(),
             )
         }
@@ -356,9 +361,11 @@ data class ConfigTableModel(
     val tableType: ConfigAccessorTableType? = null,
     val refName: String = tableName.toUpperCamelIdentifier(),
     val propertyName: String = tableName.toLowerCamelIdentifier(),
+    val sourcePath: String? = null,
 ) {
     init {
         require(tableName.isNotBlank()) { "config table name must not be blank" }
+        require(sourcePath == null || sourcePath.isNotBlank()) { "config table source path must not be blank" }
         require(shape != AsteriaConfigTableShape.KEYED || keyType != null) {
             "keyed config table $tableName requires keyType"
         }

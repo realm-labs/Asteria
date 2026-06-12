@@ -86,6 +86,7 @@ metadata：
   "tables": [
     {
       "name": "items",
+      "sourcePath": "Datas/Item/items.xlsx",
       "shape": "KEYED",
       "keyType": "kotlin.Int",
       "rowType": "cfg.item.ItemConfig",
@@ -102,13 +103,14 @@ metadata：
 
 Gradle plugin 会把 metadata 转成 Kotlin marker，再交给 KSP 生成 `GameConfigTables` 和 `ConfigService` 扩展属性。生成器已经按
 chunk 拆分大文件，配置表很多时不会把所有 accessor 放进一个 Kotlin 文件。
-`tableType` 是可选字段。不配置时，keyed accessor 返回 `KeyedConfigTable<K, R>`；配置后会返回指定的具体表类型，例如
-`MapConfigTable<K, R>` 或 `OrderedMapConfigTable<K, R>`，业务代码就可以直接使用底层集合接口。
+`sourcePath` 是可选字段，会带到生成的表引用里，用于面向策划的诊断输出。`tableType` 是可选字段。不配置时，keyed accessor 返回
+`KeyedConfigTable<K, R>`；配置后会返回指定的具体表类型，例如 `MapConfigTable<K, R>` 或
+`OrderedMapConfigTable<K, R>`，业务代码就可以直接使用底层集合接口。
 
 ### 注解和生成物
 
-`@AsteriaConfigTable` 标记一个配置表 row 类型或 marker 类型。KSP 会读取 `name`、`shape`、`keyType`、`rowType`、
-`tableType`、`refName` 和 `propertyName`，生成：
+`@AsteriaConfigTable` 标记一个配置表 row 类型或 marker 类型。KSP 会读取 `name`、`sourcePath`、`shape`、
+`keyType`、`rowType`、`tableType`、`refName` 和 `propertyName`，生成：
 
 - `GameConfigTables`：每张表的强类型引用，例如 `GameConfigTables.Items`。
 - `ConfigSnapshot` 扩展属性：从快照读取指定表。
@@ -164,11 +166,16 @@ object ItemConfigValidator : DslConfigValidator {
   override suspend fun ConfigValidationScope.validateConfig(snapshot: ConfigSnapshot) {
     val items = snapshot.requireTable(GameConfigTables.Items)
     items.all().forEach { item ->
-      check(item.price >= 0, "price must not be negative", items.name, item.id)
+      check(item.price >= 0, "price must not be negative", GameConfigTables.Items, item.id)
     }
   }
 }
+```
 
+如果生成的 ref 带有 `sourcePath`，校验异常会同时包含策划可读的源文件路径和运行时稳定表名，例如
+`[source=Datas/Item/items.xlsx, table=items, id=1001] price must not be negative`。
+
+```kotlin
 install(LubanConfigModule {
   validators(GeneratedConfigValidators.ALL)
   validationParallelism = 8

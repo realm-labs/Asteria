@@ -25,6 +25,7 @@ class ConfigServiceTest {
         assertEquals("Sword", table.require(1).name)
         assertEquals(2, table.size)
         assertEquals(ConfigTableName("items"), TestConfigTables.Items.name)
+        assertEquals("Datas/Common/items.xlsx", TestConfigTables.Items.sourcePath)
         assertEquals("project-configs", result.current.component<GeneratedTables>().name)
         assertEquals(result, notified)
         val diff = ConfigSnapshotDiff.between(result.previous, result.current)
@@ -269,22 +270,26 @@ class ConfigServiceTest {
         assertNull(service.currentOrNull())
     }
 
-  @Test
-  fun `dsl validator validates inside validation scope`() = runBlocking {
-    val service = ConfigService(
-      loader = TestConfigLoader(),
-      validators = listOf(DslItemValidator),
-    )
+    @Test
+    fun `dsl validator validates inside validation scope`() = runBlocking {
+        val service = ConfigService(
+            loader = TestConfigLoader(),
+            validators = listOf(DslItemValidator),
+        )
 
-    val error = assertFailsWith<ConfigValidationException> {
-      service.reload()
+        val error = assertFailsWith<ConfigValidationException> {
+            service.reload()
+        }
+
+        assertEquals(listOf("dsl validator failure"), error.errors.map { it.message })
+        assertEquals(
+            "[source=Datas/Common/items.xlsx, table=items, id=1] dsl validator failure",
+            error.message,
+        )
+        assertNull(service.currentOrNull())
     }
 
-    assertEquals(listOf("dsl validator failure"), error.errors.map { it.message })
-    assertNull(service.currentOrNull())
-  }
-
-  @Test
+    @Test
     fun `parallel validation keeps error order stable`() = runBlocking {
         val firstStarted = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
@@ -586,17 +591,17 @@ class ConfigServiceTest {
     )
 
     private object TestConfigTables {
-        val Items = configTableRef<Int, ItemConfig>("items")
+        val Items = configTableRef<Int, ItemConfig>("items", sourcePath = "Datas/Common/items.xlsx")
     }
 
-  private object DslItemValidator : DslConfigValidator {
-    override suspend fun ConfigValidationScope.validateConfig(snapshot: ConfigSnapshot) {
-      val items = snapshot.requireTable(TestConfigTables.Items)
-      check(items[1]?.price == 0, "dsl validator failure", items.name, 1)
+    private object DslItemValidator : DslConfigValidator {
+        override suspend fun ConfigValidationScope.validateConfig(snapshot: ConfigSnapshot) {
+            val items = snapshot.requireTable(TestConfigTables.Items)
+            check(items[1]?.price == 0, "dsl validator failure", TestConfigTables.Items, 1)
+        }
     }
-  }
 
-  private class ItemConfigTable(
+    private class ItemConfigTable(
         rows: Iterable<Pair<Int, ItemConfig>>,
     ) : OrderedMapConfigTable<Int, ItemConfig>(
         name = TestConfigTables.Items.name,

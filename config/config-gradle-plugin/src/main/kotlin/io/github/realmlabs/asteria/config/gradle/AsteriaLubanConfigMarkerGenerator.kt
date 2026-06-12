@@ -111,6 +111,9 @@ object AsteriaLubanConfigMarkerGenerator {
                 appendLine()
                 appendLine("@AsteriaConfigTable(")
                 appendLine("    name = ${table.name.kotlinString()},")
+                if (table.sourcePath.isNotBlank()) {
+                    appendLine("    sourcePath = ${table.sourcePath.kotlinString()},")
+                }
                 if (table.shape != LubanConfigTableShape.KEYED) {
                     appendLine("    shape = AsteriaConfigTableShape.${table.shape.name},")
                 }
@@ -185,6 +188,7 @@ data class LubanConfigTableSpec(
     val tableType: String = "",
     val refName: String = "",
     val propertyName: String = "",
+    val sourcePath: String = "",
     val markerName: String = "${name.toUpperCamelIdentifier()}Table",
 ) {
     init {
