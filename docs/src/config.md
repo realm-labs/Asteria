@@ -26,7 +26,7 @@ install(ConfigModule {
 
     validator { snapshot ->
         val items = snapshot.requireTable(GameConfigTables.Items)
-        check(items[1001] != null) { "items requires id=1001" }
+        check(items[1001] != null, "items requires id=1001", items.name, 1001)
     }
 })
 ```
@@ -165,16 +165,19 @@ validators should be aggregated into a generated list. Business modules need `fo
   className = "GeneratedConfigValidators",
 )
 object ConfigValidatorCatalog
+```
 
+For contribution objects, prefer `DslConfigValidator` so the validator body runs inside `ConfigValidationScope` without
+a manual `validate` bridge:
+
+```kotlin
 @AsteriaContribution(contract = ConfigValidator::class)
-object ItemConfigValidator : ConfigValidator {
-  override suspend fun validate(snapshot: ConfigSnapshot): ConfigValidationResult {
-    return configValidator { current ->
-      val items = current.requireTable(GameConfigTables.Items)
-      items.all().forEach { item ->
-        check(item.price >= 0, "price must not be negative", items.name, item.id)
-      }
-    }.validate(snapshot)
+object ItemConfigValidator : DslConfigValidator {
+  override suspend fun ConfigValidationScope.validateConfig(snapshot: ConfigSnapshot) {
+    val items = snapshot.requireTable(GameConfigTables.Items)
+    items.all().forEach { item ->
+      check(item.price >= 0, "price must not be negative", items.name, item.id)
+    }
   }
 }
 

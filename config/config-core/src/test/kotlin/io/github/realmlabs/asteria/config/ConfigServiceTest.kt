@@ -269,7 +269,22 @@ class ConfigServiceTest {
         assertNull(service.currentOrNull())
     }
 
-    @Test
+  @Test
+  fun `dsl validator validates inside validation scope`() = runBlocking {
+    val service = ConfigService(
+      loader = TestConfigLoader(),
+      validators = listOf(DslItemValidator),
+    )
+
+    val error = assertFailsWith<ConfigValidationException> {
+      service.reload()
+    }
+
+    assertEquals(listOf("dsl validator failure"), error.errors.map { it.message })
+    assertNull(service.currentOrNull())
+  }
+
+  @Test
     fun `parallel validation keeps error order stable`() = runBlocking {
         val firstStarted = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
@@ -574,7 +589,14 @@ class ConfigServiceTest {
         val Items = configTableRef<Int, ItemConfig>("items")
     }
 
-    private class ItemConfigTable(
+  private object DslItemValidator : DslConfigValidator {
+    override suspend fun ConfigValidationScope.validateConfig(snapshot: ConfigSnapshot) {
+      val items = snapshot.requireTable(TestConfigTables.Items)
+      check(items[1]?.price == 0, "dsl validator failure", items.name, 1)
+    }
+  }
+
+  private class ItemConfigTable(
         rows: Iterable<Pair<Int, ItemConfig>>,
     ) : OrderedMapConfigTable<Int, ItemConfig>(
         name = TestConfigTables.Items.name,

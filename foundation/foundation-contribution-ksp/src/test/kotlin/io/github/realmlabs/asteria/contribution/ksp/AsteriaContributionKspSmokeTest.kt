@@ -57,6 +57,9 @@ class AsteriaContributionKspSmokeTest {
             import io.github.realmlabs.asteria.contribution.AsteriaContribution
 
             interface PlayerPatchableService
+            fun interface DslPlayerPatchableService : PlayerPatchableService {
+                fun patch()
+            }
 
             data class GeneratedMessage(val id: Long)
             data class TrackedEntity(val id: Long)
@@ -76,6 +79,16 @@ class AsteriaContributionKspSmokeTest {
 
             @AsteriaContribution(PlayerPatchableService::class)
             object SettingService : PlayerPatchableService
+
+            object SettingServiceDelegate : PlayerPatchableService
+
+            @AsteriaContribution(PlayerPatchableService::class)
+            object DelegatingSettingService : PlayerPatchableService by SettingServiceDelegate
+
+            @AsteriaContribution(PlayerPatchableService::class)
+            object DslSettingService : DslPlayerPatchableService {
+                override fun patch() = Unit
+            }
             """.trimIndent(),
         )
 
@@ -93,6 +106,8 @@ class AsteriaContributionKspSmokeTest {
         assertContains(catalog, "LoginService::class")
         assertContains(catalog, "CdKeyService::class")
         assertContains(catalog, "SettingService::class")
+      assertContains(catalog, "DelegatingSettingService::class")
+      assertContains(catalog, "DslSettingService::class")
     }
 
     private fun currentRuntimeClasspath(): List<File> {

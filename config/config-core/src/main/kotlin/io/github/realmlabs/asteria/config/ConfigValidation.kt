@@ -52,6 +52,22 @@ fun interface ConfigValidator {
 }
 
 /**
+ * [ConfigValidator] variant for implementations that want to write validation directly in [ConfigValidationScope].
+ *
+ * This is useful for named validators, especially contributed objects, where [configValidator] would otherwise require
+ * an extra field or Kotlin interface delegation.
+ */
+fun interface DslConfigValidator : ConfigValidator {
+    suspend fun ConfigValidationScope.validateConfig(snapshot: ConfigSnapshot)
+
+    override suspend fun validate(snapshot: ConfigSnapshot): ConfigValidationResult {
+        return ConfigValidationScope().apply {
+            validateConfig(snapshot)
+        }.result()
+    }
+}
+
+/**
  * Mutable helper used by [configValidator] to accumulate validation errors.
  *
  * This scope is intentionally append-only: validators can report multiple problems in one pass instead of failing fast
@@ -104,11 +120,9 @@ class ConfigValidationScope {
  * The DSL always returns a full [ConfigValidationResult]; throwing is reserved for unexpected validator bugs rather
  * than business validation failures.
  */
-fun configValidator(validate: suspend ConfigValidationScope.(ConfigSnapshot) -> Unit): ConfigValidator {
-    return ConfigValidator { snapshot ->
-        ConfigValidationScope().apply {
-            validate(snapshot)
-        }.result()
+fun configValidator(validate: suspend ConfigValidationScope.(ConfigSnapshot) -> Unit): DslConfigValidator {
+    return DslConfigValidator { snapshot ->
+        validate(snapshot)
     }
 }
 

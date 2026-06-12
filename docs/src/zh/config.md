@@ -24,7 +24,7 @@ install(ConfigModule {
 
     validator { snapshot ->
         val items = snapshot.requireTable(GameConfigTables.Items)
-        check(items[1001] != null) { "items requires id=1001" }
+        check(items[1001] != null, "items requires id=1001", items.name, 1001)
     }
 })
 ```
@@ -148,6 +148,9 @@ components、validate、publish、通知 listeners。listener 在发布后同步
 配置校验可以通过 `ConfigValidator` 编写。需要聚合大量 validator 时，用通用 contribution KSP 生成列表；业务模块需要依赖
 `foundation-contribution`，并把 `foundation-contribution-ksp` 加到 `ksp` 配置：
 
+contribution object 推荐用 `DslConfigValidator`，这样 validator 主体直接运行在 `ConfigValidationScope` 里，不需要手动桥接
+`validate`：
+
 ```kotlin
 @AsteriaContributionCatalog(
   contract = ConfigValidator::class,
@@ -157,14 +160,12 @@ components、validate、publish、通知 listeners。listener 在发布后同步
 object ConfigValidatorCatalog
 
 @AsteriaContribution(contract = ConfigValidator::class)
-object ItemConfigValidator : ConfigValidator {
-  override suspend fun validate(snapshot: ConfigSnapshot): ConfigValidationResult {
-    return configValidator { current ->
-      val items = current.requireTable(GameConfigTables.Items)
-      items.all().forEach { item ->
-        check(item.price >= 0, "price must not be negative", items.name, item.id)
-      }
-    }.validate(snapshot)
+object ItemConfigValidator : DslConfigValidator {
+  override suspend fun ConfigValidationScope.validateConfig(snapshot: ConfigSnapshot) {
+    val items = snapshot.requireTable(GameConfigTables.Items)
+    items.all().forEach { item ->
+      check(item.price >= 0, "price must not be negative", items.name, item.id)
+    }
   }
 }
 
